@@ -1,0 +1,38 @@
+plugins { id 'com.android.library'; id 'org.jetbrains.kotlin.android' }
+
+group = 'dev.devicereadout.reactnative'
+version = '0.1.0'
+android {
+    namespace = 'dev.devicereadout.reactnative'
+    compileSdk = rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+    defaultConfig { minSdk = 26 }
+    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    sourceSets.main.java.srcDirs += [
+        '../../../kotlin/core/src/main/kotlin', '../../../kotlin/android/src/main/kotlin',
+        'build/generated/source/codegen/java'
+    ]
+}
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
+dependencies {
+    implementation 'com.facebook.react:react-android:0.88.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+}
+
+// Development checkout: generate from the actual installed RN version. Publishing is a separate gate.
+def reactNativeDir = file(providers.environmentVariable('DEVICE_READOUT_REACT_NATIVE_ROOT')
+    .getOrElse('../../../.tools/react-native-0.88/node_modules/react-native'))
+def spec = file('../src/specs/NativeDeviceReadout.ts')
+def schema = layout.buildDirectory.file('generated/schema.json')
+tasks.register('generateDeviceReadoutSchema', Exec) {
+    inputs.file(spec); outputs.file(schema)
+    doFirst {schema.get().asFile.parentFile.mkdirs()}
+    commandLine 'node', new File(reactNativeDir.parentFile, '@react-native/codegen/lib/cli/combine/combine-js-to-schema-cli.js'), schema.get().asFile, spec
+}
+tasks.register('generateDeviceReadoutNative', Exec) {
+    dependsOn 'generateDeviceReadoutSchema'
+    inputs.file(schema); outputs.dir(layout.buildDirectory.dir('generated/source/codegen'))
+    commandLine 'node', new File(reactNativeDir, 'scripts/generate-specs-cli.js'), '--platform', 'android',
+        '--schemaPath', schema.get().asFile, '--outputDir', layout.buildDirectory.dir('generated/source/codegen').get().asFile,
+        '--libraryName', 'DeviceReadoutSpec', '--javaPackageName', 'dev.devicereadout.reactnative', '--libraryType', 'modules'
+}
+tasks.named('preBuild').configure {dependsOn 'generateDeviceReadoutNative'}

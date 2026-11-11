@@ -1,0 +1,296 @@
+namespace DeviceReadout;
+
+public enum PermissionStatus { Granted, Denied, NotDetermined, Restricted, Unavailable }
+public sealed record PermissionRequest(EntityKind Kind, string? TargetId);
+
+internal sealed class ActionSubscription(Action dispose, bool pollingRequired = false) : ICollectorSubscription
+{
+    private Action? action = dispose;
+    public bool PollingRequired { get; } = pollingRequired;
+    public void Dispose() => Interlocked.Exchange(ref action, null)?.Invoke();
+}
+
+internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollector
+{
+    public void Dispose() => source.Dispose();
+    private sealed record FailureRecord(long Revision, DeviceReadoutException Error);
+    private sealed class FailureListener(EntityAddress address, Action<Exception> fail)
+    {
+        internal readonly EntityAddress Address = address;
+        internal readonly Action<Exception> Fail = fail;
+    }
+    private sealed class State(EntityMode mode)
+    {
+        internal readonly EntityMode Mode = mode;
+        internal DeviceSnapshot? Value;
+        internal bool Removed;
+        internal TaskCompletionSource<DeviceSnapshot> First = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly List<(Action<DeviceSnapshot> Emit, Action<Exception> Fail)> Listeners = [];
+    }
+    private readonly object gate = new();
+    private readonly Dictionary<EntityAddress, State> states = [];
+    private readonly Dictionary<EntityKind, string?> current = [];
+    private readonly Dictionary<EntityAddress, DeviceReadoutException> failures = [];
+    private readonly Dictionary<EntityAddress, FailureRecord> failureHistory = [];
+    private long failureRevision;
+    private readonly List<FailureListener> failureListeners = [];
+    private readonly Dictionary<EntityAddress, PermissionStatus?> permissions = [];
+    private readonly Dictionary<EntityAddress, List<Action<PermissionStatus?>>> permissionListeners = [];
+    private Func<PermissionRequest, CancellationToken, Task>? coordinator;
+
+    internal void Register(EntityAddress address, EntityMode mode) {lock (gate) states.TryAdd(address, new(mode));}
+    internal void Publish(EntityAddress address, EntityMode mode, DeviceSnapshot snapshot)
+    {
+        Action<DeviceSnapshot>[] listeners;
+        lock (gate) {
+            if (!states.TryGetValue(address, out var state)) states[address] = state = new(mode);
+            if (state.Removed) return;
+            state.Value = snapshot;state.First.TrySetResult(snapshot);
+            listeners = FailureFor(address) is null ? state.Listeners.Select(listener => listener.Emit).ToArray() : [];
+        }
+        foreach(var emit in listeners) emit(snapshot);
+    }
+    internal void Remove(EntityAddress address, EntityMode mode)
+    {
+        var error = new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.");
+        Action<Exception>[] listeners;
+        lock (gate) {
+            if (!states.TryGetValue(address, out var state)) states[address] = state = new(mode);
+            state.Removed = true;state.First.TrySetException(error);
+            _ = state.First.Task.Exception;
+            listeners = state.Listeners.Select(listener => listener.Fail).ToArray();
+            state.Listeners.Clear();
+        }
+        foreach(var fail in listeners) fail(error);
+    }
+    internal void SetCurrent(EntityKind kind, string? id) {lock (gate) current[kind] = id;}
+    private DeviceReadoutException? FailureFor(EntityAddress address) =>
+        failures.GetValueOrDefault(address) ?? failures.GetValueOrDefault(new(address.Kind, null));
+    private void AssertAvailable(EntityAddress address, long? since = null)
+    {
+        if (states.TryGetValue(address, out var state) && state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.");
+        if (FailureFor(address) is { } error) throw error;
+        if (since.HasValue) {
+            if (failureHistory.TryGetValue(address, out var target) && target.Revision > since.Value) throw target.Error;
+            if (failureHistory.TryGetValue(new(address.Kind, null), out var family) && family.Revision > since.Value) throw family.Error;
+        }
+    }
+    internal void Failure(EntityAddress address, DeviceReadoutException? error)
+    {
+        Action<Exception>[] listeners;
+        lock (gate) {
+            if (error is null) {failures.Remove(address);return;}
+            failures[address] = error;
+            failureHistory[address] = new(++failureRevision, error);
+            var affected = states.Where(item => item.Key.Kind == address.Kind && (address.TargetId is null || item.Key == address) && !item.Value.Removed).Select(item => item.Value).ToArray();
+            var native = failureListeners.Where(item => item.Address.Kind == address.Kind && (address.TargetId is null || item.Address == address)).ToArray();
+            foreach (var listener in native) failureListeners.Remove(listener);
+            listeners = affected.SelectMany(state => state.Listeners.Select(listener => listener.Fail)).Concat(native.Select(item => item.Fail)).ToArray();
+            foreach (var state in affected) {
+                state.Value = null;state.First.TrySetException(error);_ = state.First.Task.Exception;
+                state.First = new(TaskCreationOptions.RunContinuationsAsynchronously);state.Listeners.Clear();
+            }
+        }
+        foreach (var fail in listeners) fail(error);
+    }
+    public DeviceSnapshot Read(EntityAddress entity, CancellationToken token)
+    {
+        Task<DeviceSnapshot>? pending = null;
+        long revision;
+        lock (gate) {
+            AssertAvailable(entity);
+            revision = failureRevision;
+            if (states.TryGetValue(entity, out var state)) {
+                if (state.Value is not null && state.Mode == EntityMode.State) return state.Value;
+                pending = state.First.Task;
+            }
+        }
+        var value = pending is null ? source.Read(entity, token) : pending.WaitAsync(token).GetAwaiter().GetResult();
+        lock (gate) AssertAvailable(entity, revision);
+        return value;
+    }
+    public ICollectorSubscription? Observe(EntityAddress entity, SensorSamplingRate rate, Action<DeviceSnapshot> emit, Action<Exception> fail, CancellationToken token)
+        => Observe(entity, rate, emit, fail, token, false);
+    internal ICollectorSubscription? Observe(EntityAddress entity, SensorSamplingRate rate, Action<DeviceSnapshot> emit, Action<Exception> fail, CancellationToken token, bool allowPolling,
+        Action<Func<CancellationToken, DeviceSnapshot>>? changed = null)
+    {
+        lock (gate) {
+            AssertAvailable(entity);
+            if (states.TryGetValue(entity, out var state)) {
+                if (state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.");
+                var listener = (emit, fail);state.Listeners.Add(listener);
+                return new ActionSubscription(() => {lock (gate) state.Listeners.Remove(listener);});
+            }
+        }
+        var failureListener = new FailureListener(entity, fail);
+        lock (gate) {AssertAvailable(entity);failureListeners.Add(failureListener);}
+        ICollectorSubscription? native = null, changes = null;
+        try {
+            native = source.Observe(entity, rate, emit, fail, token);
+            if (allowPolling && changed is not null) changes = source.ObserveChanges(entity, read => {
+                try {
+                    long revision;lock (gate) {AssertAvailable(entity);revision = failureRevision;}
+                    changed(cancellation => {
+                        lock (gate) AssertAvailable(entity, revision);
+                        var value = read(cancellation);
+                        lock (gate) AssertAvailable(entity, revision);
+                        return value;
+                    });
+                } catch (Exception error) {fail(error);}
+            }, fail, token);
+            if (native is null && !allowPolling) {
+                lock (gate) failureListeners.Remove(failureListener);
+                return null;
+            }
+            return new ActionSubscription(() => {
+                lock (gate) failureListeners.Remove(failureListener);
+                try {native?.Dispose();} finally {changes?.Dispose();}
+            }, (native?.PollingRequired ?? false) || (changes?.PollingRequired ?? false) || (native is null && changes is null));
+        }
+        catch {
+            lock (gate) failureListeners.Remove(failureListener);
+            try {native?.Dispose();} finally {changes?.Dispose();}
+            throw;
+        }
+    }
+    public IReadOnlyList<string> List(EntityKind kind, CancellationToken token)
+    {
+        long revision;
+        lock (gate) {
+            AssertAvailable(new(kind, null));
+            revision = failureRevision;
+            var targets = states.Where(item => item.Key.Kind == kind).ToArray();
+            if (targets.Length > 0 || current.ContainsKey(kind)) return targets.Where(item => !item.Value.Removed && item.Key.TargetId is not null).Select(item => item.Key.TargetId!).ToArray();
+        }
+        var result = source.List(kind, token);
+        lock (gate) AssertAvailable(new(kind, null), revision);
+        return result;
+    }
+    public string? Current(EntityKind kind, CancellationToken token)
+    {
+        long revision;
+        lock (gate) {
+            AssertAvailable(new(kind, null));
+            revision = failureRevision;
+            if (current.TryGetValue(kind, out var id)) return id is not null && states.TryGetValue(new(kind, id), out var state) && state.Removed ? null : id;
+            if (states.Keys.Any(address => address.Kind == kind)) return null;
+        }
+        var result = source.Current(kind, token);
+        lock (gate) AssertAvailable(new(kind, null), revision);
+        return result;
+    }
+    public EntityCapabilities Capabilities(EntityAddress entity)
+    {
+        lock (gate) {if (states.TryGetValue(entity, out var state)) return new(!state.Removed, !state.Removed);}
+        return source.Capabilities(entity);
+    }
+    public SensorDescription Describe(EntityAddress entity, CancellationToken token)
+    {
+        long revision;
+        lock (gate) {
+            AssertAvailable(entity);
+            revision = failureRevision;
+            if (states.TryGetValue(entity, out var state)) {
+                if (state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed sensor was removed.");
+                if (state.Mode == EntityMode.State) throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Expected a sensor.");
+                return new SensorDescription {Kind = Enum.TryParse<SensorKind>(entity.Kind.ToString(), out var kind) ? kind : null};
+            }
+        }
+        var result = source.Describe(entity, token);
+        lock (gate) AssertAvailable(entity, revision);
+        return result;
+    }
+
+    private PermissionStatus? PermissionFor(EntityAddress entity) =>
+        permissions.TryGetValue(entity, out var value) ? value : permissions.GetValueOrDefault(new(entity.Kind));
+    internal PermissionStatus? CheckPermission(EntityAddress entity) {lock (gate) return PermissionFor(entity);}
+    internal void Permission(EntityAddress entity, PermissionStatus? status)
+    {
+        if (status.HasValue && !Enum.IsDefined(status.Value)) status = null;
+        Action<PermissionStatus?>[] listeners;
+        lock (gate) {
+            permissions[entity] = status;
+            listeners = permissionListeners.Where(pair => pair.Key == entity ||
+                entity.TargetId is null && pair.Key.Kind == entity.Kind && !permissions.ContainsKey(pair.Key))
+                .SelectMany(pair => pair.Value).ToArray();
+        }
+        foreach(var listener in listeners) listener(status);
+    }
+    internal IDisposable Coordinate(Func<PermissionRequest, CancellationToken, Task> value)
+    {
+        lock (gate) {
+            if (coordinator is not null) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "A permission coordinator is already registered.");
+            coordinator = value;
+        }
+        return new ActionSubscription(() => {lock (gate) if (coordinator == value) coordinator = null;});
+    }
+    internal async Task<PermissionStatus?> RequestPermission(EntityAddress entity, CancellationToken token)
+    {
+        var completion = new TaskCompletionSource<PermissionStatus?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Action<PermissionStatus?> listener = value => completion.TrySetResult(value);
+        Func<PermissionRequest, CancellationToken, Task> request;
+        List<Action<PermissionStatus?>> listeners;
+        lock (gate) {
+            if (PermissionFor(entity) == PermissionStatus.Granted) return PermissionStatus.Granted;
+            request = coordinator ?? throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Register the application's permission coordinator.");
+            if (!permissionListeners.TryGetValue(entity, out listeners!)) permissionListeners[entity] = listeners = [];
+            listeners.Add(listener);
+        }
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        try {
+            // This callback is application-owned. It must dispatch UI work to the application's UI dispatcher.
+            var coordination = request(new(entity.Kind, entity.TargetId), lifetime.Token);
+            AsyncTiming.ObserveFailure(coordination);
+            var observed = completion.Task.WaitAsync(lifetime.Token);
+            var first = await Task.WhenAny(coordination, observed).ConfigureAwait(false);
+            if (first == coordination) await coordination.ConfigureAwait(false);
+            return await observed.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) {throw;}
+        catch (DeviceReadoutException) {throw;}
+        catch (Exception error) {throw new DeviceReadoutException(ErrorCode.ReadFailed, "Permission coordinator failed.", error);}
+        finally {
+            lifetime.Cancel();lock (gate) {listeners.Remove(listener);if (listeners.Count == 0) permissionListeners.Remove(entity);}
+        }
+    }
+}
+
+/// <summary>Receives app-owned UI and permission state. No UI getters or permission dialogs are invoked.</summary>
+public sealed class ObserverInputs
+{
+    private readonly DeviceAccess.Context context;
+    internal ObserverInputs(DeviceAccess.Context context) => this.context = context;
+    private void Open() {if (context.Lifetime.IsCancellationRequested) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "DeviceAccess is closed.");}
+    public Entity<T> Target<T>(Entity<T> kind, string id) where T : DeviceSnapshot
+    {
+        Open();_ = kind.Address(context, true);
+        if (!kind.RequiresTarget || string.IsNullOrEmpty(id)) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected a multi-target kind and nonempty ID.");
+        var entity = kind.Bind(context, id);context.Collector.Register(entity.Address(context), kind.Mode);return entity;
+    }
+    public void Publish<T>(Entity<T> entity, T snapshot) where T : DeviceSnapshot {Open();context.Collector.Publish(entity.Address(context), entity.Mode, snapshot);}
+    public void Remove<T>(Entity<T> entity) where T : DeviceSnapshot {Open();context.Collector.Remove(entity.Address(context), entity.Mode);}
+    public void Current<T>(Entity<T> kind, Entity<T>? target) where T : DeviceSnapshot
+    {
+        Open();_ = kind.Address(context, true);
+        if (!kind.RequiresTarget || (target is not null && target.Kind != kind.Kind)) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected a target of the same kind.");
+        context.Collector.SetCurrent(kind.Kind, target?.Address(context).TargetId);
+    }
+    public void Permission<T>(Entity<T> entity, PermissionStatus? status) where T : DeviceSnapshot {Open();context.Collector.Permission(entity.Address(context, true), status);}
+    /// <summary>Reports or clears an application observer failure for a target or an entire entity kind.</summary>
+    public void Failure<T>(Entity<T> entity, DeviceReadoutException? error) where T : DeviceSnapshot {Open();context.Collector.Failure(entity.Address(context, true), error);}
+    public IDisposable OnPermissionRequest(Func<PermissionRequest, CancellationToken, Task> coordinator) {Open();return context.Collector.Coordinate(coordinator);}
+}
+
+public sealed class PermissionAccess
+{
+    private readonly DeviceAccess.Context context;
+    internal PermissionAccess(DeviceAccess.Context context) => this.context = context;
+    public Task<PermissionStatus?> Check<T>(Entity<T> entity, CancellationToken token = default) where T : DeviceSnapshot
+    {token.ThrowIfCancellationRequested();return Task.FromResult(context.Collector.CheckPermission(entity.Address(context, true)));}
+    public async Task<PermissionStatus?> Request<T>(Entity<T> entity, CancellationToken token = default) where T : DeviceSnapshot
+    {
+        if (context.Lifetime.IsCancellationRequested) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "DeviceAccess is closed.");
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, context.Lifetime.Token);
+        return await context.Collector.RequestPermission(entity.Address(context, true), linked.Token).ConfigureAwait(false);
+    }
+}

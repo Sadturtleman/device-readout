@@ -1,0 +1,25 @@
+{
+  "name": "device-readout-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "schema": "node tools/extract-schema.mjs",
+    "generate": "node tools/generate-typescript.mjs && node tools/generate-csharp.mjs && node tools/generate-kotlin.mjs && node tools/generate-dart.mjs",
+    "build": "npm run generate && tsc -p packages/core/tsconfig.json && npm run build:web",
+    "build:web": "tsc -p packages/web/tsconfig.json && node tools/build-web.mjs",
+    "test:types": "tsc -p packages/core/test/tsconfig.json && tsc -p packages/web/test/tsconfig.json",
+    "test": "npm run build && npm run test:types && node --test packages/core/test/*.test.mjs packages/web/test/collector.test.mjs",
+    "test:browser": "npm run build && node --test packages/web/test/browser.test.mjs",
+    "test:react-native": "node tools/test-react-native.mjs",
+    "check": "npm test && npm run test:browser"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.65.0",
+    "typescript": "5.0.4"
+  }
+}

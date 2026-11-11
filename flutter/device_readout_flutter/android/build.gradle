@@ -1,0 +1,30 @@
+group = 'dev.devicereadout.flutter'
+version = '0.1.0'
+
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace = 'dev.devicereadout.flutter'
+    compileSdk = 36
+    defaultConfig { minSdk = 26 }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    // Development checkout: compile the shared implementations, never copies.
+    // Publishing requires packaging these sources or published native artifacts.
+    sourceSets.main.java.srcDirs += [
+        '../../../kotlin/core/src/main/kotlin',
+        '../../../kotlin/android/src/main/kotlin'
+    ]
+}
+
+kotlin { compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 } }
+
+dependencies {
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit:2.2.20'
+}
+
+tasks.withType(Test).configureEach { testLogging { events 'passed', 'failed', 'skipped' } }

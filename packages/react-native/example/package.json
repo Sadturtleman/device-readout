@@ -1,0 +1,12 @@
+{
+  "name": "device-readout-rn-verification",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@device-readout/react-native": "file:..",
+    "@device-readout/core": "file:../../core",
+    "react": "19.3.0",
+    "react-native": "0.88.0"
+  }
+}

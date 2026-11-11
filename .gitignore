@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.tools/
+.gradle/
+.kotlin/
+.cxx/
+local.properties
+.dart_tool/
+build/
+bin/
+obj/
+test-results/
+*.log

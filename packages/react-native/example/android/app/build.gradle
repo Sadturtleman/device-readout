@@ -1,0 +1,35 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'com.facebook.react'
+
+def modules = file('../../../../../.tools/react-native-0.88/node_modules')
+react {
+    root = file('../..')
+    reactNativeDir = new File(modules, 'react-native')
+    codegenDir = new File(modules, '@react-native/codegen')
+    cliFile = new File(modules, 'react-native/cli.js')
+    hermesCommand = new File(modules, 'hermes-compiler/hermesc/%OS-BIN%/' + (System.getProperty('os.name').toLowerCase().contains('windows') ? 'hermesc.exe' : 'hermesc')).absolutePath
+    entryFile = file('../../index.js')
+    debuggableVariants = [] // Bundle Hermes into the verification APK; no Metro server is required.
+    autolinkLibrariesWithApp()
+}
+android {
+    namespace 'dev.devicereadout.verification'
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+    externalNativeBuild {cmake {buildStagingDirectory file('../../../../../.tools/rn-app-cxx')}}
+    defaultConfig {
+        applicationId 'dev.devicereadout.verification'
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName '0.1'
+    }
+    signingConfigs {debug {storeFile file('debug.keystore');storePassword 'android';keyAlias 'androiddebugkey';keyPassword 'android'}}
+    buildTypes {debug {signingConfig signingConfigs.debug}}
+}
+dependencies {
+    implementation 'com.facebook.react:react-android'
+    implementation 'com.facebook.react:hermes-android'
+}

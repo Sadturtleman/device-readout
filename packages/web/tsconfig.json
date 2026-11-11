@@ -1,0 +1,12 @@
+{
+  "extends": "../core/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src", "outDir": "dist", "emitDeclarationOnly": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@device-readout/core": ["packages/core/dist/index.d.ts"],
+      "@device-readout/core/collector": ["packages/core/dist/collector.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

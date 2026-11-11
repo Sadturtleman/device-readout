@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2020", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "lib": ["ES2020", "DOM"], "strict": true, "noEmit": true, "skipLibCheck": false,
+    "baseUrl": "../../..", "paths": {"@device-readout/core": ["packages/core/dist/index.d.ts"]}
+  },
+  "include": ["types.ts"]
+}

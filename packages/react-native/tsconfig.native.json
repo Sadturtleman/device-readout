@@ -1,0 +1,15 @@
+{
+  "extends": "../../.tools/react-native-0.88/node_modules/@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src", "outDir": "dist", "baseUrl": "../..",
+    "noEmit": false, "declaration": true, "emitDeclarationOnly": true,
+    "noUncheckedIndexedAccess": true, "exactOptionalPropertyTypes": true,
+    "types": ["react"],
+    "typeRoots": ["../../.tools/react-native-0.88/node_modules/@types"],
+    "paths": {
+      "@device-readout/core": ["packages/core/dist/index.d.ts"],
+      "react-native": [".tools/react-native-0.88/node_modules/react-native/types_generated/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

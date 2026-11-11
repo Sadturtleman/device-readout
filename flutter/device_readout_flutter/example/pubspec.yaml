@@ -1,0 +1,14 @@
+name: device_readout_example
+description: Explicit Flutter viewport observation with DeviceReadout.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+  flutter: '>=3.47.0 <3.48.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  device_readout_flutter:
+    path: ../
+flutter:
+  uses-material-design: true

@@ -1,0 +1,8 @@
+pluginManagement {includeBuild('../../../../.tools/react-native-0.88/node_modules/@react-native/gradle-plugin')}
+plugins {id('com.facebook.react.settings')}
+extensions.configure(com.facebook.react.ReactSettingsExtension) {extension ->
+    extension.autolinkLibrariesFromCommand(['node', file('../../../../.tools/react-native-0.88/node_modules/@react-native-community/cli/build/bin.js').absolutePath, 'config'])
+}
+rootProject.name = 'DeviceReadoutVerification'
+include ':app'
+includeBuild('../../../../.tools/react-native-0.88/node_modules/@react-native/gradle-plugin')

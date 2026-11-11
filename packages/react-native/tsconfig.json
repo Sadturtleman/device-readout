@@ -1,0 +1,8 @@
+{
+  "extends": "../core/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src", "outDir": "dist", "baseUrl": "../..",
+    "paths": {"@device-readout/core": ["packages/core/dist/index.d.ts"]}
+  },
+  "include": ["src/native-connection.ts"]
+}

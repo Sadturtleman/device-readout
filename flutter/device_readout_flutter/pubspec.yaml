@@ -1,0 +1,21 @@
+name: device_readout_flutter
+description: Explicit Flutter observers and platform bindings for DeviceReadout.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+  flutter: '>=3.47.0 <3.48.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  device_readout:
+    path: ../../dart/device_readout
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.devicereadout.flutter
+        pluginClass: DeviceReadoutPlugin
