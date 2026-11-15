@@ -286,3 +286,17 @@ internal fun decodeBindingSnapshot(kind: EntityKind, values: Map<*, *>): DeviceS
         value = BindingValues.boolean(values["value"]),
     )
 }
+
+internal fun decodeBindingSensorDescription(kind: EntityKind, values: Map<*, *>): SensorDescription = SensorDescription(
+    kind = SensorKind.entries.firstOrNull {it.name == kind.name},
+    name = BindingValues.string(values["name"]),
+    vendor = BindingValues.string(values["vendor"]),
+    version = BindingValues.string(values["version"]),
+    reportingMode = BindingValues.enum(values["reportingMode"], SensorReportingMode.entries),
+    minimumInterval = BindingValues.duration(values["minimumInterval"]),
+    maximumInterval = BindingValues.duration(values["maximumInterval"]),
+    maximumRange = BindingValues.number(values["maximumRange"]),
+    resolution = BindingValues.number(values["resolution"]),
+    powerMilliamps = BindingValues.number(values["powerMilliamps"]),
+    fifoCapacity = BindingValues.integer(values["fifoCapacity"]),
+)

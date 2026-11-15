@@ -1,6 +1,6 @@
 # DeviceReadout React Native binding
 
-This is an implementation checkpoint, not a release-ready platform claim. The Android TurboModule compiles against React Native 0.88.0 and its actual generated interface. Native get/watch, discovery/current, capabilities, sensor metadata, native inventory notifications and app-owned state/permission/lifecycle inputs connect to the existing Kotlin runtime. In addition to separate transport/endpoint tests, the autolinked Hermes/JSI example passes nine baseline scenarios, kernel-memory agreement, an actual window change and native sensor release/resume on API 26 and API 36 emulators. See [mixed app/native inventory verification](../../docs/verification/2026-11-15-react-native-mixed-inventory.md).
+This is an implementation checkpoint, not a release-ready platform claim. The Android TurboModule compiles against React Native 0.88.0 and its actual generated interface. Native get/watch, discovery/current, capabilities, sensor metadata, native inventory notifications and app-owned state/permission/lifecycle/sensor-source inputs connect to the existing Kotlin runtime. The autolinked Hermes/JSI example passes eleven baseline scenarios plus actual focus loss, window change and native sensor resume on API 26 and API 36 emulators: fourteen reported passes each, with independent kernel-memory and sensor-registration checks. See [framework-observer verification](../../docs/verification/2026-11-16-react-native-framework-observers.md) and the preceding [app-owned sensor-source verification](../../docs/verification/2026-11-15-react-native-sensor-sources.md).
 
 The intended application entrypoint preserves the shared API:
 
@@ -25,13 +25,37 @@ App-owned callbacks can publish through `access.observers.publish(entity, values
 
 Register an app coordinator with `access.observers.onPermissionRequest(handler)` before using `access.permissions.request(entity)`. That explicit request notifies the coordinator, then waits for `observers.permission(entity, status)`. Returning from the handler does not complete the request, and the user-response wait has no read timeout. Merely calling get/watch does not request permission.
 
-The example owns `useWindowDimensions` and `AppState` observations and publishes their state into DeviceAccess. API 26/36 lifecycle verification checks the native sensor registrations as well as fresh samples after resume. Permission coordination uses controlled app observer state and does not validate an OS permission dialog.
+The application explicitly connects its framework observers. `observeReactNativeViewport` copies the initial window dimensions and subsequent event payloads into a typed target; SDK get/watch do not query Dimensions. It supplies logical `size` and `textScaleFactor`; visual viewport fields and safe-area insets remain null. The example independently compares results with `useWindowDimensions`.
+
+```typescript
+import {AppState, Dimensions} from 'react-native';
+import {
+  createReactNativeDeviceAccess,
+  observeReactNativeSensorActivity,
+  observeReactNativeViewport,
+} from '@device-readout/react-native';
+
+const access = createReactNativeDeviceAccess();
+const viewport = observeReactNativeViewport(access, Dimensions);
+const activity = observeReactNativeSensorActivity(access, AppState);
+try {
+  const snapshot = await access.get(viewport.entity);
+} finally {
+  activity.close();
+  viewport.close();
+  access.close();
+}
+```
+
+Attach one sensor-activity observer per shared SDK context before starting sensor work, and close both adapters before closing the SDK. The default `ForegroundOnly` policy enables sensors only for AppState `active`; unknown and inactive states suspend them. The optional typed `ReactNativeSensorActivityPolicy.AllowInactive` also enables the inactive state when that matches the application's lifecycle requirements. Focus/blur alone do not change sensor activity. Desktop integration remains unverified. API 26/36 verification checks native registrations, fresh samples after resume and continued collection while the notification drawer removes focus. Permission coordination still uses controlled app observer state and does not validate an OS permission dialog.
 
 The first native discovery registers one context-owned inventory observer on the collector worker. Callbacks refresh only previously discovered kinds, with serialized, bounded reads. A successful native list reporting a target absent ends requests and streams for that token with `EntityRemoved`; a replacement gets a new handle. This also works without another app list call when the native collector sends a change notification. Native refresh continues when an app-owned inventory takes over the public list, while preserving the app targets and values. Android currently supplies dynamic-sensor notifications. Controlled tests cover inactive and mixed-inventory removal, malformed refresh, blocked registration, synchronous failure and terminal observation failure. Physical hotplug and broader concurrent failure/replacement cases remain unverified.
 
-**Still required:** reusable RN framework observer adapters, app-owned sensor-source sessions, all-kind native inventory notifications, broader mixed-inventory/target-retirement and malformed-input handling, blocked-native Hermes/UI responsiveness, external package consumption and distribution, iOS/Windows/macOS/web adapters and the complete version/field/device matrix. The shared `sensorSource` API is not connected by this native endpoint yet. The earlier [observer verification](../../docs/verification/2026-11-11-react-native-observers.md) retains its controlled-test scope.
+`access.observers.sensorSource(target, {description, subscribe})` now connects app-owned sensor sources on Android. Registration and metadata reads are inert. Every get/watch receives its own observation; gets and event sources use the platform-default rate, while continuous watches receive their configured rate. Return listener cleanup from `subscribe`, copy event values with `session.publish`, and report a request-scoped error with `session.fail`. Cancellation, timeout, inactivity, removal and close abort the session and release its listener; resume creates a fresh session. Keep the app's JS subscription and cleanup callbacks nonblocking. Samples are decoded and normalized by native background work, and late samples cannot enter a different session.
 
-An example-only `Isolation` build variant now compiles a deliberately blocked collector through the real TurboModule. Its get/watch/close scenarios and UI/JS heartbeat probes are preparation for the remaining blocked-native runtime checks; a successful APK build does not verify those checks. See the [fixture checkpoint](../../docs/verification/2026-11-15-react-native-isolation-fixture.md).
+**Still required:** Display, safe-area and visual viewport framework integrations, physical app-source plugin integration, broader source replacement/concurrency, all-kind native inventory notifications, broader mixed-inventory/target-retirement and malformed-input handling, blocked-event/cleanup and overload coverage, external package consumption and distribution, iOS/Windows/macOS/web adapters and the complete version/field/device matrix. The earlier [observer verification](../../docs/verification/2026-11-11-react-native-observers.md) retains its controlled-test scope.
+
+The preceding example-only `Isolation` checkpoint passes deliberately blocked get/watch/close checks through the real TurboModule and Hermes on API 26 and API 36. Both JS and Android UI loops advance while collection is held, deadlines and close settle before external release, and the worker exits after release. That checkpoint retains its original build and eleven ordinary-app scenarios. See the [runtime evidence and limits](../../docs/verification/2026-11-15-react-native-isolation.md); the earlier [fixture checkpoint](../../docs/verification/2026-11-15-react-native-isolation-fixture.md) records compilation separately.
 
 Verification from the monorepo root:
 
@@ -44,6 +68,9 @@ npm run test:react-native
 ./tools/build-react-native-app.ps1 -SdkRoot 'C:/path/to/Android/Sdk' -GradleHome 'C:/short/gradle-cache'
 # Requires a running project-owned DeviceReadout AVD and SDK platform-tools:
 ./tools/test-react-native-android.ps1 -SdkRoot 'C:/path/to/Android/Sdk'
+# Separate blocked-collector example and external-release verification:
+./tools/build-react-native-app.ps1 -SdkRoot 'C:/path/to/Android/Sdk' -GradleHome 'C:/short/gradle-cache' -Variant Isolation
+./tools/test-react-native-isolation.ps1 -SdkRoot 'C:/path/to/Android/Sdk'
 ```
 
 Preparation installs the locked runtime only under `.tools/react-native-0.88`. The independent core still compiles with TypeScript 5.0.4. RN-specific declarations use TypeScript 5.9.3, React/types 19.3.0 and RN's own 0.88.0 TypeScript configuration, including its `skipLibCheck: true`. A separate strict dependency-declaration run reports upstream RN declaration errors; it is not a passing compatibility gate.

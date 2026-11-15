@@ -3,6 +3,8 @@ import { DeviceReadoutError, ErrorCode } from '@device-readout/core';
 import { createNativeDeviceAccess } from './native-connection';
 import type { Spec } from './specs/NativeDeviceReadout';
 export * from '@device-readout/core';
+export {observeReactNativeViewport,observeReactNativeSensorActivity,ReactNativeSensorActivityPolicy} from './framework-observers';
+export type {ReactNativeWindowMetrics,ReactNativeDimensionsSource,ReactNativeViewportObservation,ReactNativeAppStateSource,ReactNativeSensorActivityObservation} from './framework-observers';
 
 /** Construction is inert; lookup and native context creation begin on the first operation. */
 export function createReactNativeDeviceAccess() {

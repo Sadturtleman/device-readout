@@ -86,6 +86,10 @@ class DeviceAccess private constructor(
     internal suspend fun observeNativeInventory(changed: (EntityKind) -> Unit, fail: (Throwable) -> Unit): CollectorSubscription? =
         bounded {context.worker.call {context.collector.observeInventory(changed, fail)}}
     internal fun releaseNativeInventory(subscription: CollectorSubscription?) = context.worker.release(subscription)
+    internal fun registerSensorSource(entity: Entity<out DeviceSnapshot>, source: ObservedSensorSource) {
+        if (context.closed.get()) throw DeviceReadoutException(ErrorCode.EntityRemoved, "DeviceAccess is closed.")
+        context.collector.registerSensorSource(entity.address(context), entity.mode, source)
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun <S : DeviceSnapshot> watch(entity: Entity<S>): Flow<S> {

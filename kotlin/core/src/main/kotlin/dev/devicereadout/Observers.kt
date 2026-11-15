@@ -14,12 +14,19 @@ internal class Subscription(private val action: () -> Unit, override val polling
     override fun close() {if (closed.compareAndSet(false, true)) action()}
 }
 
+/** Binding-owned source. Registration is inert; observation and release use the collection lane. */
+internal class ObservedSensorSource(
+    val description: SensorDescription,
+    val subscribe: (SensorSamplingRate, (DeviceSnapshot) -> Unit, (Throwable) -> Unit) -> CollectorSubscription,
+)
+
 internal class ObservedCollector(private val source: DeviceCollector) : DeviceCollector {
     data class Activity(val active: Boolean, val generation: Long)
     private data class Listener(val emit: (DeviceSnapshot) -> Unit, val fail: (Throwable) -> Unit)
     private class FailureListener(val address: EntityAddress, val fail: (Throwable) -> Unit)
     private data class FailureRecord(val revision: Long, val error: DeviceReadoutException)
     private class State(val mode: EntityMode) {
+        var sensorSource: ObservedSensorSource? = null
         var value: DeviceSnapshot? = null
         var removed = false
         var first = CompletableFuture<DeviceSnapshot>()
@@ -54,6 +61,11 @@ internal class ObservedCollector(private val source: DeviceCollector) : DeviceCo
     fun isActive(generation: Long): Boolean = synchronized(gate) {activity.active && activity.generation == generation}
 
     fun register(address: EntityAddress, mode: EntityMode) = synchronized(gate) {states.getOrPut(address) {State(mode)};Unit}
+    fun registerSensorSource(address: EntityAddress, mode: EntityMode, sensorSource: ObservedSensorSource) = synchronized(gate) {
+        if (mode == EntityMode.State) throw DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected a sensor target.")
+        val state = states.getOrPut(address) {State(mode)}
+        if (!state.removed) {state.sensorSource = sensorSource;state.value = null}
+    }
     fun onFailure(address: EntityAddress, fail: (Throwable) -> Unit): AutoCloseable {
         val listener = FailureListener(address, fail)
         synchronized(gate) {assertAvailable(address);failureListeners.add(listener)}
@@ -123,15 +135,20 @@ internal class ObservedCollector(private val source: DeviceCollector) : DeviceCo
         return value
     }
     override fun observe(entity: EntityAddress, rate: SensorSamplingRate, emit: (DeviceSnapshot) -> Unit, fail: (Throwable) -> Unit): CollectorSubscription? {
-        synchronized(gate) {
+        val sensorSource = synchronized(gate) {
             assertAvailable(entity)
             states[entity]?.let {state ->
                 if (state.removed) throw DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.")
-                val listener = Listener(emit, fail);state.listeners.add(listener)
-                return Subscription({synchronized(gate) {state.listeners.remove(listener)}})
+                if (state.sensorSource == null) {
+                    val listener = Listener(emit, fail);state.listeners.add(listener)
+                    return Subscription({synchronized(gate) {state.listeners.remove(listener)}})
+                }
+                state.sensorSource
             }
         }
-        return observeSource(entity, fail, false) {source.observe(entity, rate, emit, fail)}
+        return observeSource(entity, fail, false) {
+            sensorSource?.subscribe?.invoke(rate, emit, fail) ?: source.observe(entity, rate, emit, fail)
+        }
     }
     override fun observeReads(entity: EntityAddress, emit: (() -> DeviceSnapshot) -> Unit, fail: (Throwable) -> Unit): CollectorSubscription? =
         observeSource(entity, fail, true) {source.observeReads(entity, emit, fail)}
@@ -199,7 +216,7 @@ internal class ObservedCollector(private val source: DeviceCollector) : DeviceCo
             states[sensor]?.let {
                 if (it.removed) throw DeviceReadoutException(ErrorCode.EntityRemoved, "Observed sensor was removed.")
                 if (it.mode == EntityMode.State) throw DeviceReadoutException(ErrorCode.UnsupportedEntity, "Expected a sensor.")
-                return SensorDescription(kind = SensorKind.entries.firstOrNull {kind -> kind.name == sensor.kind.name})
+                return it.sensorSource?.description ?: SensorDescription(kind = SensorKind.entries.firstOrNull {kind -> kind.name == sensor.kind.name})
             }
             failureRevision
         }

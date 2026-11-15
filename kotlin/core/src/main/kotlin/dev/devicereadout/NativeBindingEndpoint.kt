@@ -66,6 +66,7 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
         val id = currentCoroutineContext()[BindingRequest]?.id ?: invalid("Missing permission request context.")
         emit(id, "permissionRequest", null)
     }
+    private val sensorSources = BindingSensorSources(::control)
 
     init {
         scope.launch {
@@ -73,6 +74,9 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
                 val id = (request["id"] as? Number)?.toInt() ?: 0
                 try {
                     if (request["operation"] == "observer") {observe(request);continue}
+                    if (request["operation"] == "sensor") {
+                        sensorSources.receive(request["value"] as? Map<*, *> ?: invalid("Missing sensor input."));continue
+                    }
                     if (id <= 0) invalid("Expected a positive request ID.")
                     if (request["operation"] == "cancel") {
                         synchronized(identities) {requestTargets.remove(id);jobs.remove(id)?.cancel()}
@@ -117,6 +121,9 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
         } else selected(kind, address)
         when (input["type"]) {
             "register" -> Unit
+            "sensorSource" -> access.registerSensorSource(entity, sensorSources.source(kind.kind,
+                mapOf("kind" to kind.kind.name, "targetId" to target, "observed" to (address["observed"] == true)),
+                decodeBindingSensorDescription(kind.kind, input["description"] as? Map<*, *> ?: emptyMap<Any?, Any?>())))
             "state" -> {
                 val values = input["values"] as? Map<*, *> ?: invalid("Missing observed snapshot.")
                 access.observers.publish(entity as Entity<DeviceSnapshot>, decodeBindingSnapshot(kind.kind, values))
@@ -318,6 +325,14 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
         targets[id] = entity
         return id
     }
+    private fun control(type: String, value: Map<String, Any?>) {
+        ensureOpen()
+        val json = encodeBindingResponse(mapOf("id" to 0, "type" to type, "value" to value))
+        if (json.length > 262144 || !replies.trySend(json).isSuccess) {
+            val error = DeviceReadoutException(ErrorCode.ReadFailed, "Native response queue or payload limit exceeded.")
+            replies.close(error);scope.cancel();access.close();throw error
+        }
+    }
     private fun emit(id: Int, type: String, value: Any?) {
         if (closed.get()) return
         val json = encodeBindingResponse(mapOf("id" to id, "type" to type, "value" to value))
@@ -340,6 +355,7 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
         if (!closed.compareAndSet(false, true)) return
         synchronized(identities) {targets.clear();identities.clear();requestTargets.clear()}
         observed.clear()
+        sensorSources.close()
         inventoryChanges?.close();inventoryKinds.clear();inventoryFailures.clear()
         synchronized(activityGate) {sensorWatches.clear()}
         permissionCoordinator.close()

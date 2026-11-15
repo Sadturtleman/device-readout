@@ -42,11 +42,14 @@ function Wait-RnState {
     throw "Timed out waiting for $Description"
 }
 $taskResized = $false
+$taskPanelExpanded = $false
 try {
     Invoke-RnAdb @('install','-r',$taskApk) | Out-Null
     $identity = (Invoke-RnAdb @('shell','pm','list','packages','-U',$taskPackage)) -join "`n"
-    if ($identity -notmatch 'uid:(\d+)') {throw 'Cannot identify the installed app UID.'}
-    $script:rnUid = $Matches[1]
+    # pm's filter is a substring match and also returns the .isolation application.
+    $identities = [regex]::Matches($identity, ('(?m)^package:' + [regex]::Escape($taskPackage) + '\s+uid:(\d+)\s*$'))
+    if ($identities.Count -ne 1) {throw 'Cannot identify the exact installed app UID.'}
+    $script:rnUid = $identities[0].Groups[1].Value
     Invoke-RnAdb @('shell','am','force-stop',$taskPackage) | Out-Null
     # API 26 logd can transiently reject a clear immediately after package installation.
     # Require a successful clear before launch so old runs cannot satisfy the assertions.
@@ -60,7 +63,7 @@ try {
     Invoke-RnAdb @('shell','am','start','-W','-n',"$taskPackage/.MainActivity") | Out-Null
     Wait-RnState { (Read-RnLog) -match 'DEVICE_READOUT_READY ' } 'baseline scenarios'
     $baseline = @(Read-RnResults)
-    $expected = @('hermes-runtime','native-ram','immutable-settings-and-native-watch','native-discovery-and-context-ownership','mixed-native-and-app-inventory','app-observed-viewport','observed-exact-integer-roundtrip','app-permission-coordination','native-sensor-observation')
+    $expected = @('hermes-runtime','native-ram','immutable-settings-and-native-watch','native-discovery-and-context-ownership','mixed-native-and-app-inventory','app-observed-viewport','observed-exact-integer-roundtrip','app-permission-coordination','app-sensor-source-lifecycle','app-sensor-source-failure-and-close','native-sensor-observation')
     foreach ($name in $expected) {if (@($baseline | Where-Object {$_.name -eq $name -and $_.status -eq 'passed'}).Count -ne 1) {throw "Missing or duplicated baseline: $name"}}
     $memory = (Invoke-RnAdb @('shell','cat','/proc/meminfo')) -join "`n"
     $memory | Set-Content -LiteralPath "$taskPrefix-meminfo.txt" -Encoding utf8
@@ -70,6 +73,14 @@ try {
     if ([System.Numerics.BigInteger]::Parse($ram.detail.kernelAccessibleBytes) -ne $kernelBytes) {throw 'Native RAM disagrees with /proc/meminfo.'}
     Wait-RnState {Has-RnSensor} 'native foreground sensor registration'
     $script:rnSensors | Set-Content -LiteralPath "$taskPrefix-foreground-sensors.txt" -Encoding utf8
+    $taskPanelExpanded = $true
+    Invoke-RnAdb @('shell','cmd','statusbar','expand-notifications') | Out-Null
+    Wait-RnState {(Read-RnLog) -match 'DEVICE_READOUT_FOCUS .*"state":"blur","appState":"active"'} 'notification-panel focus loss while active'
+    Wait-RnState {@((Read-RnResults) | Where-Object name -eq 'actual-focus-loss-keeps-sensors').Count -gt 0} 'fresh sensor sample during focus loss'
+    if (-not (Has-RnSensor)) {throw 'Focus loss removed the native sensor registration.'}
+    $script:rnSensors | Set-Content -LiteralPath "$taskPrefix-unfocused-sensors.txt" -Encoding utf8
+    Invoke-RnAdb @('shell','cmd','statusbar','collapse') | Out-Null
+    $taskPanelExpanded = $false
     Invoke-RnAdb @('shell','wm','size','640x320') | Out-Null
     $taskResized = $true
     Wait-RnState { @((Read-RnResults) | Where-Object name -eq 'actual-window-change').Count -gt 0 } 'actual window observation'
@@ -86,14 +97,17 @@ try {
     $script:rnSensors | Set-Content -LiteralPath "$taskPrefix-resumed-sensors.txt" -Encoding utf8
     $report = [ordered]@{
         avd = $taskAvd; api = ((Invoke-RnAdb @('shell','getprop','ro.build.version.sdk')) -join '').Trim()
+        installedPackageUid = $script:rnUid
         baseline = $baseline; kernelMemoryAgreement = $true; actualWindowChange = $changed
         nativeSensorReleasedInBackground = $true; nativeSensorRestoredOnResume = $true
+        nativeSensorRetainedDuringFocusLoss = $true
         appResults = @(Read-RnResults)
     }
     $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath "$taskPrefix.json" -Encoding utf8
     Write-Output "Passed RN/Hermes baseline, kernel agreement, actual window change and native pause/resume on $taskAvd."
 } finally {
     if ($script:rnSensors) {$script:rnSensors | Set-Content -LiteralPath "$taskPrefix-last-sensors.txt" -Encoding utf8}
+    if ($taskPanelExpanded) {Invoke-RnAdb @('shell','cmd','statusbar','collapse') | Out-Null}
     if ($taskResized) {Invoke-RnAdb @('shell','wm','size','reset') | Out-Null}
     Invoke-RnAdb @('shell','am','force-stop',$taskPackage) | Out-Null
 }

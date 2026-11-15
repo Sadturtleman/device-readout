@@ -71,5 +71,7 @@ function decodeType(source, value) {
 let decoding='// Generated from the shared DeviceReadout schema.\npackage dev.devicereadout\n\ninternal fun decodeBindingSnapshot(kind: EntityKind, values: Map<*, *>): DeviceSnapshot = when (kind) {\n';
 for(const e of schema.entities)decoding+=`    EntityKind.${e.name} -> ${e.name}Snapshot(\n${e.fields.map(f=>`        ${f.name} = ${decodeType(f.type,`values["${f.name}"]`)},`).join('\n')}\n    )\n`;
 decoding+='}\n';
+decoding+='\ninternal fun decodeBindingSensorDescription(kind: EntityKind, values: Map<*, *>): SensorDescription = SensorDescription(\n    kind = SensorKind.entries.firstOrNull {it.name == kind.name},\n';
+decoding+=schema.sensorDescription.filter(f=>f.name!=='kind').map(f=>`    ${f.name} = ${decodeType(f.type,`values["${f.name}"]`)},`).join('\n')+'\n)\n';
 await writeFile(new URL('BindingSnapshots.kt',destination),decoding);
 console.log(`Generated ${schema.entities.length} Kotlin entities.`);

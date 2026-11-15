@@ -6,7 +6,13 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The latest [React Native checkpoint](docs/verification/2026-11-15-react-native-mixed-inventory.md) preserves native removal detection alongside app-owned inventories. A controlled regression verifies isolated target removal, and Kotlin tests total 37/37. The rebuilt autolinked Hermes/JSI application passes on API 26 and API 36: nine baseline scenarios including simultaneous native/app handles, plus actual window change and sensor resume, independent kernel-memory agreement and native registration checks. Physical dynamic hotplug, broader concurrent failure/replacement cases and external package consumption remain unverified.
+The latest [React Native framework-observer checkpoint](docs/verification/2026-11-16-react-native-framework-observers.md) adds explicit Dimensions and AppState adapters. Transport/framework contracts pass 12/12. The actual RN/Hermes/JSI app passes fourteen reported scenarios on each API 26/36, including window changes, sensor suspension/resume and continued sensor collection during focus loss. Safe-area/visual viewport fields, other RN platforms and physical-device coverage remain required.
+
+The preceding [React Native sensor-source checkpoint](docs/verification/2026-11-15-react-native-sensor-sources.md) connects app-owned sources to native get/watch demand, independent sampling settings, lifecycle suspension/resume and cleanup. Kotlin passes 41/41 contracts. Its actual RN/Hermes/JSI app passes thirteen reported scenarios on each API 26/36, with independent kernel-memory and native sensor-registration checks. Source callbacks use controlled samples; physical plugin and broader concurrency coverage remain required.
+
+The preceding [React Native responsiveness checkpoint](docs/verification/2026-11-15-react-native-isolation.md) verifies get/watch deadlines and context close while native collection is deliberately held. Its Hermes/JSI app passes three such scenarios on each API 26/36, with JS and Android UI progress before external release and collector-worker exit afterward. Broader blocked-event/cleanup, overload and physical-device coverage remain required.
+
+The preceding [React Native inventory checkpoint](docs/verification/2026-11-15-react-native-mixed-inventory.md) preserves native removal detection alongside app-owned inventories. A controlled regression verifies isolated target removal, and Kotlin tests total 37/37. Physical dynamic hotplug, broader concurrent failure/replacement cases and external package consumption remain unverified.
 
 The [React Native observer checkpoint](docs/verification/2026-11-11-react-native-observers.md) adds app-owned screen/state, permission and lifecycle protocol handling to the native transport. Native/app target identities stay separate, and paused sensors still receive errors and removal. Full application/framework/platform verification remains required.
 

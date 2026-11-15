@@ -1,6 +1,6 @@
 # React Native blocked-collector fixture — 2026-11-15
 
-This is a build checkpoint. The new isolation fixture has not yet been executed on an emulator or device, so it adds no runtime responsiveness or deadline guarantee to the preceding verification records.
+This records the build-only checkpoint. At that stage the isolation fixture had not been executed on an emulator or device. The subsequent [runtime verification](2026-11-15-react-native-isolation.md) executes it on API 26 and API 36 and records the exact scope and results separately.
 
 The example application's `Isolation` variant uses its own application ID suffix, `.isolation`. It replaces the native package provider with a controlled collector while retaining the production TurboModule, native endpoint and Hermes application path. The module accepts an access factory; its default remains the Android collector and factory invocation stays inside the existing background execution scope.
 
@@ -17,6 +17,6 @@ The initial isolation build failed because the native module had no factory cons
 
 Ignored local build logs: `.tools/rn-isolation-build-red.log`, `.tools/rn-isolation-build-green.log`, `.tools/github-upload-rn-debug-build.log` and `.tools/github-upload-kotlin-tests.log`.
 
-## Required next checks
+## Follow-up checks
 
-An external harness must run each scenario in a fresh app process, verify that both event loops advance while collection is held, verify timeout/close before external release, and verify collector-thread exit after release. Run the ordinary app regression checks again after the launch-routing changes. API 26 and API 36 emulator execution, physical-device behavior and broader scheduling/overload cases remain outstanding for this fixture.
+The subsequent runtime checkpoint adds an external harness for each scenario in a fresh app process, both event loops while collection is held, timeout/close before external release and collector-thread exit after release. It also repeats ordinary-app regressions after the launch-routing changes. Physical-device behavior and broader scheduling/overload cases remain outstanding.
