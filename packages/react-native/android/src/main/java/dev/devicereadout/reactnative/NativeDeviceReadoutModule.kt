@@ -14,7 +14,10 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** TurboModule entrypoints only schedule work. No Activity, screen getter or permission prompt is used. */
 @ReactModule(name = NativeDeviceReadoutModule.NAME)
-class NativeDeviceReadoutModule(private val application: ReactApplicationContext) : NativeDeviceReadoutSpec(application) {
+class NativeDeviceReadoutModule(
+    application: ReactApplicationContext,
+    private val accessFactory: () -> DeviceAccess = {AndroidDeviceAccess.create(application.applicationContext)}
+) : NativeDeviceReadoutSpec(application) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val contexts = ConcurrentHashMap<String, NativeBindingEndpoint>()
     private val sequence = AtomicLong()
@@ -22,7 +25,7 @@ class NativeDeviceReadoutModule(private val application: ReactApplicationContext
     override fun getName() = NAME
 
     override fun create(promise: Promise) = execute(promise) {
-        val endpoint = NativeBindingEndpoint(AndroidDeviceAccess.create(application.applicationContext))
+        val endpoint = NativeBindingEndpoint(accessFactory())
         val id = sequence.incrementAndGet().toString()
         contexts[id] = endpoint
         if (closed.get()) {contexts.remove(id)?.close();removed()}

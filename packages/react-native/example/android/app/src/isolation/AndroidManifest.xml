@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Only this dedicated verification APK exposes the collector-release control. -->
+        <receiver android:name="dev.devicereadout.verification.IsolationReleaseReceiver" android:exported="true" />
+    </application>
+</manifest>

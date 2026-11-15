@@ -48,11 +48,19 @@ try {
     if ($identity -notmatch 'uid:(\d+)') {throw 'Cannot identify the installed app UID.'}
     $script:rnUid = $Matches[1]
     Invoke-RnAdb @('shell','am','force-stop',$taskPackage) | Out-Null
-    Invoke-RnAdb @('logcat','-c') | Out-Null
+    # API 26 logd can transiently reject a clear immediately after package installation.
+    # Require a successful clear before launch so old runs cannot satisfy the assertions.
+    $taskLogCleared = $false
+    for ($taskAttempt = 0; $taskAttempt -lt 5; $taskAttempt++) {
+        $taskClearOutput = & $taskAdb -P $ServerPort -s $Serial logcat -c 2>&1
+        if ($LASTEXITCODE -eq 0) {$taskLogCleared = $true;break}
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $taskLogCleared) {throw "Could not clear logcat before verification: $taskClearOutput"}
     Invoke-RnAdb @('shell','am','start','-W','-n',"$taskPackage/.MainActivity") | Out-Null
     Wait-RnState { (Read-RnLog) -match 'DEVICE_READOUT_READY ' } 'baseline scenarios'
     $baseline = @(Read-RnResults)
-    $expected = @('hermes-runtime','native-ram','immutable-settings-and-native-watch','native-discovery-and-context-ownership','app-observed-viewport','observed-exact-integer-roundtrip','app-permission-coordination','native-sensor-observation')
+    $expected = @('hermes-runtime','native-ram','immutable-settings-and-native-watch','native-discovery-and-context-ownership','mixed-native-and-app-inventory','app-observed-viewport','observed-exact-integer-roundtrip','app-permission-coordination','native-sensor-observation')
     foreach ($name in $expected) {if (@($baseline | Where-Object {$_.name -eq $name -and $_.status -eq 'passed'}).Count -ne 1) {throw "Missing or duplicated baseline: $name"}}
     $memory = (Invoke-RnAdb @('shell','cat','/proc/meminfo')) -join "`n"
     $memory | Set-Content -LiteralPath "$taskPrefix-meminfo.txt" -Encoding utf8

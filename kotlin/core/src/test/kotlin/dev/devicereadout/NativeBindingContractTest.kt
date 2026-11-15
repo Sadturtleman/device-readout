@@ -7,6 +7,63 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.*
 
 class NativeBindingContractTest {
+    @Test fun observedNativeRemovalEndsOnlyTheOldTargetStream(): Unit = runBlocking {
+        val present = java.util.concurrent.atomic.AtomicBoolean(true)
+        val observations = kotlinx.coroutines.channels.Channel<Pair<String, (DeviceSnapshot) -> Unit>>(4)
+        val releases = kotlinx.coroutines.channels.Channel<String>(4)
+        val endpoint = NativeBindingEndpoint(DeviceAccess(object : DeviceCollector {
+            override fun list(kind: EntityKind) = if (present.get()) listOf("first", "sibling") else listOf("sibling")
+            override fun read(entity: EntityAddress): DeviceSnapshot = CpuCoreSnapshot(logicalIndex = if (entity.targetId == "first") 7 else 8)
+            override fun observe(entity: EntityAddress, rate: SensorSamplingRate, emit: (DeviceSnapshot) -> Unit, fail: (Throwable) -> Unit): CollectorSubscription {
+                observations.trySend(requireNotNull(entity.targetId) to emit)
+                return object : CollectorSubscription {
+                    override val pollingRequired = false
+                    override fun close() {releases.trySend(requireNotNull(entity.targetId))}
+                }
+            }
+        }))
+        fun query(id: Int, operation: String, target: String? = null) = endpoint.send(mapOf(
+            "id" to id, "operation" to operation, "entity" to mapOf("kind" to "CpuCore", "targetId" to target),
+            "settings" to mapOf("readTimeoutMs" to 1000, "pollIntervalMs" to 100000)))
+        fun targets(json: String) = Regex("native-\\d+").findAll(json).map {it.value}.toList()
+        try {
+            withTimeout(5000) {
+                query(1, "list")
+                val initial = targets(endpoint.next())
+                assertEquals(2, initial.size)
+                query(2, "watch", initial[0])
+                val old = observations.receive()
+                assertEquals("first", old.first)
+                assertTrue(endpoint.next().contains("\"logicalIndex\":7"))
+                query(3, "watch", initial[1])
+                val sibling = observations.receive()
+                assertTrue(endpoint.next().contains("\"logicalIndex\":8"))
+
+                present.set(false)
+                query(4, "list")
+                val removed = listOf(endpoint.next(), endpoint.next())
+                assertTrue(removed.any {it.contains("\"id\":2,") && it.contains("EntityRemoved")}, removed.toString())
+                assertTrue(removed.any {it.contains("\"id\":4,") && targets(it) == listOf(initial[1])}, removed.toString())
+                assertEquals("first", releases.receive())
+
+                // A late callback cannot resurrect a removed stream or affect its sibling.
+                old.second(CpuCoreSnapshot(logicalIndex = 99))
+                sibling.second(CpuCoreSnapshot(logicalIndex = 9))
+                val surviving = endpoint.next()
+                assertTrue(surviving.contains("\"id\":3,") && surviving.contains("\"logicalIndex\":9"), surviving)
+                present.set(true)
+                query(5, "list")
+                val replacement = targets(endpoint.next())
+                assertEquals(initial[1], replacement[1])
+                assertNotEquals(initial[0], replacement[0])
+                query(6, "get", initial[0])
+                assertTrue(endpoint.next().contains("EntityRemoved"))
+                query(7, "get", replacement[0])
+                assertTrue(endpoint.next().contains("\"logicalIndex\":7"))
+            }
+        } finally {endpoint.close()}
+    }
+
     @Test fun inactiveBindingSensorsStillReceiveObserverFailureAndRemoval(): Unit = runBlocking {
         for (removed in listOf(false, true)) {
             val endpoint = NativeBindingEndpoint(DeviceAccess(object : DeviceCollector {

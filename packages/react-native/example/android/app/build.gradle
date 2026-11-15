@@ -18,6 +18,7 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+    buildFeatures {buildConfig true}
     externalNativeBuild {cmake {buildStagingDirectory file('../../../../../.tools/rn-app-cxx')}}
     defaultConfig {
         applicationId 'dev.devicereadout.verification'
@@ -25,9 +26,18 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName '0.1'
+        buildConfigField 'boolean', 'ISOLATION_FIXTURE', 'false'
     }
     signingConfigs {debug {storeFile file('debug.keystore');storePassword 'android';keyAlias 'androiddebugkey';keyPassword 'android'}}
-    buildTypes {debug {signingConfig signingConfigs.debug}}
+    buildTypes {
+        debug {signingConfig signingConfigs.debug}
+        isolation {
+            initWith debug
+            matchingFallbacks = ['debug']
+            applicationIdSuffix '.isolation'
+            buildConfigField 'boolean', 'ISOLATION_FIXTURE', 'true'
+        }
+    }
 }
 dependencies {
     implementation 'com.facebook.react:react-android'

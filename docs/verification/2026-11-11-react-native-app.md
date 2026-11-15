@@ -2,6 +2,8 @@
 
 This record captures the completed API 36 run before development was paused. It does not mark the SDK or the React Native support matrix complete. Repository publication did not rerun the application tests.
 
+Follow-up: the [2026-11-15 checkpoint](2026-11-15-react-native-retirement.md) verifies the application on both API 26 and API 36 and fixes active-request retirement after successful native discovery. The results and limitations below describe the original checkpoint.
+
 ## Application and toolchain
 
 The verification application in `packages/react-native/example` runs React Native 0.88.0, React 19.3.0, Hermes and the new architecture. Generated RN autolinking registers the Java package and C++ module provider. Actual native RAM, CPU and accelerometer calls exercise the JSI/TurboModule path. Monorepo package resolution and shared Kotlin sources are used; standalone package installation is not yet verified.

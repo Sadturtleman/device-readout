@@ -1,3 +1,7 @@
+import React from 'react';
 import {AppRegistry} from 'react-native';
-import App from './src/App';
-AppRegistry.registerComponent('DeviceReadoutVerification', () => App);
+function VerificationRoot(props) {
+  const App = props.isolation ? require('./src/IsolationApp').default : require('./src/App').default;
+  return React.createElement(App, props);
+}
+AppRegistry.registerComponent('DeviceReadoutVerification', () => VerificationRoot);

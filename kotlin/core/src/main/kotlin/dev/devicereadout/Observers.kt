@@ -158,10 +158,17 @@ internal class ObservedCollector(private val source: DeviceCollector) : DeviceCo
     }
     override fun list(kind: EntityKind): List<String> = listAddresses(kind).mapNotNull {it.targetId}
     fun listAddresses(kind: EntityKind): List<EntityAddress> {
-        val revision = synchronized(gate) {
+        synchronized(gate) {
             assertAvailable(EntityAddress(kind, null))
             val entries = states.filterKeys {it.kind == kind && it.observed}
             if (hasObservedInventory(kind)) return entries.filterValues {!it.removed}.keys.toList()
+        }
+        return listNativeAddresses(kind)
+    }
+    // Refresh previously discovered native handles without replacing an app-owned inventory.
+    fun listNativeAddresses(kind: EntityKind): List<EntityAddress> {
+        val revision = synchronized(gate) {
+            assertAvailable(EntityAddress(kind, null))
             failureRevision
         }
         val result = source.list(kind)

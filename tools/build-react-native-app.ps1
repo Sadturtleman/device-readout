@@ -1,4 +1,4 @@
-param([string]$SdkRoot, [string]$GradleHome)
+param([string]$SdkRoot, [string]$GradleHome, [ValidateSet('Debug','Isolation')][string]$Variant = 'Debug')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 if (-not $SdkRoot) {$SdkRoot = Join-Path $taskRoot '.tools/android-sdk'}
@@ -18,7 +18,7 @@ try {
     & node (Join-Path $taskRoot '.tools/react-native-0.88/node_modules/typescript/bin/tsc') -p (Join-Path $taskRoot 'packages/react-native/example/tsconfig.json')
     if ($LASTEXITCODE -ne 0) {throw 'React Native verification app type checking failed.'}
     $taskAndroid = Join-Path $taskRoot 'packages/react-native/example/android'
-    & (Join-Path $taskAndroid 'gradlew.bat') -p $taskAndroid :app:assembleDebug --no-daemon --console=plain
+    & (Join-Path $taskAndroid 'gradlew.bat') -p $taskAndroid ":app:assemble$Variant" --no-daemon --console=plain
     if ($LASTEXITCODE -ne 0) {throw 'React Native verification APK build failed.'}
 } finally {
     foreach ($taskName in $taskNames) {[Environment]::SetEnvironmentVariable($taskName,$taskPrevious[$taskName],'Process')}

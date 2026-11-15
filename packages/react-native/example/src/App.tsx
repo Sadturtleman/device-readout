@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {AppState, ScrollView, Text, View, useWindowDimensions} from 'react-native';
 import {
   createReactNativeDeviceAccess, RamEntity, ViewportEntity,
-  AccelerometerEntity, Duration, Instant, PermissionStatus, ErrorCode,
+  AccelerometerEntity, CpuCoreEntity, Duration, Instant, PermissionStatus, ErrorCode,
 } from '@device-readout/react-native';
 
 // This verification app owns UI/lifecycle observations. SDK get/watch never call these RN APIs.
@@ -56,6 +56,36 @@ async function verify() {
       check(rejected, 'A foreign context accepted the target.');
     } finally {other.close();}
     return {cores: cores.length, logicalIndex: core.logicalIndex};
+  });
+  await scenario('mixed-native-and-app-inventory', async () => {
+    const mixed = createReactNativeDeviceAccess().withPollInterval(Duration.seconds(60));
+    try {
+      const cores = await mixed.cpuCores.list();
+      check(cores.length > 0, 'No native core available for mixed observation.');
+      const native = cores[0], before = await mixed.get(native);
+      check(Number.isInteger(before.logicalIndex), 'Native CPU index unavailable.');
+      const app = mixed.observers.target(CpuCoreEntity, 'application-core');
+      mixed.observers.publish(app, {logicalIndex: 99});
+      const inventory = await mixed.cpuCores.list();
+      check(inventory.length === 1 && (await mixed.get(inventory[0])).logicalIndex === 99, 'App inventory was replaced by native discovery.');
+      const nativeWatch = mixed.watch(native)[Symbol.asyncIterator]();
+      const appWatch = mixed.watch(app)[Symbol.asyncIterator]();
+      try {
+        const nativeFirst = await nativeWatch.next(), appFirst = await appWatch.next();
+        check(!nativeFirst.done && nativeFirst.value.logicalIndex === before.logicalIndex, 'Native handle lost its own state.');
+        check(!appFirst.done && appFirst.value.logicalIndex === 99, 'App handle lost its own state.');
+        mixed.observers.publish(app, {logicalIndex: 100});
+        const changed = await appWatch.next();
+        check(!changed.done && changed.value.logicalIndex === 100, 'App state change was not delivered.');
+        mixed.observers.remove(app);
+        let removed = false;
+        try {await appWatch.next();} catch (error) {removed = (error as any).code === ErrorCode.EntityRemoved;}
+        check(removed, 'App target removal did not terminate its stream.');
+        check((await mixed.cpuCores.list()).length === 0, 'An empty app inventory fell back to native devices.');
+        check((await mixed.get(native)).logicalIndex === before.logicalIndex, 'Removing the app target invalidated the native handle.');
+        return {nativeLogicalIndex: before.logicalIndex, appInitialLogicalIndex: 99, appUpdatedLogicalIndex: 100, observedInventoryEmpty: true};
+      } finally {await nativeWatch.return?.();await appWatch.return?.();}
+    } finally {mixed.close();}
   });
   await scenario('app-observed-viewport', async () => {
     const snapshot = await access.get(viewport);

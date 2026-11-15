@@ -64,6 +64,10 @@ class DeviceAccess private constructor(
         kind.address(context, collection = true)
         return bounded {context.worker.call {java.util.Collections.unmodifiableList(context.collector.listAddresses(kind.kind).map {kind.bind(context, requireNotNull(it.targetId), it.observed)})}}
     }
+    internal suspend fun <S : DeviceSnapshot> listNative(kind: Entity<S>): List<Entity<S>> {
+        kind.address(context, collection = true)
+        return bounded {context.worker.call {java.util.Collections.unmodifiableList(context.collector.listNativeAddresses(kind.kind).map {kind.bind(context, requireNotNull(it.targetId))})}}
+    }
     suspend fun <S : DeviceSnapshot> current(kind: Entity<S>): Entity<S>? {
         kind.address(context, collection = true)
         return bounded {context.worker.call {context.collector.currentAddress(kind.kind)?.let {kind.bind(context, requireNotNull(it.targetId), it.observed)}}}
@@ -81,6 +85,7 @@ class DeviceAccess private constructor(
     /** Binding seam. The owning context retains and releases the native subscription. */
     internal suspend fun observeNativeInventory(changed: (EntityKind) -> Unit, fail: (Throwable) -> Unit): CollectorSubscription? =
         bounded {context.worker.call {context.collector.observeInventory(changed, fail)}}
+    internal fun releaseNativeInventory(subscription: CollectorSubscription?) = context.worker.release(subscription)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun <S : DeviceSnapshot> watch(entity: Entity<S>): Flow<S> {
