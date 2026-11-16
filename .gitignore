@@ -11,3 +11,5 @@ bin/
 obj/
 test-results/
 *.log
+swift/.build/
+swift/.swiftpm/

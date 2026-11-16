@@ -117,7 +117,7 @@ internal static class SensorSourceTests
         var session = await sessions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
         cancellation.Cancel();
         try {await pending.WaitAsync(TimeSpan.FromSeconds(1));throw new Exception("Expected caller cancellation");}
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException error) when (error.CancellationToken == cancellation.Token) { }
         Check(await stopped.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)), "cancelled get releases source");
         session.Publish(new() {Value = new(9, 9, 9)});
         var fresh = access.Get(target);

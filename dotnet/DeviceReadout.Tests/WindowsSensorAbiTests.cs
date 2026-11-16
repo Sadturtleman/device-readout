@@ -504,7 +504,7 @@ internal static class WindowsSensorAbiTests
             } finally {runtime.AxisRelease.Set();access.Dispose();}
             await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
             Check(runtime.AxisReads[0] == 1 && runtime.AxisReads.Skip(1).All(count => count == 0),
-                "late canceled reading releases its reference without querying the remaining native axes");
+                $"late canceled {nativeKind} reading releases its reference without querying the remaining native axes ({string.Join(',', runtime.AxisReads)})");
             Check(runtime.Registrations == 1 && runtime.Removals == 1, "late canceled registration releases its native listener");
         }
     }

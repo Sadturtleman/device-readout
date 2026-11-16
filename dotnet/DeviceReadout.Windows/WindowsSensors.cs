@@ -23,7 +23,7 @@ internal sealed class WindowsSensors(IWindowsSensorPlatform platform) : IDisposa
     private readonly Dictionary<(EntityKind Kind, string Handle), Target> targets = [];
     internal static bool Supports(EntityKind kind) => kind is EntityKind.Illuminance or EntityKind.Pressure or EntityKind.Gyroscope or EntityKind.Magnetometer
         or EntityKind.Accelerometer or EntityKind.LinearAcceleration or EntityKind.Gravity or EntityKind.AbsoluteOrientation or EntityKind.RelativeOrientation
-        or EntityKind.ProximityNear or EntityKind.ProximityDistance or EntityKind.HingeAngle;
+        or EntityKind.ProximityNear or EntityKind.ProximityDistance or EntityKind.HingeAngle or EntityKind.HumanPresence or EntityKind.RelativeAltitude;
     internal IReadOnlyList<string> List(EntityKind kind, CancellationToken token)
     {
         var found = platform.List(kind, token);token.ThrowIfCancellationRequested();
@@ -60,7 +60,8 @@ internal sealed class WindowsSensors(IWindowsSensorPlatform platform) : IDisposa
                     EntityKind.Accelerometer => SensorKind.Accelerometer, EntityKind.LinearAcceleration => SensorKind.LinearAcceleration,
                     EntityKind.Gravity => SensorKind.Gravity, EntityKind.AbsoluteOrientation => SensorKind.AbsoluteOrientation,
                     EntityKind.RelativeOrientation => SensorKind.RelativeOrientation, EntityKind.ProximityNear => SensorKind.ProximityNear,
-                    EntityKind.ProximityDistance => SensorKind.ProximityDistance, EntityKind.HingeAngle => SensorKind.HingeAngle, _ => null},
+                    EntityKind.ProximityDistance => SensorKind.ProximityDistance, EntityKind.HingeAngle => SensorKind.HingeAngle,
+                    EntityKind.HumanPresence => SensorKind.HumanPresence, EntityKind.RelativeAltitude => SensorKind.RelativeAltitude, _ => null},
                 Name = info.Name ?? target.Info.Name, MinimumInterval = info.MinimumInterval, MaximumRange = info.MaximumRange};
         } catch (DeviceReadoutException error) when (error.Code == ErrorCode.EntityRemoved) {Retire(address, error);throw;}
     }
@@ -103,6 +104,8 @@ internal sealed class WindowsSensors(IWindowsSensorPlatform platform) : IDisposa
                     EntityKind.ProximityNear => new ProximityNearSnapshot {Value = raw.Detected},
                     EntityKind.ProximityDistance => new ProximityDistanceSnapshot {Value = raw.Scalar / 1000},
                     EntityKind.HingeAngle => new HingeAngleSnapshot {Value = raw.Scalar * Math.PI / 180},
+                    EntityKind.HumanPresence => new HumanPresenceSnapshot {Value = raw.Detected},
+                    EntityKind.RelativeAltitude => new RelativeAltitudeSnapshot {Value = raw.Scalar},
                     _ => throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Windows sensor mapping is unavailable.")
                 });
             }, Failure, token);

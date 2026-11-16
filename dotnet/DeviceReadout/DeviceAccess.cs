@@ -27,11 +27,14 @@ public sealed partial class DeviceAccess : IDisposable
             };
         }
         internal ICollectorSubscription? Observe(EntityAddress address, EntityMode mode, SensorSamplingRate rate, Action<DeviceSnapshot> emit, Action<Exception> fail, CancellationToken token,
-            Action<Func<CancellationToken, DeviceSnapshot>>? changed = null)
+            Action<Func<CancellationToken, DeviceSnapshot>>? changed = null, Action<Action>? registerCancellation = null)
         {
             var nativeLifetime = new CancellationScope(token);
             ICollectorSubscription? native;
-            try {native = Collector.Observe(address, rate, emit, fail, nativeLifetime.Token, mode == EntityMode.State, changed);}
+            try {
+                registerCancellation?.Invoke(nativeLifetime.Cancel);
+                native = Collector.Observe(address, rate, emit, fail, nativeLifetime.Token, mode == EntityMode.State, changed);
+            }
             catch {nativeLifetime.Cancel();nativeLifetime.Dispose();throw;}
             if (native is null) {nativeLifetime.Dispose();return null;}
             ICollectorSubscription? tracked = null;
@@ -106,6 +109,7 @@ public sealed partial class DeviceAccess : IDisposable
             linked.Cancel();
             // Async iterators cannot be disposed while MoveNextAsync is still completing cancellation.
             try {await pending.ConfigureAwait(false);} catch (Exception) { }
+            cancellationToken.ThrowIfCancellationRequested();
             throw;
         } finally {linked.Cancel();}
     }

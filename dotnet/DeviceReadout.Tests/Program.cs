@@ -313,6 +313,8 @@ if (OperatingSystem.IsWindows()) tests.AddRange(WindowsConnectivityTests.Cases()
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsSensorTests.Cases());
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsSensorAbiTests.Cases());
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsProximityAbiTests.Cases());
+if (OperatingSystem.IsWindows()) tests.AddRange(WindowsHumanPresenceAbiTests.Cases());
+if (OperatingSystem.IsWindows()) tests.AddRange(WindowsAltimeterAbiTests.Cases());
 tests.AddRange(StateChangeTests.Cases());
 tests.AddRange(StateLifetimeTests.Cases());
 tests.AddRange(ObserverFailureTests.Cases());

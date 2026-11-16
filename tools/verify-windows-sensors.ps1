@@ -27,6 +27,11 @@ $selectors = [ordered]@{
     HingeAngle = [Windows.Devices.Sensors.HingeAngleSensor,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
 }
 $counts = [ordered]@{}
+if ([Windows.Foundation.Metadata.ApiInformation,Windows.Foundation,ContentType=WindowsRuntime]::IsTypePresent('Windows.Devices.Sensors.HumanPresenceSensor')) {
+    $selectors['HumanPresence'] = [Windows.Devices.Sensors.HumanPresenceSensor,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
+} else {
+    $counts['HumanPresence'] = 'UnsupportedEntity'
+}
 foreach ($kind in $selectors.Keys) {
     $operation = $information::FindAllAsync($selectors[$kind])
     $task = $awaitCollection.Invoke($null, @($operation))
@@ -35,4 +40,6 @@ foreach ($kind in $selectors.Keys) {
     $counts[$kind] = @($devices).Count
 }
 # Passive enumeration only. No identifiers, permission requests, subscriptions or setting changes.
+$altimeter = [Windows.Devices.Sensors.Altimeter,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDefault()
+$counts['RelativeAltitude'] = if ($null -eq $altimeter) { 0 } else { 1 }
 $counts | ConvertTo-Json -Compress

@@ -34,7 +34,16 @@ public sealed partial class DeviceAccess
         }
         var pump = Pump();
         try {
-            await foreach (var snapshot in output.Reader.ReadAllAsync(linked.Token).ConfigureAwait(false)) yield return snapshot;
+            await using var reader = output.Reader.ReadAllAsync(linked.Token).GetAsyncEnumerator();
+            while (true) {
+                bool next;
+                try {next = await reader.MoveNextAsync().ConfigureAwait(false);}
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+                if (!next) break;
+                yield return reader.Current;
+            }
         } finally {
             linked.Cancel();await pump.ConfigureAwait(false);
         }
@@ -54,6 +63,12 @@ public sealed partial class DeviceAccess
                     var samples = Channel.CreateBounded<DeviceSnapshot>(2048);
                     ICollectorSubscription? allocated = null;
                     var releaseRequested = 0;
+                    Action? cancelNative = null;
+                    void RegisterCancellation(Action cancel)
+                    {
+                        Interlocked.Exchange(ref cancelNative, cancel);
+                        if (Volatile.Read(ref releaseRequested) != 0) Interlocked.Exchange(ref cancelNative, null)?.Invoke();
+                    }
                     bool Current() => !session.IsCancellationRequested && context.Collector.IsActive(state.Generation);
                     void Publish(DeviceSnapshot snapshot)
                     {
@@ -64,7 +79,7 @@ public sealed partial class DeviceAccess
                     var deadline = Stopwatch.StartNew();
                     try {
                         var subscription = await context.Worker.Run(workerToken => {
-                            var created = context.Observe(address, entity.Mode, rate, Publish, SourceFailed, session.Token);
+                            var created = context.Observe(address, entity.Mode, rate, Publish, SourceFailed, session.Token, registerCancellation: RegisterCancellation);
                             Interlocked.Exchange(ref allocated, created);
                             // Cancellation may win the await even when native registration just returned.
                             if (Volatile.Read(ref releaseRequested) != 0) _ = Release(Interlocked.Exchange(ref allocated, null));
@@ -93,6 +108,8 @@ public sealed partial class DeviceAccess
                         session.Cancel();samples.Writer.TryComplete();
                         lock (activityGate) {if (ReferenceEquals(activeScope, session)) activeScope = null;}
                         Interlocked.Exchange(ref releaseRequested, 1);
+                        // Set the native token immediately; its external callbacks still run asynchronously.
+                        Interlocked.Exchange(ref cancelNative, null)?.Invoke();
                         _ = Release(Interlocked.Exchange(ref allocated, null));
                     }
                 }

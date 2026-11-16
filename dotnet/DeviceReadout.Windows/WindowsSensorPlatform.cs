@@ -21,7 +21,7 @@ internal interface IWindowsSensorRuntime
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = null) : IWindowsSensorPlatform
 {
-    private sealed record Definition(string Class, Guid FactoryId, Guid HandlerId, int SelectorSlot, int OpenSlot, int? MinimumSlot, int? SetIntervalSlot, int? GetIntervalSlot, int AddSlot, int? ReadingType = null, bool OpenAsync = true, int CurrentSlot = 6, bool CurrentAsync = false);
+    private sealed record Definition(string Class, Guid FactoryId, Guid HandlerId, int? SelectorSlot, int OpenSlot, int? MinimumSlot, int? SetIntervalSlot, int? GetIntervalSlot, int AddSlot, int? ReadingType = null, bool OpenAsync = true, int CurrentSlot = 6, bool CurrentAsync = false, Guid? OpenFactoryId = null, int? DefaultDeviceIdSlot = null);
     private static readonly Definition Light = new("Windows.Devices.Sensors.LightSensor", new("0ec0a650-ddc6-40ab-ace3-ec3359d42c51"), new("1ecf183a-9f0a-5f73-9225-5a33eab5594f"), 6, 7, 7, 8, 9, 10);
     private static readonly Definition Pressure = new("Windows.Devices.Sensors.Barometer", new("8fc6b1e7-95ff-44ac-878e-d65c8308c34c"), new("e4caf459-d101-5ca5-a4ea-deb0917ae27e"), 7, 6, 8, 9, 10, 11);
     private static readonly Definition Gyroscope = new("Windows.Devices.Sensors.Gyrometer", new("ef83f7a1-d700-4204-9613-79c6b161df4e"), new("15171524-5786-59a5-af5b-a01245726c44"), 6, 7, 7, 8, 9, 10);
@@ -33,6 +33,8 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
     private static readonly Definition RelativeOrientation = AbsoluteOrientation with {ReadingType = 1};
     private static readonly Definition Proximity = new("Windows.Devices.Sensors.ProximitySensor", new("29186649-6269-4e57-a5ad-82be80813392"), new("9f7e222b-892a-5e68-b08a-10384b5f92b9"), 6, 7, null, null, null, 10, OpenAsync: false, CurrentSlot: 9);
     private static readonly Definition Hinge = new("Windows.Devices.Sensors.HingeAngleSensor", new("b7b63910-fbb1-4123-89ce-4ea34eb0dfca"), new("68de2bf4-243c-5aee-9dd9-d2e5e3165866"), 6, 9, null, null, null, 11, CurrentAsync: true);
+    private static readonly Definition HumanPresence = new("Windows.Devices.Sensors.HumanPresenceSensor", new("2ae89842-dba9-56b2-9f27-eac69d621004"), new("329678bc-3d7c-5ff3-87cb-4fc5e9fecf72"), 6, 6, null, null, null, 10, OpenAsync: false, CurrentSlot: 9, OpenFactoryId: new Guid("5de35843-d260-5a87-995e-ace91326e1c4"));
+    private static readonly Definition Altimeter = new("Windows.Devices.Sensors.Altimeter", new("9eb4d7c3-e5ac-47ce-8eef-d3718168c01f"), new("d775d699-9d74-5473-9c1b-d51a89db6642"), null, 6, 8, 9, 10, 11, OpenAsync: false, DefaultDeviceIdSlot: 7);
     private static readonly Guid EnumerationId = new("c17f100e-3a46-4a78-8013-769dc9b97390");
     private static readonly Guid AsyncInfoId = new("00000036-0000-0000-c000-000000000046");
     private static readonly Guid AccelerationTypeId = new("1d373c4f-42d3-45b2-8144-ab7fb665eb59");
@@ -65,6 +67,8 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
         EntityKind.RelativeOrientation => RelativeOrientation,
         EntityKind.ProximityNear or EntityKind.ProximityDistance => Proximity,
         EntityKind.HingeAngle => Hinge,
+        EntityKind.HumanPresence => HumanPresence,
+        EntityKind.RelativeAltitude => Altimeter,
         _ => throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Windows sensor mapping is unavailable.")
     };
     private nint Factory(string name, Guid iid)
@@ -81,12 +85,21 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
     public IReadOnlyList<WindowsSensorInfo> List(EntityKind kind, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();var definition = For(kind);
+        if (definition.DefaultDeviceIdSlot is { } deviceIdSlot) {
+            var sensor = DefaultSensor(definition, token);
+            if (sensor == 0) return [];
+            try {
+                var id = TextProperty(sensor, deviceIdSlot, required: true)!;
+                token.ThrowIfCancellationRequested();return [new(id, null)];
+            } finally {Release(sensor);}
+        }
         var factory = Factory(definition.Class, definition.FactoryId);
+        var selectorSlot = definition.SelectorSlot ?? throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Sensor selector is unavailable.");
         nint selector = 0, operation = 0, collection = 0;
         try {
             var selectorStatus = definition.ReadingType is { } readingType
-                ? Method<SensorSelectorByType>(factory, definition.SelectorSlot)(factory, readingType, out selector)
-                : Method<WinRtGetInterface>(factory, definition.SelectorSlot)(factory, out selector);
+                ? Method<SensorSelectorByType>(factory, selectorSlot)(factory, readingType, out selector)
+                : Method<WinRtGetInterface>(factory, selectorSlot)(factory, out selector);
             Check(selectorStatus, "Sensor.GetDeviceSelector");
             if (selector == 0 || String(selector).Length == 0) throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Sensor selector is unavailable.");
             token.ThrowIfCancellationRequested();var information = Factory("Windows.Devices.Enumeration.DeviceInformation", EnumerationId);
@@ -110,7 +123,19 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
     }
     private nint Open(EntityKind kind, string id, CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();var definition = For(kind);var factory = Factory(definition.Class, definition.FactoryId);
+        token.ThrowIfCancellationRequested();var definition = For(kind);
+        if (definition.DefaultDeviceIdSlot is { } deviceIdSlot) {
+            var selected = DefaultSensor(definition, token);
+            if (selected == 0) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Selected default sensor is unavailable.");
+            try {
+                var actualId = TextProperty(selected, deviceIdSlot, required: true);
+                token.ThrowIfCancellationRequested();
+                if (!StringComparer.OrdinalIgnoreCase.Equals(id, actualId))
+                    throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Default sensor no longer matches this target.");
+                return selected;
+            } catch {Release(selected);throw;}
+        }
+        var factory = Factory(definition.Class, definition.OpenFactoryId ?? definition.FactoryId);
         Check(WindowsCreateString(id, id.Length, out var text), "WindowsCreateString");nint operation = 0;
         try {
             Check(Method<SensorStringCall>(factory, definition.OpenSlot)(factory, text, out operation), definition.OpenAsync ? "Sensor.FromIdAsync" : "Sensor.FromId");
@@ -135,6 +160,14 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
                 return sensor;
             } catch {Release(sensor);throw;}
         } finally {Release(operation);WindowsDeleteString(text);}
+    }
+    private nint DefaultSensor(Definition definition, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();var factory = Factory(definition.Class, definition.FactoryId);nint sensor = 0;
+        try {
+            Check(Method<WinRtGetInterface>(factory, definition.OpenSlot)(factory, out sensor), "Sensor.GetDefault");
+            token.ThrowIfCancellationRequested();return sensor;
+        } catch {Release(sensor);throw;}
     }
     public WindowsSensorInfo Describe(EntityKind kind, string id, CancellationToken token)
     {
@@ -171,9 +204,7 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
                     Check(Method<WinRtGetInterface>(args, 6)(args, out reading), "Sensor event.Reading");
                     if (reading == 0) throw new DeviceReadoutException(ErrorCode.ReadFailed, "Missing sensor reading.");
                     var sample = Sample(kind, reading, token);
-                    if (definition.CurrentAsync) {
-                        lock (firstSampleGate) {emit(sample);Volatile.Write(ref eventReceived, 1);}
-                    } else emit(sample);
+                    lock (firstSampleGate) {emit(sample);Volatile.Write(ref eventReceived, 1);}
                 } finally {Release(reading);}
             }, fail);
             Check(Method<WinRtAddReportEvent>(source.Pointer, definition.AddSlot)(source.Pointer, client.Handler.Pointer, out client.Token), "Sensor.add ReadingChanged");
@@ -184,11 +215,9 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
                     initial = Await(initialOperation, token, () => Volatile.Read(ref eventReceived) != 0);
                 } else Check(Method<WinRtGetInterface>(source.Pointer, definition.CurrentSlot)(source.Pointer, out initial), "Sensor.GetCurrentReading");
                 token.ThrowIfCancellationRequested();
-                if (initial != 0 && (!definition.CurrentAsync || Volatile.Read(ref eventReceived) == 0)) {
+                if (initial != 0 && Volatile.Read(ref eventReceived) == 0) {
                     var sample = Sample(kind, initial, token);
-                    if (definition.CurrentAsync) {
-                        lock (firstSampleGate) {if (eventReceived == 0) emit(sample);}
-                    } else emit(sample);
+                    lock (firstSampleGate) {if (eventReceived == 0) emit(sample);}
                 }
             } finally {Release(initial);Release(initialOperation);}
             return new Lease(() => Remove(key, source, client));
@@ -197,7 +226,12 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
     private WindowsSensorSample Sample(EntityKind kind, nint reading, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (kind == EntityKind.HingeAngle) {
+        if (kind == EntityKind.HumanPresence) {
+            var status = Method<WinRtGetInt32>(reading, 7)(reading, out var presence);
+            token.ThrowIfCancellationRequested();
+            return new(Detected: status >= 0 ? presence switch {1 => true, 2 => false, _ => null} : null);
+        }
+        if (kind is EntityKind.HingeAngle or EntityKind.RelativeAltitude) {
             var status = Method<SensorGetDouble>(reading, 7)(reading, out var angle);
             token.ThrowIfCancellationRequested();return new(Scalar: status >= 0 ? angle : null);
         }

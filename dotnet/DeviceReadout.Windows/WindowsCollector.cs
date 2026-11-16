@@ -157,6 +157,7 @@ internal sealed class WindowsCollector : IDeviceCollector
         if (kind == EntityKind.Battery) return aggregate.Read() is null ? null : AggregateBatteryTarget;
         if (kind == EntityKind.WifiConnection) return connectivity.CurrentWifi(cancellationToken);
         if (kind == EntityKind.CellularSubscription) return connectivity.CurrentCellular(cancellationToken);
+        if (kind == EntityKind.RelativeAltitude) return sensors.List(kind, cancellationToken).SingleOrDefault();
         if (kind != EntityKind.StorageVolume) return null;
         var volume = new char[32768];
         if (!Native.GetVolumePathName(AppContext.BaseDirectory, volume, (uint)volume.Length)) return null;

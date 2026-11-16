@@ -100,6 +100,11 @@ internal static class WindowsSensorTests
         var proximityNear = await access.Sensors.List(Entities.ProximityNear);
         var proximityDistance = await access.Sensors.List(Entities.ProximityDistance);
         var hinge = await access.Sensors.List(Entities.HingeAngle);
+        var altitude = await access.Sensors.List(Entities.RelativeAltitude);
+        Check(altitude.Length <= 1 && await access.Current(Entities.RelativeAltitude) == altitude.SingleOrDefault(), "default-only native altimeter inventory agrees with current selection");
+        int? presenceCount = null;
+        try {presenceCount = (await access.Sensors.List(Entities.HumanPresence)).Length;}
+        catch (DeviceReadoutException error) when (error.Code == ErrorCode.UnsupportedEntity) { }
         Check((await access.Sensors.List(Entities.Illuminance)).SequenceEqual(light), "stable actual inventory handles");
         foreach (var item in light) Check((await access.Describe(item)).Kind == SensorKind.Illuminance, "actual light metadata");
         foreach (var item in pressure) Check((await access.Describe(item)).Kind == SensorKind.Pressure, "actual pressure metadata");
@@ -113,11 +118,15 @@ internal static class WindowsSensorTests
         foreach (var item in proximityNear) Check((await access.Describe(item)).Kind == SensorKind.ProximityNear, "actual proximity near metadata");
         foreach (var item in proximityDistance) Check((await access.Describe(item)).Kind == SensorKind.ProximityDistance, "actual proximity distance metadata");
         foreach (var item in hinge) Check((await access.Describe(item)).Kind == SensorKind.HingeAngle, "actual hinge metadata");
-        Check(runtime.Initializations == 1 && runtime.FactoryCount == 9, "one MTA context and cached sensor/enumeration factories");
+        foreach (var item in altitude) Check((await access.Describe(item)).Kind == SensorKind.RelativeAltitude, "actual relative altitude metadata");
+        var expectedFactories = presenceCount.HasValue ? 11 : 10;
+        Check(runtime.Initializations == 1 && runtime.FactoryCount == expectedFactories, "one MTA context and cached available sensor/enumeration factories");
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Check(runtime.Uninitializations == 1 && runtime.FactoryReleases == 9 && runtime.Threads.Distinct().Count() == 1 && !runtime.Threads.Contains(caller),
+        Check(runtime.Uninitializations == 1 && runtime.FactoryReleases == expectedFactories && runtime.Threads.Distinct().Count() == 1 && !runtime.Threads.Contains(caller),
             "actual factories and MTA lifetime balance on one collection worker");
         Console.WriteLine($"Native Windows sensor inventory: Illuminance={light.Length}, Pressure={pressure.Length}, Gyroscope={gyroscope.Length}, Magnetometer={magnetometer.Length}, Accelerometer={acceleration.Length}, LinearAcceleration={linear.Length}, Gravity={gravity.Length}, AbsoluteOrientation={absolute.Length}, RelativeOrientation={relative.Length}, ProximityNear={proximityNear.Length}, ProximityDistance={proximityDistance.Length}, HingeAngle={hinge.Length}; no identifiers or measurements logged.");
+        Console.WriteLine($"Native Windows HumanPresence inventory: {presenceCount?.ToString() ?? "UnsupportedEntity"}; no identifiers or measurements logged.");
+        Console.WriteLine($"Native Windows RelativeAltitude inventory: {altitude.Length}; only the platform default is exposed; no identifiers or measurements logged.");
     }
     private sealed class RuntimeProbe : IWindowsSensorRuntime
     {
