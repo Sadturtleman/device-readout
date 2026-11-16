@@ -16,15 +16,22 @@ internal interface IWindowsSensorRuntime
 [UnmanagedFunctionPointer(CallingConvention.StdCall)] internal delegate int SensorGetAt(nint self, uint index, out nint value);
 [UnmanagedFunctionPointer(CallingConvention.StdCall)] internal delegate int SensorGetFloat(nint self, out float value);
 [UnmanagedFunctionPointer(CallingConvention.StdCall)] internal delegate int SensorGetDouble(nint self, out double value);
+[UnmanagedFunctionPointer(CallingConvention.StdCall)] internal delegate int SensorSelectorByType(nint self, int readingType, out nint selector);
 
 [SupportedOSPlatform("windows")]
 internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = null) : IWindowsSensorPlatform
 {
-    private sealed record Definition(string Class, Guid FactoryId, Guid HandlerId, int SelectorSlot, int OpenSlot, int MinimumSlot, int SetIntervalSlot, int GetIntervalSlot, int AddSlot);
+    private sealed record Definition(string Class, Guid FactoryId, Guid HandlerId, int SelectorSlot, int OpenSlot, int MinimumSlot, int SetIntervalSlot, int GetIntervalSlot, int AddSlot, int? ReadingType = null);
     private static readonly Definition Light = new("Windows.Devices.Sensors.LightSensor", new("0ec0a650-ddc6-40ab-ace3-ec3359d42c51"), new("1ecf183a-9f0a-5f73-9225-5a33eab5594f"), 6, 7, 7, 8, 9, 10);
     private static readonly Definition Pressure = new("Windows.Devices.Sensors.Barometer", new("8fc6b1e7-95ff-44ac-878e-d65c8308c34c"), new("e4caf459-d101-5ca5-a4ea-deb0917ae27e"), 7, 6, 8, 9, 10, 11);
+    private static readonly Definition Gyroscope = new("Windows.Devices.Sensors.Gyrometer", new("ef83f7a1-d700-4204-9613-79c6b161df4e"), new("15171524-5786-59a5-af5b-a01245726c44"), 6, 7, 7, 8, 9, 10);
+    private static readonly Definition Magnetometer = new("Windows.Devices.Sensors.Magnetometer", new("2c0819f0-ffc6-4f89-a06f-18fa10792933"), new("f9a0da76-c4fd-50ab-98b6-bfd26d6d3d82"), 6, 7, 7, 8, 9, 10);
+    private static readonly Definition Accelerometer = new("Windows.Devices.Sensors.Accelerometer", new("9de218cf-455d-4cf3-8200-70e1410340f8"), new("a5e83e40-b597-5b83-92f5-5bed3926ca80"), 7, 6, 7, 8, 9, 10, ReadingType: 0);
+    private static readonly Definition LinearAcceleration = Accelerometer with {ReadingType = 1};
+    private static readonly Definition Gravity = Accelerometer with {ReadingType = 2};
     private static readonly Guid EnumerationId = new("c17f100e-3a46-4a78-8013-769dc9b97390");
     private static readonly Guid AsyncInfoId = new("00000036-0000-0000-c000-000000000046");
+    private static readonly Guid AccelerationTypeId = new("1d373c4f-42d3-45b2-8144-ab7fb665eb59");
     private readonly IWindowsSensorRuntime runtime = runtime ?? new SensorRuntime();
     private readonly Dictionary<(string Class, Guid Iid), nint> factories = [];
     private readonly Dictionary<(EntityKind Kind, string Id), Source> sources = [];
@@ -45,7 +52,10 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
         internal bool Registered;
     }
     private static Definition For(EntityKind kind) => kind switch {
-        EntityKind.Illuminance => Light, EntityKind.Pressure => Pressure,
+        EntityKind.Illuminance => Light, EntityKind.Pressure => Pressure, EntityKind.Gyroscope => Gyroscope,
+        EntityKind.Magnetometer => Magnetometer,
+        EntityKind.Accelerometer => Accelerometer,
+        EntityKind.LinearAcceleration => LinearAcceleration, EntityKind.Gravity => Gravity,
         _ => throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Windows sensor mapping is unavailable.")
     };
     private nint Factory(string name, Guid iid)
@@ -65,7 +75,10 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
         var factory = Factory(definition.Class, definition.FactoryId);
         nint selector = 0, operation = 0, collection = 0;
         try {
-            Check(Method<WinRtGetInterface>(factory, definition.SelectorSlot)(factory, out selector), "Sensor.GetDeviceSelector");
+            var selectorStatus = definition.ReadingType is { } readingType
+                ? Method<SensorSelectorByType>(factory, definition.SelectorSlot)(factory, readingType, out selector)
+                : Method<WinRtGetInterface>(factory, definition.SelectorSlot)(factory, out selector);
+            Check(selectorStatus, "Sensor.GetDeviceSelector");
             if (selector == 0 || String(selector).Length == 0) throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Sensor selector is unavailable.");
             token.ThrowIfCancellationRequested();var information = Factory("Windows.Devices.Enumeration.DeviceInformation", EnumerationId);
             Check(Method<SensorStringCall>(information, 10)(information, selector, out operation), "DeviceInformation.FindAllAsync");
@@ -94,7 +107,21 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
             Check(Method<SensorStringCall>(factory, definition.OpenSlot)(factory, text, out operation), "Sensor.FromIdAsync");
             var sensor = Await(operation, token);
             if (sensor == 0) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Selected sensor is unavailable.");
-            return sensor;
+            try {
+                token.ThrowIfCancellationRequested();
+                if (definition.ReadingType is { } expectedType) {
+                    nint typedSensor = 0;var iid = AccelerationTypeId;
+                    try {
+                        Check(Marshal.QueryInterface(sensor, in iid, out typedSensor), "IAccelerometer4");
+                        if (typedSensor == 0) throw new DeviceReadoutException(ErrorCode.ReadFailed, "Missing acceleration type interface.");
+                        token.ThrowIfCancellationRequested();
+                        Check(Method<WinRtGetInt32>(typedSensor, 6)(typedSensor, out var actualType), "Accelerometer.ReadingType");
+                        token.ThrowIfCancellationRequested();
+                        if (actualType != expectedType) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Native acceleration kind no longer matches this target.");
+                    } finally {Release(typedSensor);}
+                }
+                return sensor;
+            } catch {Release(sensor);throw;}
         } finally {Release(operation);WindowsDeleteString(text);}
     }
     public WindowsSensorInfo Describe(EntityKind kind, string id, CancellationToken token)
@@ -105,7 +132,7 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
             token.ThrowIfCancellationRequested();return new(id, null, hr >= 0 && minimum > 0 ? TimeSpan.FromMilliseconds(minimum) : null);
         } finally {Release(sensor);}
     }
-    public IDisposable Subscribe(EntityKind kind, string id, SensorSamplingRate rate, Action<double?> emit, Action<Exception> fail, CancellationToken token)
+    public IDisposable Subscribe(EntityKind kind, string id, SensorSamplingRate rate, Action<WindowsSensorSample> emit, Action<Exception> fail, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();var definition = For(kind);var key = (kind, id);
         if (!sources.TryGetValue(key, out var source)) {
@@ -126,22 +153,39 @@ internal sealed class WindowsSensorPlatform(IWindowsSensorRuntime? runtime = nul
                 try {
                     Check(Method<WinRtGetInterface>(args, 6)(args, out reading), "Sensor event.Reading");
                     if (reading == 0) throw new DeviceReadoutException(ErrorCode.ReadFailed, "Missing sensor reading.");
-                    emit(Scalar(kind, reading));
+                    emit(Sample(kind, reading, token));
                 } finally {Release(reading);}
             }, fail);
             Check(Method<WinRtAddReportEvent>(source.Pointer, definition.AddSlot)(source.Pointer, client.Handler.Pointer, out client.Token), "Sensor.add ReadingChanged");
             client.Registered = true;token.ThrowIfCancellationRequested();nint initial = 0;
             try {
                 Check(Method<WinRtGetInterface>(source.Pointer, 6)(source.Pointer, out initial), "Sensor.GetCurrentReading");
-                token.ThrowIfCancellationRequested();if (initial != 0) emit(Scalar(kind, initial));
+                token.ThrowIfCancellationRequested();if (initial != 0) emit(Sample(kind, initial, token));
             } finally {Release(initial);}
             return new Lease(() => Remove(key, source, client));
         } catch {try {Remove(key, source, client);} catch (Exception) { } throw;}
     }
-    private static double Scalar(EntityKind kind, nint reading)
+    private static WindowsSensorSample Sample(EntityKind kind, nint reading, CancellationToken token)
     {
-        if (kind == EntityKind.Illuminance) {Check(Method<SensorGetFloat>(reading, 7)(reading, out var value), "LightSensorReading.IlluminanceInLux");return value;}
-        Check(Method<SensorGetDouble>(reading, 7)(reading, out var pressure), "BarometerReading.StationPressureInHectopascals");return pressure;
+        token.ThrowIfCancellationRequested();
+        if (kind is EntityKind.Magnetometer or EntityKind.Gyroscope or EntityKind.Accelerometer or EntityKind.LinearAcceleration or EntityKind.Gravity) {
+            if (Component(7) is not { } x || Component(8) is not { } y || Component(9) is not { } z) return default;
+            return new(Vector: new(x, y, z));
+        }
+        if (kind == EntityKind.Illuminance) {
+            Check(Method<SensorGetFloat>(reading, 7)(reading, out var value), "LightSensorReading.IlluminanceInLux");
+            token.ThrowIfCancellationRequested();return new(Scalar: value);
+        }
+        Check(Method<SensorGetDouble>(reading, 7)(reading, out var pressure), "BarometerReading.StationPressureInHectopascals");
+        token.ThrowIfCancellationRequested();return new(Scalar: pressure);
+
+        double? Component(int slot)
+        {
+            token.ThrowIfCancellationRequested();int status;double value;
+            if (kind == EntityKind.Magnetometer) {status = Method<SensorGetFloat>(reading, slot)(reading, out var single);value = single;}
+            else status = Method<SensorGetDouble>(reading, slot)(reading, out value);
+            token.ThrowIfCancellationRequested();return status >= 0 ? value : null;
+        }
     }
     private static void ApplyInterval(Source source)
     {

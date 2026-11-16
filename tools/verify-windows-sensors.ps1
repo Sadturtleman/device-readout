@@ -7,9 +7,16 @@ $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
     $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
 } | Select-Object -First 1
 $awaitCollection = $asTask.MakeGenericMethod($collection)
+$acceleration = [Windows.Devices.Sensors.Accelerometer,Windows.Devices.Sensors,ContentType=WindowsRuntime]
+$accelerationKind = [Windows.Devices.Sensors.AccelerometerReadingType,Windows.Devices.Sensors,ContentType=WindowsRuntime]
 $selectors = [ordered]@{
     Illuminance = [Windows.Devices.Sensors.LightSensor,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
     Pressure = [Windows.Devices.Sensors.Barometer,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
+    Gyroscope = [Windows.Devices.Sensors.Gyrometer,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
+    Magnetometer = [Windows.Devices.Sensors.Magnetometer,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
+    Accelerometer = $acceleration::GetDeviceSelector($accelerationKind::Standard)
+    LinearAcceleration = $acceleration::GetDeviceSelector($accelerationKind::Linear)
+    Gravity = $acceleration::GetDeviceSelector($accelerationKind::Gravity)
 }
 $counts = [ordered]@{}
 foreach ($kind in $selectors.Keys) {

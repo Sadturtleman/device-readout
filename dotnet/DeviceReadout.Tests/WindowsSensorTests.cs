@@ -54,10 +54,10 @@ internal static class WindowsSensorTests
         }
         public WindowsSensorInfo Describe(EntityKind kind, string id, CancellationToken token)
         {Record();return new(id, "Pressure sensor", TimeSpan.FromMilliseconds(20));}
-        public IDisposable Subscribe(EntityKind kind, string id, SensorSamplingRate rate, Action<double?> emit, Action<Exception> fail, CancellationToken token)
+        public IDisposable Subscribe(EntityKind kind, string id, SensorSamplingRate rate, Action<WindowsSensorSample> emit, Action<Exception> fail, CancellationToken token)
         {
             Record();if (SubscribeError is { } error) throw error;
-            Subscribed++;var session = new SensorSession(kind, id, rate, emit, fail, Record);Sessions.Writer.TryWrite(session);return session;
+            Subscribed++;var session = new SensorSession(kind, id, rate, value => emit(new(Scalar: value)), fail, Record);Sessions.Writer.TryWrite(session);return session;
         }
         public void Dispose() => Record();
     }
@@ -90,14 +90,24 @@ internal static class WindowsSensorTests
         var caller = Environment.CurrentManagedThreadId;
         var light = await access.Sensors.List(Entities.Illuminance);
         var pressure = await access.Sensors.List(Entities.Pressure);
+        var gyroscope = await access.Sensors.List(Entities.Gyroscope);
+        var magnetometer = await access.Sensors.List(Entities.Magnetometer);
+        var acceleration = await access.Sensors.List(Entities.Accelerometer);
+        var linear = await access.Sensors.List(Entities.LinearAcceleration);
+        var gravity = await access.Sensors.List(Entities.Gravity);
         Check((await access.Sensors.List(Entities.Illuminance)).SequenceEqual(light), "stable actual inventory handles");
         foreach (var item in light) Check((await access.Describe(item)).Kind == SensorKind.Illuminance, "actual light metadata");
         foreach (var item in pressure) Check((await access.Describe(item)).Kind == SensorKind.Pressure, "actual pressure metadata");
-        Check(runtime.Initializations == 1 && runtime.FactoryCount == 3, "one MTA context and cached sensor/enumeration factories");
+        foreach (var item in gyroscope) Check((await access.Describe(item)).Kind == SensorKind.Gyroscope, "actual gyroscope metadata");
+        foreach (var item in magnetometer) Check((await access.Describe(item)).Kind == SensorKind.Magnetometer, "actual magnetometer metadata");
+        foreach (var item in acceleration) Check((await access.Describe(item)).Kind == SensorKind.Accelerometer, "actual accelerometer metadata");
+        foreach (var item in linear) Check((await access.Describe(item)).Kind == SensorKind.LinearAcceleration, "actual linear acceleration metadata");
+        foreach (var item in gravity) Check((await access.Describe(item)).Kind == SensorKind.Gravity, "actual gravity metadata");
+        Check(runtime.Initializations == 1 && runtime.FactoryCount == 6, "one MTA context and cached sensor/enumeration factories");
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Check(runtime.Uninitializations == 1 && runtime.FactoryReleases == 3 && runtime.Threads.Distinct().Count() == 1 && !runtime.Threads.Contains(caller),
+        Check(runtime.Uninitializations == 1 && runtime.FactoryReleases == 6 && runtime.Threads.Distinct().Count() == 1 && !runtime.Threads.Contains(caller),
             "actual factories and MTA lifetime balance on one collection worker");
-        Console.WriteLine($"Native Windows sensor inventory: Illuminance={light.Length}, Pressure={pressure.Length}; no identifiers or measurements logged.");
+        Console.WriteLine($"Native Windows sensor inventory: Illuminance={light.Length}, Pressure={pressure.Length}, Gyroscope={gyroscope.Length}, Magnetometer={magnetometer.Length}, Accelerometer={acceleration.Length}, LinearAcceleration={linear.Length}, Gravity={gravity.Length}; no identifiers or measurements logged.");
     }
     private sealed class RuntimeProbe : IWindowsSensorRuntime
     {

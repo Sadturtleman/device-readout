@@ -6,6 +6,10 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [Windows acceleration checkpoint](docs/verification/2026-11-17-windows-acceleration.md) adds Accelerometer, LinearAcceleration and Gravity collectors with separate native selectors and validated reading kinds. G-force values are normalized to the common m/s² convention. Native activity/permission observer integration, partial fields and held reads are covered; the complete .NET/Windows suite passes 144/144 with zero build warnings or errors. Physical measurements and the full platform matrix remain required.
+
+The [Windows vector sensor checkpoint](docs/verification/2026-11-17-windows-vector-sensors.md) adds Gyroscope and Magnetometer get/watch, descriptions and discovery. Native degree/s readings become rad/s; magnetic readings retain microteslas. Partial axis failures return a null vector without ending the stream, and canceled native reads stop collecting remaining components. The complete .NET/Windows suite passes 140/140 with zero build warnings or errors. Physical vector measurements and the remaining platform matrix are still required.
+
 The [Windows scalar sensor checkpoint](docs/verification/2026-11-17-windows-scalar-sensors.md) adds native Illuminance and Pressure discovery, metadata, get/watch and sampling configuration. The complete .NET/Windows suite passes 136/136 with zero build warnings or errors. Controlled native ABI tests cover measurements and ownership; independent native enumeration confirms that this host has neither sensor. Physical measurements and the remaining Windows sensor families are still required.
 
 The [.NET state lifetime checkpoint](docs/verification/2026-11-17-dotnet-state-lifetime.md) fixes cancellation/error/disposal waiting on native cleanup and a missed subscription release during registration cancellation. The complete Windows suite passes 129/129, including 128 repeated registration/cancellation cycles and actual native removal checks.
