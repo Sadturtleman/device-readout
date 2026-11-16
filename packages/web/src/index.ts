@@ -9,6 +9,9 @@ export { observeWebOrientation } from './orientation-observer.js';
 export type { WebOrientationEventSource, WebOrientationObservation } from './orientation-observer.js';
 export { observeWebSensorActivity } from './sensor-activity.js';
 export type { WebSensorActivitySource, WebSensorActivityObservation } from './sensor-activity.js';
+export { observeWebGenericSensors } from './generic-sensor-observer.js';
+export type { WebGenericSensor, WebGenericSensorOptions, WebGenericSensorConstructor, WebGenericSensorSource,
+  WebSensorPermissionSource, WebGenericSensorPermissions, WebGenericSensorObservation } from './generic-sensor-observer.js';
 
 export interface WebDeviceAccessOptions {
   /** Override when the bundler serves the module worker at another URL. */

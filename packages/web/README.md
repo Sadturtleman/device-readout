@@ -17,7 +17,7 @@ access.close();
 
 Ship `dist/worker.js` beside the entry module, or pass a same-origin module-worker URL in `createWebDeviceAccess({workerUrl})`. Your CSP must allow this worker. Importing or constructing the SDK does not start a worker. Core stays a peer dependency so Entity handles retain their identity across packages. The worker contains its own collector runtime.
 
-The implemented worker collectors are DeviceInfo, Os, Runtime, Cpu, Ram, Locale, TimeZone, NetworkPath, NetworkPerformance and OriginStorage. Their availability depends on the browser's exposed APIs. A missing whole API produces `UnsupportedEntity`; individual unavailable fields are null. Viewport, Display and four motion sensor kinds additionally have explicit application observers. The remaining entities do not have native browser collectors yet. Custom screen and permission state can also be supplied through `access.observers`; see the root README.
+The implemented worker collectors are DeviceInfo, Os, Runtime, Cpu, Ram, Locale, TimeZone, NetworkPath, NetworkPerformance and OriginStorage. Their availability depends on the browser's exposed APIs. A missing whole API produces `UnsupportedEntity`; individual unavailable fields are null. Viewport, Display, motion/orientation events and eight Generic Sensor families additionally have explicit application observers. The remaining entities do not have native browser collectors yet. Custom screen and permission state can also be supplied through `access.observers`; see the root README.
 
 The worker never accesses Window or the DOM. It reads `WorkerNavigator`, `Intl`, StorageManager and User-Agent Client Hints. It does not call `persist()`, request screen access, generate identifiers or send telemetry. Network and locale changes use worker events; other supported state entities use serial polling. The bounded consumer queue fails explicitly rather than silently dropping snapshots.
 
@@ -110,7 +110,7 @@ The motion callback performs only a fixed-size scalar copy/unit conversion and p
 
 Use one `observeWebSensorActivity` per SDK context. Its initial callback and visibilitychange/pageshow callbacks copy the supplied Document's visibility; pagehide deactivates sensors. SDK calls do not query Document. Inactivity releases source subscriptions, and resuming starts fresh sessions. Watch's first-sample timer is suspended while inactive; get retains its overall read deadline. The activity adapter's close leaves sensors inactive. The motion adapter retires targets on a non-persisted pagehide; persisted pagehide keeps its registration available for a new session on restore. Actual back/forward-cache restoration is still unverified.
 
-Native DevTools virtual accelerometer/linear-acceleration/gyroscope input and native PermissionStatus changes pass through real Chrome/Edge events and the worker. Native requested sampling frequencies return to zero after disposal. Controlled visibility/page transition fixtures verify release/resume and stale-event rejection; the available headless window/tab actions did not produce a real hidden transition. Generic Sensor, other sensor kinds, real visibility transitions and physical mobile devices remain pending.
+Native DevTools virtual accelerometer/linear-acceleration/gyroscope input and native PermissionStatus changes pass through real Chrome/Edge events and the worker. Native requested sampling frequencies return to zero after disposal. Controlled visibility/page transition fixtures verify release/resume and stale-event rejection; the available headless window/tab actions did not produce a real hidden transition. Generic Sensor now has a separate adapter below; other sensor kinds, real visibility transitions and physical mobile devices remain pending.
 
 ## Application orientation observer
 
@@ -144,5 +144,35 @@ The same lazy-source and activity rules as motion apply: get waits for a fresh e
 Permission UI and native PermissionStatus observation belong to the app. Relative orientation depends on accelerometer/gyroscope; absolute orientation additionally depends on magnetometer. Publish typed SDK status with `observers.permission` and a blocking failure with `observers.failure` when a dependency is denied. Clear the failure after the app observes authorization, then start a new read/stream. Chromium may group sensor permission descriptors; observe all required statuses rather than assuming one descriptor changes independently. Kind-level SDK permission observations apply to targets unless an explicit target status, including null, overrides them. The adapter itself never calls requestPermission or navigator.permissions.query.
 
 Actual Chrome/Edge virtual orientation input, resource release and native permission revoke/re-grant pass through the worker. See [orientation verification](../../docs/verification/2026-11-11-web-orientation.md) for evidence and remaining physical-device/browser coverage.
+
+## Application Generic Sensor observer
+
+```ts
+import {AccelerometerEntity} from '@device-readout/core';
+import {
+  createWebDeviceAccess, observeWebGenericSensors, observeWebSensorActivity,
+  type WebGenericSensorPermissions,
+} from '@device-readout/web';
+
+async function consumeSensors(permissions: WebGenericSensorPermissions, signal: AbortSignal) {
+  const access = createWebDeviceAccess();
+  const activity = observeWebSensorActivity(access, document);
+  const sensors = observeWebGenericSensors(access, window, permissions);
+  try {
+    const [target] = await access.sensors.list(AccelerometerEntity);
+    if (target) for await (const snapshot of access.watch(target, {signal})) render(snapshot.value);
+  } finally {
+    sensors.close();
+    activity.close();
+    access.close();
+  }
+}
+```
+
+The app supplies native PermissionStatus objects under the typed `accelerometer`, `gyroscope`, `magnetometer` and `ambientLight` properties. It obtains those objects and performs any permission interaction outside SDK reads. Omitted/unknown/prompt/denied dependencies prevent native collection. Relative orientation needs accelerometer and gyroscope; absolute orientation also needs magnetometer. Permission loss ends affected observations even while native sessions are inactive. A fresh get/watch can run after authorization; the adapter clears only its own failure. App-owned failures remain intact.
+
+Available constructors register Accelerometer, LinearAcceleration, Gravity, Gyroscope, Magnetometer, RelativeOrientation, AbsoluteOrientation and Illuminance targets. A target represents the browser's default source; constructor presence does not prove physical hardware. Descriptions require observed authorization, expose kind and leave unavailable metadata null. Discovery and permission inspection remain passive. Sensors are instantiated only for active demand, with device coordinates and optional requested frequency. Gets use platform defaults. Callbacks copy fixed-size samples; the worker normalizes values and stamps collectedAt. Dispose stops native objects; app-reported inactivity releases them and resume creates new ones.
+
+The current Chrome/Edge default configurations expose six motion/orientation families. Magnetometer and Illuminance pass native virtual-sensor verification only with Chromium's experimental feature enabled; this is not default-browser support. The SDK itself changes no browser flags. Tests now pass 56 browser cases and 34 common/collector cases. See [independent ownership and inactive permission verification](../../docs/verification/2026-11-17-observer-failure-ownership.md). See [Generic Sensor evidence and remaining coverage](../../docs/verification/2026-11-16-web-generic-sensors.md).
 
 Run `npm run test:browser` at the repository root. `DEVICEREADOUT_CHROME` and `DEVICEREADOUT_EDGE` can override executable paths. Tests use an ephemeral local HTTP server and isolated headless browser profiles; they do not attach to your existing browser session.

@@ -126,6 +126,39 @@ async function verify() {
       return {status, source: 'controlled app observer; no OS permission dialog'};
     } finally {detach();}
   });
+  await scenario('independent-failure-sources', async () => {
+    const observed=createReactNativeDeviceAccess().withReadTimeout(Duration.milliseconds(100));
+    const screen=observed.observers.target(ViewportEntity,'failure-owned-screen');
+    const first=observed.observers.failureSource(screen),second=observed.observers.failureSource(screen);
+    const errorOf=(promise:Promise<unknown>)=>promise.then(()=> 'unexpected',(error:any)=>error.code);
+    const errors:unknown[]=[];
+    try {
+      observed.observers.publish(screen,{size:{width:1,height:2}});
+      first.publish(new DeviceReadoutError(ErrorCode.ReadFailed,'First provider'));
+      second.publish(new DeviceReadoutError(ErrorCode.UnsupportedEntity,'Second provider'));
+      errors.push(await errorOf(observed.get(screen)));
+      observed.observers.failure(screen,new DeviceReadoutError(ErrorCode.PermissionDenied,'App policy'));first.close();
+      errors.push(await errorOf(observed.get(screen)));
+      observed.observers.failure(screen,null);errors.push(await errorOf(observed.get(screen)));
+      second.close();errors.push(await errorOf(observed.get(screen)));
+      observed.observers.publish(screen,{size:{width:3,height:4}});
+      const fresh=(await observed.get(screen)).size;check(fresh?.width===3,'A fresh observed snapshot did not recover.');
+      const sensor=observed.observers.target(AccelerometerEntity,'failure-paused-sensor');
+      const sensorFailure=observed.observers.failureSource(sensor);
+      observed.observers.sensorActivity(false);
+      const unregister=observed.observers.sensorSource(sensor,{subscribe(){throw Error('Paused source must not start');}});
+      const stream=observed.watch(sensor)[Symbol.asyncIterator]();
+      try {
+        let ended=false;const waiting=errorOf(stream.next()).then(code=>{ended=true;return code;});
+        await delay(180);check(!ended,'Inactive demand ended before a failure was supplied.');
+        sensorFailure.publish(new DeviceReadoutError(ErrorCode.PermissionDenied,'Revoked while inactive'));
+        errors.push(await waiting);
+        check((await observed.get(RamEntity)).kernelAccessibleBytes!>0n,'A scoped failure affected native RAM.');
+      } finally {await stream.return?.();sensorFailure.close();unregister();}
+      check(JSON.stringify(errors)===JSON.stringify([ErrorCode.ReadFailed,ErrorCode.PermissionDenied,ErrorCode.UnsupportedEntity,ErrorCode.ReadTimeout,ErrorCode.PermissionDenied]),'Failure ownership or inactive error delivery failed.');
+      return {errors,fresh,pausedFailureDelivered:true};
+    } finally {first.close();second.close();observed.close();}
+  });
   await scenario('app-sensor-source-lifecycle', async () => {
     const observed = createReactNativeDeviceAccess();
     const target = observed.observers.target(AccelerometerEntity, 'application-source');

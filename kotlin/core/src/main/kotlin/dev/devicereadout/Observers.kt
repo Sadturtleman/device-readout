@@ -20,6 +20,17 @@ internal class ObservedSensorSource(
     val subscribe: (SensorSamplingRate, (DeviceSnapshot) -> Unit, (Throwable) -> Unit) -> CollectorSubscription,
 )
 
+internal class FailureOwner(val address: EntityAddress) {var closed = false}
+
+/** Independent provider error channel. Application policy and sibling owners remain intact. */
+class ObserverFailureSource internal constructor(private val context: DeviceAccess.Context, private val owner: FailureOwner) : AutoCloseable {
+    fun publish(error: DeviceReadoutException?) {
+        if (context.closed.get()) throw DeviceReadoutException(ErrorCode.EntityRemoved, "DeviceAccess is closed.")
+        context.collector.sourceFailure(owner, error)
+    }
+    override fun close() {context.collector.releaseFailure(owner)}
+}
+
 internal class ObservedCollector(private val source: DeviceCollector) : DeviceCollector {
     data class Activity(val active: Boolean, val generation: Long)
     private data class Listener(val emit: (DeviceSnapshot) -> Unit, val fail: (Throwable) -> Unit)
@@ -36,6 +47,7 @@ internal class ObservedCollector(private val source: DeviceCollector) : DeviceCo
     private val states = LinkedHashMap<EntityAddress, State>()
     private val currentTargets = HashMap<EntityKind, EntityAddress?>()
     private val failures = HashMap<EntityAddress, DeviceReadoutException>()
+    private val sourceFailures = HashMap<EntityAddress, LinkedHashMap<FailureOwner, DeviceReadoutException>>()
     private val failureHistory = HashMap<EntityAddress, FailureRecord>()
     private var failureRevision = 0L
     private val failureListeners = LinkedHashSet<FailureListener>()
@@ -94,8 +106,21 @@ internal class ObservedCollector(private val source: DeviceCollector) : DeviceCo
         listeners.forEach {it(error)}
     }
     fun setCurrent(kind: EntityKind, target: EntityAddress?) = synchronized(gate) {currentTargets[kind] = target}
-    private fun failureFor(address: EntityAddress): DeviceReadoutException? =
-        failures[address] ?: failures[EntityAddress(address.kind, null)]
+    private fun failureFor(address: EntityAddress): DeviceReadoutException? {
+        val family = EntityAddress(address.kind, null)
+        return failures[address] ?: failures[family] ?: sourceFailures[address]?.values?.firstOrNull() ?: sourceFailures[family]?.values?.firstOrNull()
+    }
+    fun failureOwner(address: EntityAddress): FailureOwner = synchronized(gate) {
+        if (states[address]?.removed == true) throw DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.")
+        FailureOwner(address)
+    }
+    fun releaseFailure(owner: FailureOwner) = synchronized(gate) {
+        if (owner.closed) return
+        owner.closed = true
+        sourceFailures[owner.address]?.let {it.remove(owner);if (it.isEmpty()) sourceFailures.remove(owner.address)}
+        Unit
+    }
+    fun sourceFailure(owner: FailureOwner, error: DeviceReadoutException?) = changeFailure(owner.address, error, owner)
     private fun assertAvailable(address: EntityAddress, since: Long? = null) {
         if (states[address]?.removed == true) throw DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.")
         failureFor(address)?.let {throw it}
@@ -104,10 +129,17 @@ internal class ObservedCollector(private val source: DeviceCollector) : DeviceCo
             failureHistory[EntityAddress(address.kind, null)]?.takeIf {it.revision > since}?.let {throw it.error}
         }
     }
-    fun failure(address: EntityAddress, error: DeviceReadoutException?) {
+    fun failure(address: EntityAddress, error: DeviceReadoutException?) = changeFailure(address, error, null)
+    private fun changeFailure(address: EntityAddress, error: DeviceReadoutException?, owner: FailureOwner?) {
         val listeners = synchronized(gate) {
-            if (error == null) {failures.remove(address);return}
-            failures[address] = error
+            if (owner?.closed == true) throw DeviceReadoutException(ErrorCode.EntityRemoved, "Failure source is closed.")
+            if (error == null) {
+                if (owner == null) failures.remove(address)
+                else sourceFailures[address]?.let {it.remove(owner);if (it.isEmpty()) sourceFailures.remove(address)}
+                return
+            }
+            if (owner == null) failures[address] = error
+            else sourceFailures.getOrPut(address) {LinkedHashMap()}[owner] = error
             failureHistory[address] = FailureRecord(++failureRevision, error)
             val observed = states.filterKeys {it.kind == address.kind && (address.targetId == null || it == address)}.values.flatMap {state ->
                 if (state.removed) emptyList() else {
@@ -292,6 +324,9 @@ class ObserverInputs internal constructor(private val context: DeviceAccess.Cont
     fun <S : DeviceSnapshot> permission(entity: Entity<S>, status: PermissionStatus?) {ensureOpen();context.collector.permission(entity.address(context, collection = true), status)}
     /** Reports or clears an application observer failure for a target or an entire entity kind. */
     fun <S : DeviceSnapshot> failure(entity: Entity<S>, error: DeviceReadoutException?) {ensureOpen();context.collector.failure(entity.address(context, collection = true), error)}
+    fun <S : DeviceSnapshot> failureSource(entity: Entity<S>): ObserverFailureSource {
+        ensureOpen();return ObserverFailureSource(context, context.collector.failureOwner(entity.address(context, collection = true)))
+    }
     fun onPermissionRequest(coordinator: suspend (PermissionRequest) -> Unit): AutoCloseable {ensureOpen();return context.collector.coordinate(coordinator)}
     /** The application supplies foreground/visibility state; desktop focus loss alone need not deactivate sensors. */
     fun sensorActivity(active: Boolean) {ensureOpen();context.collector.sensorActivity(active)}

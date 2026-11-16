@@ -2,6 +2,20 @@ import {createWebDeviceAccess, observeWebViewport, observeWebDisplays, observeWe
 import {DeviceReadoutError, ErrorCode, DisplayEntity, AccelerometerEntity, type DisplaySnapshot, type ViewportSnapshot, type RamSnapshot, type Vector3} from '@device-readout/core';
 import {observeWebOrientation, type WebOrientationObservation} from '../dist/index.js';
 import {RelativeOrientationEntity, AbsoluteOrientationEntity, type Quaternion} from '@device-readout/core';
+import {observeWebGenericSensors, type WebGenericSensorPermissions, type WebGenericSensorObservation} from '../dist/index.js';
+
+async function consumeGenericSensors(source:Window,permissions:WebGenericSensorPermissions):Promise<void> {
+  const access=createWebDeviceAccess();
+  const observation:WebGenericSensorObservation=observeWebGenericSensors(access,source,permissions);
+  const [target]=await access.sensors.list(AccelerometerEntity);
+  if(target){const value:Vector3|null=(await access.get(target)).value;void value;}
+  // @ts-expect-error The application supplies its permission observations explicitly.
+  observeWebGenericSensors(access,source);
+  // @ts-expect-error Raw permission strings are not observable permission sources.
+  observeWebGenericSensors(access,source,{accelerometer:'granted'});
+  observation.close();access.close();
+}
+void consumeGenericSensors;
 
 async function consumeOrientation(source:Window):Promise<void> {
   const access=createWebDeviceAccess();

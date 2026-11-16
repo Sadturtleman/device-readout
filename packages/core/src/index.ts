@@ -10,3 +10,4 @@ export { serializeSnapshot } from './normalize.js';
 export { ObserverInputs, PermissionStatus } from './observers.js';
 export type { PermissionCoordinator, PermissionRequest } from './permissions.js';
 export type { SensorObserverSource, SensorObserverSession } from './sensor-source.js';
+export type { ObserverFailureSource } from './failure-source.js';

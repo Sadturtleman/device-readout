@@ -12,6 +12,7 @@ export class ObservedCollector implements Collector {
  private readonly permissions=new Map<string,unknown>();
  private readonly currentTargets=new Map<string,EntityAddress|null>();
  private readonly failures=new Map<string,DeviceReadoutError>();
+ private readonly sourceFailures=new Map<string,Map<number,DeviceReadoutError>>();
  private active=true;
  private readonly activityListeners=new Set<(active:boolean)=>void>();
  get sensorsActive():boolean{return this.active;}
@@ -38,12 +39,19 @@ export class ObservedCollector implements Collector {
    }
    if(!request.entity)return;
    const entity=request.entity,k=key(entity),input=request.value;
-   if(input.type==='failure'){
-     if(input.error===null){this.failures.delete(k);return;}
+   if(input.type==='failure'||input.type==='failureSource'){
+     const owned=input.type==='failureSource',ownerId=input.ownerId as number;
+     if(owned&&(!Number.isInteger(ownerId)||ownerId<=0||ownerId>2147483647))return;
+     if(input.error===null){
+       if(owned){const group=this.sourceFailures.get(k);group?.delete(ownerId);if(!group?.size)this.sourceFailures.delete(k);}
+       else this.failures.delete(k);
+       return;
+     }
      if(!record(input.error))return;
      const code=Object.values(ErrorCode).includes(input.error.code as ErrorCode)?input.error.code as ErrorCode:ErrorCode.ReadFailed;
      const failure=new DeviceReadoutError(code,typeof input.error.message==='string'?input.error.message:'Application observer failed.');
-     this.failures.set(k,failure);
+     if(owned){let group=this.sourceFailures.get(k);if(!group){group=new Map();this.sourceFailures.set(k,group);}group.set(ownerId,failure);}
+     else this.failures.set(k,failure);
      for(const state of this.states.values()){
        if(state.entity.kind===entity.kind&&(entity.targetId===undefined||key(state.entity)===k))state.value=undefined;
      }
@@ -75,7 +83,11 @@ export class ObservedCollector implements Collector {
    }
  }
  private failureFor(entity:EntityAddress):DeviceReadoutError|undefined{
-   return this.failures.get(key(entity))??this.failures.get(key({kind:entity.kind}));
+   const target=key(entity),family=key({kind:entity.kind});
+   const application=this.failures.get(target)??this.failures.get(family);if(application)return application;
+   for(const failure of this.sourceFailures.get(target)?.values()??[])return failure;
+   for(const failure of this.sourceFailures.get(family)?.values()??[])return failure;
+   return undefined;
  }
  private assertAvailable(entity:EntityAddress):void{
    if(this.states.get(key(entity))?.removed)throw new DeviceReadoutError(ErrorCode.EntityRemoved,'Observed target was removed.');

@@ -1,4 +1,5 @@
 import { DeviceAccess, RamEntity, OsEntity, Duration, DisplayEntity, AccelerometerEntity, SensorSamplingRate, type RamSnapshot, type OsSnapshot } from '../dist/index.js';
+import {DeviceReadoutError, ErrorCode, type ObserverFailureSource} from '../dist/index.js';
 declare const access: DeviceAccess;
 async function consumer(): Promise<void> {
   const ram:RamSnapshot=await access.get(RamEntity);
@@ -15,6 +16,13 @@ async function consumer(): Promise<void> {
   access.withPollInterval(1000);
   const configured=access.withPollInterval(Duration.seconds(1));
   const display=access.observers.target(DisplayEntity,'main');
+  const failure:ObserverFailureSource=access.observers.failureSource(display);
+  failure.publish(new DeviceReadoutError(ErrorCode.PermissionDenied,'Application provider denied access'));
+  failure.publish(null);failure.close();
+  // @ts-expect-error Failure sources require a typed entity.
+  access.observers.failureSource('Display');
+  // @ts-expect-error Untyped errors cannot be published through the provider channel.
+  failure.publish(new Error('Native error'));
   access.observers.publish(display,{brightness:0.5});
   // @ts-expect-error Input fields remain entity-specific.
   access.observers.publish(display,{physicalBytes:10n});

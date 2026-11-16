@@ -11,6 +11,28 @@ import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 
 class ObserverContractTest {
+    @Test fun providerFailureHandlesCannotClearAppPolicyOrAReplacementOwner() = runBlocking {
+        val access = DeviceAccess(object : DeviceCollector {
+            override fun read(entity: EntityAddress): DeviceSnapshot = RamSnapshot(availableBytes = 42u)
+        })
+        val first = access.observers.failureSource(RamEntity)
+        val second = access.observers.failureSource(RamEntity)
+        try {
+            first.publish(DeviceReadoutException(ErrorCode.ReadFailed, "Provider one"))
+            access.observers.failure(RamEntity, DeviceReadoutException(ErrorCode.PermissionDenied, "App policy"))
+            first.close();second.publish(DeviceReadoutException(ErrorCode.UnsupportedEntity, "Provider two"))
+            assertEquals(ErrorCode.PermissionDenied, assertFailsWith<DeviceReadoutException> {access.get(RamEntity)}.code)
+            access.observers.failure(RamEntity, null)
+            assertEquals(ErrorCode.UnsupportedEntity, assertFailsWith<DeviceReadoutException> {access.get(RamEntity)}.code)
+            second.publish(null);assertEquals(42u, access.get(RamEntity).availableBytes)
+            first.close();assertEquals(ErrorCode.EntityRemoved, assertFailsWith<DeviceReadoutException> {first.publish(null)}.code)
+            val replacement = access.observers.failureSource(RamEntity)
+            replacement.publish(DeviceReadoutException(ErrorCode.ReadFailed, "Replacement"))
+            second.close();assertEquals(ErrorCode.ReadFailed, assertFailsWith<DeviceReadoutException> {access.get(RamEntity)}.code)
+            access.close();replacement.close()
+        } finally {first.close();second.close();access.close()}
+    }
+
     @Test fun appTargetNamesDoNotAliasNativeTargetsOrTheirPermissions() = runBlocking {
         DeviceAccess(object : DeviceCollector {
             override fun list(kind: EntityKind) = listOf("shared-name")

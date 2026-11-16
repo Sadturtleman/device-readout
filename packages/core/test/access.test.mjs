@@ -10,6 +10,29 @@ async function waitUntil(predicate,timeout=1500) {
   while(!predicate()){if(Date.now()>deadline)assert.fail('Application sensor state did not settle.');await delay(5);}
 }
 
+test('independent failure owners preserve app policy, scope and fresh state across reconnect',async t=>{
+  const access=fixture(t),display=access.observers.target(DisplayEntity,'owned-failures');
+  const first=access.observers.failureSource(DisplayEntity),second=access.observers.failureSource(DisplayEntity);
+  access.observers.publish(display,{label:'initial'});
+  const stream=access.watch(display)[Symbol.asyncIterator]();assert.equal((await stream.next()).value.label,'initial');
+  const ended=assert.rejects(stream.next(),{code:'ReadFailed'});
+  first.publish(new DeviceReadoutError(ErrorCode.ReadFailed,'First provider'));
+  second.publish(new DeviceReadoutError(ErrorCode.UnsupportedEntity,'Second provider'));await ended;
+  access.observers.failure(DisplayEntity,new DeviceReadoutError(ErrorCode.PermissionDenied,'Application policy'));
+  first.close();second.publish(new DeviceReadoutError(ErrorCode.ReadFailed,'Second still failed'));
+  await assert.rejects(access.get(display),{code:'PermissionDenied'});
+  access.observers.failure(DisplayEntity,null);await assert.rejects(access.get(display),{code:'ReadFailed'});
+  second.close();await assert.rejects(access.withReadTimeout(Duration.milliseconds(50)).get(display),{code:'ReadTimeout'});
+  access.observers.publish(display,{label:'fresh'});assert.equal((await access.get(display)).label,'fresh');
+  const replacement=access.observers.failureSource(DisplayEntity);
+  replacement.publish(new DeviceReadoutError(ErrorCode.UnsupportedEntity,'Replacement'));
+  first.close();second.close();await assert.rejects(access.displays.list(),{code:'UnsupportedEntity'});
+  assert.equal((await access.get(RamEntity)).availableBytes,0n);
+  replacement.publish(null);assert.equal((await access.displays.list()).length,1);
+  replacement.close();assert.throws(()=>first.publish(null),{code:'EntityRemoved'});
+  access.close();replacement.close();
+});
+
 test('app target names do not alias native targets, discovery or permissions', async t=>{
   const access=fixture(t,{targets:['shared-name'],snapshots:{CpuCore:{logicalIndex:7}}});
   const [native]=await access.cpuCores.list();

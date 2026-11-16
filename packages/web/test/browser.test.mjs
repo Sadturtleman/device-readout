@@ -49,6 +49,296 @@ for (const [name, executablePath] of [
   ['Chrome', process.env.DEVICEREADOUT_CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe'],
   ['Edge', process.env.DEVICEREADOUT_EDGE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe']
 ]) {
+  test(`${name}: generic sensor permission loss fails paused demand without clearing application policy`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebGenericSensors,core}=window.sdkTest;
+      const access=createWebDeviceAccess().withReadTimeout(core.Duration.milliseconds(150)),instances=[],source=new EventTarget();
+      for(const kind of ['Accelerometer','Gyroscope'])source[kind]=class extends EventTarget{
+        constructor(){super();this.kind=kind;this.stops=0;instances.push(this);Object.assign(this,{x:1,y:2,z:3});}
+        start(){}
+        stop(){this.stops++;}
+        sample(){this.dispatchEvent(new Event('reading'));}
+      };
+      const accelPermission=Object.assign(new EventTarget(),{state:'granted'}),gyroPermission=Object.assign(new EventTarget(),{state:'granted'});
+      const observation=observeWebGenericSensors(access,source,{accelerometer:accelPermission,gyroscope:gyroPermission});
+      const [accel]=(await access.sensors.list(core.AccelerometerEntity)),[gyro]=(await access.sensors.list(core.GyroscopeEntity));
+      const streams=[accel,gyro].map(target=>access.watch(target)[Symbol.asyncIterator]()),first=streams.map(stream=>stream.next());
+      const wait=async predicate=>{const end=performance.now()+1500;while(!predicate()){if(performance.now()>end)throw Error('Paused sensor condition did not settle');await new Promise(r=>setTimeout(r,5));}};
+      await wait(()=>instances.length===2);instances.forEach(sensor=>sensor.sample());await Promise.all(first);
+      access.observers.sensorActivity(false);await wait(()=>instances.every(sensor=>sensor.stops===1));
+      let firstError=null,siblingSettled=false;
+      const ended=streams[0].next().then(()=>{firstError='unexpected';},error=>{firstError=error.code;});
+      const sibling=streams[1].next().then(result=>{siblingSettled=true;return result;});
+      accelPermission.state='denied';accelPermission.dispatchEvent(new Event('change'));await wait(()=>firstError!==null);await ended;
+      const pausedRead=await access.get(accel).then(()=> 'unexpected',error=>error.code),heldSibling=!siblingSettled;
+      access.observers.failure(accel,new core.DeviceReadoutError(core.ErrorCode.ReadFailed,'App still blocks this target'));
+      accelPermission.state='granted';accelPermission.dispatchEvent(new Event('change'));
+      const appFailure=await access.get(accel).then(()=> 'unexpected',error=>error.code);
+      access.observers.failure(accel,null);access.observers.sensorActivity(true);
+      const recovered=access.get(accel);await wait(()=>instances.length===4);
+      for(const sensor of instances.slice(2)){sensor.x=7;sensor.sample();}
+      const values=[(await sibling).value.value,(await recovered).value];
+      await streams[1].return();observation.close();access.close();
+      return {firstError,pausedRead,heldSibling,appFailure,values,stops:instances.map(sensor=>sensor.stops)};
+    });
+    assert.deepEqual(result,{firstError:'PermissionDenied',pausedRead:'PermissionDenied',heldSibling:true,appFailure:'ReadFailed',
+      values:[{x:7,y:2,z:3},{x:7,y:2,z:3}],stops:[1,1,1,1]});
+  });
+  test(`${name}: generic sensor deadlines and native failures release only their own observation`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const uncaught=[];page.on('pageerror',error=>uncaught.push(error.message));
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebGenericSensors,core}=window.sdkTest;
+      const access=createWebDeviceAccess(),instances=[];
+      class Accelerometer extends EventTarget {
+        constructor(){super();this.stops=0;this.callbacks=[];instances.push(this);Object.assign(this,{x:1,y:2,z:3});}
+        addEventListener(type,listener,...rest){this.callbacks.push([type,listener]);super.addEventListener(type,listener,...rest);}
+        start(){}
+        stop(){this.stops++;if(instances[2]===this)throw Error('Host cleanup failed');}
+      }
+      const permission=Object.assign(new EventTarget(),{state:'granted'}),source=Object.assign(new EventTarget(),{Accelerometer});
+      const observation=observeWebGenericSensors(access,source,{accelerometer:permission});
+      const [target]=await access.sensors.list(core.AccelerometerEntity);
+      const wait=async predicate=>{const end=performance.now()+1500;while(!predicate()){if(performance.now()>end)throw Error('Sensor state timed out');await new Promise(r=>setTimeout(r,5));}};
+      const stream=access.watch(target)[Symbol.asyncIterator](),first=stream.next();await wait(()=>instances.length===1);
+      instances[0].dispatchEvent(new Event('reading'));await first;
+      const timeout=await access.withReadTimeout(core.Duration.milliseconds(70)).get(target).then(()=> 'unexpected',error=>error.code);
+      await wait(()=>instances[1]?.stops===1);const siblingStops=instances[0].stops;
+      const next=stream.next();instances[0].dispatchEvent(new Event('reading'));const siblingValue=(await next).value.value;
+      const failed=stream.next().then(()=> 'unexpected',error=>error.code);
+      instances[0].dispatchEvent(Object.assign(new Event('error'),{error:new DOMException('Device unavailable','NotReadableError')}));
+      const nativeError=await failed;
+      const getter=access.get(target).then(()=> 'unexpected',error=>error.code);await wait(()=>instances.length===3);
+      Object.defineProperty(instances[2],'x',{get(){throw Error('Native read failed');}});instances[2].dispatchEvent(new Event('reading'));
+      const getterError=await getter;
+      const ending=access.get(target).then(()=> 'unexpected',error=>error.code);await wait(()=>instances.length===4);
+      access.close();const closed=await ending;observation.close();
+      for(const sensor of instances)for(const [type,callback]of sensor.callbacks)callback(new Event(type));
+      return {timeout,siblingStops,siblingValue,nativeError,getterError,closed,stops:instances.map(sensor=>sensor.stops)};
+    });
+    assert.deepEqual(result,{timeout:'ReadTimeout',siblingStops:0,siblingValue:{x:1,y:2,z:3},nativeError:'ReadFailed',getterError:'ReadFailed',closed:'EntityRemoved',stops:[1,1,1,1]});
+    assert.deepEqual(uncaught,[]);
+  });
+  for(const paused of [false,true])test(`${name}: native generic sensor permission revocation ends streams and allows fresh recovery${paused?' while inactive':''}`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const context=await browser.newContext(),page=await context.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const cdp=await context.newCDPSession(page),{targetInfo}=await cdp.send('Target.getTargetInfo');
+    const types=['accelerometer','gyroscope'];
+    for(const type of types){await cdp.send('Emulation.setSensorOverrideEnabled',{type,enabled:true});
+      await cdp.send('Emulation.setSensorOverrideReadings',{type,reading:{xyz:{x:1,y:2,z:3}}});}
+    await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebGenericSensors,core}=window.sdkTest;
+      const permissions={};for(const name of ['accelerometer','gyroscope','magnetometer'])permissions[name]=await navigator.permissions.query({name});
+      const access=createWebDeviceAccess(),observation=observeWebGenericSensors(access,window,permissions);
+      navigator.permissions.query=()=>{throw Error('SDK must not query application permissions');};
+      const state={access,observation,permissions,values:{},errors:{},targets:{},tasks:[]};window.genericPermission=state;
+      for(const kind of [core.AccelerometerEntity,core.GyroscopeEntity]){
+        const target=(await access.sensors.list(kind))[0];state.targets[kind.kind]=target;
+        state.tasks.push((async()=>{try{for await(const snapshot of access.watch(target))state.values[kind.kind]=snapshot.value;}
+          catch(error){state.errors[kind.kind]=error.code;}})());
+      }
+    });
+    await waitForBrowserValue(page,()=>Object.keys(window.genericPermission.values).length===2);
+    if(paused){
+      await page.evaluate(()=>window.genericPermission.access.observers.sensorActivity(false));
+      const limit=Date.now()+2000;let frequencies;
+      do{frequencies=await Promise.all(types.map(async type=>(await cdp.send('Emulation.getOverriddenSensorInformation',{type})).requestedSamplingFrequency));
+        if(frequencies.every(value=>value===0))break;await new Promise(r=>setTimeout(r,20));}while(Date.now()<limit);
+      assert.deepEqual(frequencies,[0,0]);
+    }
+    await cdp.send('Browser.setPermission',{permission:{name:'accelerometer'},setting:'denied',origin:url,browserContextId:targetInfo.browserContextId});
+    await waitForBrowserValue(page,()=>Object.keys(window.genericPermission.errors).length===2);
+    const denied=await page.evaluate(async()=>{
+      const s=window.genericPermission;await Promise.all(s.tasks);
+      return {errors:s.errors,statuses:await Promise.all(Object.values(s.targets).map(target=>s.access.permissions.check(target))),
+        reads:await Promise.all(Object.values(s.targets).map(target=>s.access.get(target).then(()=> 'unexpected',error=>error.code)))};
+    });
+    assert.deepEqual(denied,{errors:{Accelerometer:'PermissionDenied',Gyroscope:'PermissionDenied'},statuses:['Denied','Denied'],reads:['PermissionDenied','PermissionDenied']});
+    for(const type of types)await cdp.send('Emulation.setSensorOverrideReadings',{type,reading:{xyz:{x:4,y:5,z:6}}});
+    await cdp.send('Browser.setPermission',{permission:{name:'accelerometer'},setting:'granted',origin:url,browserContextId:targetInfo.browserContextId});
+    await waitForBrowserValue(page,async()=>{const s=window.genericPermission;return(await Promise.all(Object.values(s.targets).map(target=>s.access.permissions.check(target)))).every(status=>status==='Granted');});
+    const recovered=await page.evaluate(async()=>{
+      const s=window.genericPermission;s.access.observers.sensorActivity(true);
+      const values=await Promise.all(Object.values(s.targets).map(async target=>(await s.access.get(target)).value));
+      s.observation.close();s.access.close();return values;
+    });
+    for(const value of recovered)for(const [key,expected]of Object.entries({x:4,y:5,z:6}))assert.ok(Math.abs(value[key]-expected)<0.002);
+    const end=Date.now()+2000;let stopped;
+    do{stopped=await Promise.all(types.map(async type=>(await cdp.send('Emulation.getOverriddenSensorInformation',{type})).requestedSamplingFrequency));
+      if(stopped.every(value=>value===0))break;await new Promise(r=>setTimeout(r,20));}while(Date.now()<end);
+    assert.deepEqual(stopped,[0,0]);
+    await mkdir('.tools/evidence',{recursive:true});
+    await writeFile(`.tools/evidence/generic-sensor-permission-${name.toLowerCase()}${paused?'-paused':''}.json`,JSON.stringify({browser:await browser.version(),paused,denied,recovered,stopped},null,2));
+  });
+  test(`${name}: generic sensor reentrant permission loss prevents native start and cleans failed construction`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebGenericSensors,core}=window.sdkTest;
+      const access=createWebDeviceAccess().withReadTimeout(core.Duration.milliseconds(100)),instances=[];
+      const permission=Object.assign(new EventTarget(),{state:'granted'});
+      class Accelerometer extends EventTarget {
+        constructor(){super();this.starts=0;this.stops=0;instances.push(this);
+          if(instances.length===1){permission.state='denied';permission.dispatchEvent(new Event('change'));}}
+        start(){this.starts++;throw new DOMException('Policy blocked access','SecurityError');}
+        stop(){this.stops++;}
+      }
+      const observation=observeWebGenericSensors(access,Object.assign(new EventTarget(),{Accelerometer}),{accelerometer:permission});
+      const [target]=await access.sensors.list(core.AccelerometerEntity);
+      const errors=[await access.get(target).then(()=> 'unexpected',error=>error.code)];
+      permission.state='granted';permission.dispatchEvent(new Event('change'));
+      errors.push(await access.get(target).then(()=> 'unexpected',error=>error.code));
+      access.observers.failure(target,new core.DeviceReadoutError(core.ErrorCode.ReadFailed,'App-owned failure'));
+      permission.state='denied';permission.dispatchEvent(new Event('change'));permission.state='granted';permission.dispatchEvent(new Event('change'));
+      errors.push(await access.get(target).then(()=> 'unexpected',error=>error.code));
+      observation.close();access.close();return {errors,starts:instances.map(sensor=>sensor.starts),stops:instances.map(sensor=>sensor.stops)};
+    });
+    assert.deepEqual(result,{errors:['PermissionDenied','PermissionDenied','ReadFailed'],starts:[0,1],stops:[1,1]});
+  });
+  for(const experimental of [false,true])test(`${name}: native generic sensors preserve samples and release browser resources${experimental?' with experimental classes':''}`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true,args:experimental?['--enable-features=GenericSensorExtraClasses']:[]});t.after(()=>browser.close());
+    const context=await browser.newContext(),page=await context.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const cdp=await context.newCDPSession(page);
+    const families=[['Accelerometer','Accelerometer','accelerometer',{xyz:{x:1.2,y:-2.5,z:9.8}}],
+      ['LinearAccelerationSensor','LinearAcceleration','linear-acceleration',{xyz:{x:-1,y:0,z:0.5}}],
+      ['GravitySensor','Gravity','gravity',{xyz:{x:0,y:0,z:9.8}}],
+      ['Gyroscope','Gyroscope','gyroscope',{xyz:{x:0,y:1.5,z:-3}}],
+      ['Magnetometer','Magnetometer','magnetometer',{xyz:{x:12,y:-34,z:56}}],
+      ['RelativeOrientationSensor','RelativeOrientation','relative-orientation',{quaternion:{x:0,y:0,z:0.6,w:0.8}}],
+      ['AbsoluteOrientationSensor','AbsoluteOrientation','absolute-orientation',{quaternion:{x:0.5,y:0.5,z:0.5,w:0.5}}],
+      ['AmbientLightSensor','Illuminance','ambient-light',{single:{value:200}}]];
+    const available=await page.evaluate(families=>families.filter(([constructor])=>typeof window[constructor]==='function').map(([,kind])=>kind),families);
+    for(const required of ['Accelerometer','LinearAcceleration','Gyroscope','RelativeOrientation','AbsoluteOrientation'])assert.ok(available.includes(required),required);
+    if(experimental)assert.equal(available.length,8);
+    const selected=families.filter(([,kind])=>available.includes(kind));
+    for(const [,,type,reading]of selected){
+      await cdp.send('Emulation.setSensorOverrideEnabled',{type,enabled:true,metadata:{minimumFrequency:1,maximumFrequency:120}});
+      await cdp.send('Emulation.setSensorOverrideReadings',{type,reading});
+    }
+    await page.evaluate(async kinds=>{
+      const {createWebDeviceAccess,observeWebGenericSensors,core}=window.sdkTest;
+      const permissions={};for(const [key,name]of [['accelerometer','accelerometer'],['gyroscope','gyroscope'],['magnetometer','magnetometer'],
+        ...(kinds.includes('Illuminance')?[['ambientLight','ambient-light-sensor']]:[])])permissions[key]=await navigator.permissions.query({name});
+      const access=createWebDeviceAccess(),observation=observeWebGenericSensors(access,window,permissions),targets={};
+      for(const kind of kinds){targets[kind]=(await access.sensors.list(core[`${kind}Entity`]))[0];await access.describe(targets[kind]);}
+      window.genericNative={access,observation,targets,values:{},errors:{},counts:{},tasks:[]};
+    },available);
+    const frequencies=()=>Promise.all(selected.map(async([,,type])=>(await cdp.send('Emulation.getOverriddenSensorInformation',{type})).requestedSamplingFrequency));
+    assert.deepEqual(await frequencies(),Array(selected.length).fill(0));
+    await page.evaluate(()=>{
+      const s=window.genericNative,{core}=window.sdkTest;s.control=new AbortController();
+      s.tasks=Object.entries(s.targets).map(([kind,target])=>(async()=>{
+        try{for await(const snapshot of s.access.withSensorSamplingRate(core.hertz(17)).watch(target,{signal:s.control.signal})){
+          s.values[kind]=snapshot.value;s.counts[kind]=(s.counts[kind]||0)+1;
+        }}catch(error){if(error.name!=='AbortError')s.errors[kind]=error.code;}
+      })());
+    });
+    await waitForBrowserValue(page,()=>Object.keys(window.genericNative.values).length+Object.keys(window.genericNative.errors).length===Object.keys(window.genericNative.targets).length);
+    assert.deepEqual(await page.evaluate(()=>window.genericNative.errors),{});
+    const values=await page.evaluate(()=>window.genericNative.values),activeFrequencies=await frequencies();
+    for(const [,kind,,reading]of selected){
+      const expected=reading.xyz??reading.quaternion??reading.single.value,actual=values[kind];
+      if(typeof expected==='number')assert.equal(actual,expected);
+      else for(const key of Object.keys(expected))assert.ok(Math.abs(actual[key]-expected[key])<0.002,`${kind}.${key}: ${actual[key]}`);
+    }
+    for(const [index,[,kind]]of selected.entries()){
+      // Browser limits apply after our 17 Hz request; experimental light/magnetic sensors are capped.
+      if(kind==='Illuminance'||kind==='Magnetometer')assert.ok(activeFrequencies[index]>0&&activeFrequencies[index]<=17);
+      else assert.equal(activeFrequencies[index],17);
+    }
+    await page.evaluate(()=>window.genericNative.access.observers.sensorActivity(false));
+    const waitStopped=async()=>{const end=Date.now()+2000;let result;do{result=await frequencies();if(result.every(value=>value===0))return result;await new Promise(r=>setTimeout(r,20));}while(Date.now()<end);assert.fail(JSON.stringify(result));};
+    const paused=await waitStopped();
+    await page.evaluate(()=>{const s=window.genericNative;s.counts={};s.access.observers.sensorActivity(true);});
+    await waitForBrowserValue(page,()=>Object.keys(window.genericNative.counts).length===Object.keys(window.genericNative.targets).length);
+    const errors=await page.evaluate(async()=>{const s=window.genericNative;s.control.abort();await Promise.all(s.tasks);s.observation.close();s.access.close();return s.errors;});
+    assert.deepEqual(errors,{});const stopped=await waitStopped();
+    await mkdir('.tools/evidence',{recursive:true});
+    await writeFile(`.tools/evidence/generic-sensors-${name.toLowerCase()}-${experimental?'experimental':'default'}.json`,JSON.stringify({browser:await browser.version(),experimental,available,values,activeFrequencies,paused,stopped,errors},null,2));
+  });
+  test(`${name}: generic sensor families retain native units and frames with nullable grouped values`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebGenericSensors,core}=window.sdkTest;
+      const access=createWebDeviceAccess(),instances={},source=new EventTarget();
+      const families=[['Accelerometer','Accelerometer'],['LinearAccelerationSensor','LinearAcceleration'],['GravitySensor','Gravity'],
+        ['Gyroscope','Gyroscope'],['Magnetometer','Magnetometer'],['RelativeOrientationSensor','RelativeOrientation'],
+        ['AbsoluteOrientationSensor','AbsoluteOrientation'],['AmbientLightSensor','Illuminance']];
+      for(const [constructor,kind]of families)source[constructor]=class extends EventTarget {
+        constructor(options){super();this.options=options;this.timestamp=123;this.stops=0;instances[kind]=this;}
+        start(){}
+        stop(){this.stops++;}
+        sample(fields){Object.assign(this,fields);this.dispatchEvent(new Event('reading'));}
+      };
+      const permissions=Object.fromEntries(['accelerometer','gyroscope','magnetometer','ambientLight'].map(key=>[key,Object.assign(new EventTarget(),{state:'granted'})]));
+      const observation=observeWebGenericSensors(access,source,permissions),streams={};
+      const first=await Promise.all(families.map(async([,kind])=>{
+        const [target]=await access.sensors.list(core[`${kind}Entity`]);
+        const stream=access.watch(target)[Symbol.asyncIterator]();streams[kind]=stream;return {kind,next:stream.next()};
+      }));
+      const end=performance.now()+1500;while(Object.keys(instances).length!==8){if(performance.now()>end)throw Error('Missing sensor families');await new Promise(r=>setTimeout(r,5));}
+      for(const [kind,sensor]of Object.entries(instances))sensor.sample(kind==='Illuminance'?{illuminance:0}:kind.endsWith('Orientation')?{quaternion:[0,0,0.6,0.8]}:{x:0.25,y:-0.5,z:3});
+      const snapshots=Object.fromEntries(await Promise.all(first.map(async({kind,next})=>[kind,(await next).value])));
+      const invalid=Object.entries(streams).map(([kind,stream])=>({kind,next:stream.next()}));
+      for(const [kind,sensor]of Object.entries(instances))sensor.sample(kind==='Illuminance'?{illuminance:Infinity}:kind.endsWith('Orientation')?{quaternion:[0,NaN,0,1]}:{x:0,y:null,z:3});
+      const nullValues=await Promise.all(invalid.map(async({next})=>(await next).value.value));
+      await Promise.all(Object.values(streams).map(stream=>stream.return()));observation.close();access.close();
+      return {values:Object.fromEntries(Object.entries(snapshots).map(([kind,snapshot])=>[kind,snapshot.value])),
+        options:Object.fromEntries(Object.entries(instances).map(([kind,sensor])=>[kind,sensor.options])),
+        recent:Object.values(snapshots).every(snapshot=>snapshot.collectedAt.epochMilliseconds>Date.now()-10000),nullValues};
+    });
+    assert.deepEqual(result.values,{Accelerometer:{x:0.25,y:-0.5,z:3},LinearAcceleration:{x:0.25,y:-0.5,z:3},Gravity:{x:0.25,y:-0.5,z:3},
+      Gyroscope:{x:0.25,y:-0.5,z:3},Magnetometer:{x:0.25,y:-0.5,z:3},RelativeOrientation:{x:0,y:0,z:0.6,w:0.8},
+      AbsoluteOrientation:{x:0,y:0,z:0.6,w:0.8},Illuminance:0});
+    for(const [kind,options]of Object.entries(result.options))assert.deepEqual(options,kind==='Illuminance'?{}:{referenceFrame:'device'});
+    assert.deepEqual(result.nullValues,Array(8).fill(null));assert.equal(result.recent,true);
+  });
+  test(`${name}: generic sensor construction is lazy, permission gated and uses independent sampling settings`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebGenericSensors,core}=window.sdkTest;
+      const access=createWebDeviceAccess(),instances=[];
+      class Accelerometer extends EventTarget {
+        constructor(options){super();this.options=options;this.stops=0;instances.push(this);}
+        start(){this.started=true;}
+        stop(){this.stops++;}
+        sample(x,y,z){Object.assign(this,{x,y,z});this.dispatchEvent(new Event('reading'));}
+      }
+      const permission=Object.assign(new EventTarget(),{state:'prompt'});
+      const source=Object.assign(new EventTarget(),{Accelerometer});
+      const observation=observeWebGenericSensors(access,source,{accelerometer:permission});
+      const [target]=await access.sensors.list(core.AccelerometerEntity);
+      const before=instances.length;
+      const deniedMetadata=await access.describe(target).then(()=> 'unexpected',error=>error.code);
+      const initialPermission=await access.permissions.check(target);
+      const denied=await access.get(target).then(()=> 'unexpected',error=>error.code);
+      const deniedInstances=instances.length;
+      permission.state='granted';permission.dispatchEvent(new Event('change'));
+      const allowed=await access.permissions.check(target);
+      const description=await access.describe(target);
+      const once=access.withSensorSamplingRate(core.hertz(50)).get(target);
+      const watch=access.withSensorSamplingRate(core.hertz(17)).watch(target)[Symbol.asyncIterator]();
+      const first=watch.next();
+      const wait=async predicate=>{const end=performance.now()+1500;while(!predicate()){if(performance.now()>end)throw Error('Sensor state timed out');await new Promise(r=>setTimeout(r,5));}};
+      await wait(()=>instances.length===2);
+      for(const sensor of instances)sensor.sample(0,-2,9.5);
+      const values=[(await once).value,(await first).value.value];
+      const duplicate=watch.next();instances[1].sample(0,-2,9.5);values.push((await duplicate).value.value);
+      await watch.return();await wait(()=>instances.every(sensor=>sensor.stops===1));
+      observation.close();const removed=await access.get(target).then(()=> 'unexpected',error=>error.code);
+      access.close();
+      return {before,deniedInstances,initialPermission,allowed,denied,deniedMetadata,kind:description.kind,vendor:description.vendor,
+        values,options:instances.map(sensor=>sensor.options),stops:instances.map(sensor=>sensor.stops),removed};
+    });
+    assert.deepEqual(result,{before:0,deniedInstances:0,initialPermission:'NotDetermined',allowed:'Granted',denied:'PermissionDenied',deniedMetadata:'PermissionDenied',
+      kind:'Accelerometer',vendor:null,values:Array(3).fill({x:0,y:-2,z:9.5}),
+      options:[{referenceFrame:'device'},{referenceFrame:'device',frequency:17}],stops:[1,1],removed:'EntityRemoved'});
+  });
   test(`${name}: orientation fallback follows app activity and reports native source failures`, {timeout:30000}, async t=>{
     const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
     const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);

@@ -1,5 +1,5 @@
 import type { ConnectionFactory, Transport, Request, Response } from './protocol.js';
-import { DeviceReadoutError, ErrorCode } from './errors.js';
+import { DeviceReadoutError, ErrorCode, invalid } from './errors.js';
 import { AsyncQueue } from './queue.js';
 import { schedule } from './timing.js';
 import type { PermissionCoordinator } from './permissions.js';
@@ -7,12 +7,22 @@ import type { Entity } from './entity.js';
 import type { DeviceSnapshot } from './structures.js';
 import type { EntityAddress } from './entity.js';
 import { SensorSources, type SensorObserverSource } from './sensor-source.js';
+import type { ObserverFailureSource } from './failure-source.js';
+
+function observationKey(request:Omit<Request,'id'>):string {
+  const input=request.value as {type?:string;ownerId?:number}|undefined,type=input?.type;
+  const channel=type==='permission'?'permission':type==='current'?'current':type==='sensorActivity'?'sensorActivity':
+    type==='failure'?'failure':type==='failureSource'?'failureSource':'state';
+  return JSON.stringify([request.entity?.kind,request.entity?.targetId,request.entity?.observed===true,channel,
+    ...(type==='failureSource'?[input?.ownerId]:[])]);
+}
 type Handler = {response:(response:Response)=>void;fail:(error:unknown)=>void;cleanup:()=>void};
 export class Client {
   private transport:Transport|undefined;
   private unlisten:(()=>void)|undefined;
   private closed=false;
   private nextId=0;
+  private nextFailureOwner=0;
   private readonly handlers=new Map<number,Handler>();
   private readonly observations=new Map<string,Omit<Request,'id'>>();
   private coordinator:PermissionCoordinator|undefined;
@@ -46,10 +56,32 @@ export class Client {
     this.publish({operation:'observer',entity,value:{type:'sensorSource',description}});
     return()=>{if(removed)return;removed=true;detach();if(!this.closed)this.publish({operation:'observer',entity,value:{type:'remove'}});};
   }
+  failureSource(entity:EntityAddress):ObserverFailureSource {
+    if(this.closed)throw new DeviceReadoutError(ErrorCode.EntityRemoved,'DeviceAccess is closed.');
+    const state=this.observations.get(observationKey({operation:'observer',entity,value:{type:'register'}}));
+    if((state?.value as {type?:string}|undefined)?.type==='remove')throw new DeviceReadoutError(ErrorCode.EntityRemoved,'Observed target was removed.');
+    if(this.nextFailureOwner>=2147483647)throw new DeviceReadoutError(ErrorCode.ReadFailed,'Failure owner identifiers are exhausted.');
+    const ownerId=++this.nextFailureOwner;let released=false;
+    const update=(error:DeviceReadoutError|null):Omit<Request,'id'>=>({operation:'observer',entity,
+      value:{type:'failureSource',ownerId,error:error===null?null:{code:error.code,message:error.message}}});
+    return Object.freeze({
+      publish:(error:DeviceReadoutError|null)=>{
+        if(released)throw new DeviceReadoutError(ErrorCode.EntityRemoved,'Failure source is closed.');
+        if(error!==null&&!(error instanceof DeviceReadoutError))invalid('Expected a DeviceReadoutError or null.');
+        this.publish(update(error));
+      },
+      close:()=>{
+        if(released)return;released=true;if(this.closed)return;
+        const request=update(null),key=observationKey(request);
+        if(!this.observations.has(key))return;
+        try{this.publish(request);}finally{this.observations.delete(key);}
+      }
+    });
+  }
   publish(request:Omit<Request,'id'>):void {
     if(this.closed)throw new DeviceReadoutError(ErrorCode.EntityRemoved,'DeviceAccess is closed.');
     const type=(request.value as {type?:string})?.type;
-    if(type==='failure'&&(request.value as {error?:unknown}).error!==null&&request.entity){
+    if((type==='failure'||type==='failureSource')&&(request.value as {error?:unknown}).error!==null&&request.entity){
       for(const [cachedKey,cached]of this.observations){
         if((cached.value as {type?:string})?.type==='state'&&cached.entity?.kind===request.entity.kind
           &&(request.entity.targetId===undefined||cached.entity.targetId===request.entity.targetId&&cached.entity.observed===request.entity.observed)){
@@ -57,7 +89,7 @@ export class Client {
         }
       }
     }
-    const key=JSON.stringify([request.entity?.kind,request.entity?.targetId,request.entity?.observed===true,type==='permission'?'permission':type==='current'?'current':type==='sensorActivity'?'sensorActivity':type==='failure'?'failure':'state']);
+    const key=observationKey(request);
     if(type==='register'&&this.observations.has(key))return;
     if((type==='state'||type==='sensorSource')&&(this.observations.get(key)?.value as {type?:string}|undefined)?.type==='remove')return;
     // Replay the latest inputs in publication order: fresh state may arrive while an error is active.

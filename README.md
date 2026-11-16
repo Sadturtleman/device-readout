@@ -6,7 +6,11 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The latest [React Native framework-observer checkpoint](docs/verification/2026-11-16-react-native-framework-observers.md) adds explicit Dimensions and AppState adapters. Transport/framework contracts pass 12/12. The actual RN/Hermes/JSI app passes fourteen reported scenarios on each API 26/36, including window changes, sensor suspension/resume and continued sensor collection during focus loss. Safe-area/visual viewport fields, other RN platforms and physical-device coverage remain required.
+The latest [observer ownership checkpoint](docs/verification/2026-11-17-observer-failure-ownership.md) preserves independent provider failures and delivers permission loss while sensors are inactive. Common/collector tests pass 34/34, actual Chrome/Edge tests 56/56, Kotlin contracts 43/43 and RN transport/framework contracts 12/12. The RN/Hermes/JSI app passes fifteen reported scenarios on each Android API 26/36.
+
+The [web Generic Sensor adapter](docs/verification/2026-11-16-web-generic-sensors.md) adds eight typed sensor mappings with explicit app-owned permission observation. Six families work in the tested default browser configurations; magnetic field and light additionally pass with an experimental browser feature. Physical devices, other browser engines and the full support matrix remain required.
+
+The preceding [React Native framework-observer checkpoint](docs/verification/2026-11-16-react-native-framework-observers.md) adds explicit Dimensions and AppState adapters. Transport/framework contracts pass 12/12. The actual RN/Hermes/JSI app passes fourteen reported scenarios on each API 26/36, including window changes, sensor suspension/resume and continued sensor collection during focus loss. Safe-area/visual viewport fields, other RN platforms and physical-device coverage remain required.
 
 The preceding [React Native sensor-source checkpoint](docs/verification/2026-11-15-react-native-sensor-sources.md) connects app-owned sources to native get/watch demand, independent sampling settings, lifecycle suspension/resume and cleanup. Kotlin passes 41/41 contracts. Its actual RN/Hermes/JSI app passes thirteen reported scenarios on each API 26/36, with independent kernel-memory and native sensor-registration checks. Source callbacks use controlled samples; physical plugin and broader concurrency coverage remain required.
 

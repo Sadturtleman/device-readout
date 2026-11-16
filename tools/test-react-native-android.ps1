@@ -63,7 +63,7 @@ try {
     Invoke-RnAdb @('shell','am','start','-W','-n',"$taskPackage/.MainActivity") | Out-Null
     Wait-RnState { (Read-RnLog) -match 'DEVICE_READOUT_READY ' } 'baseline scenarios'
     $baseline = @(Read-RnResults)
-    $expected = @('hermes-runtime','native-ram','immutable-settings-and-native-watch','native-discovery-and-context-ownership','mixed-native-and-app-inventory','app-observed-viewport','observed-exact-integer-roundtrip','app-permission-coordination','app-sensor-source-lifecycle','app-sensor-source-failure-and-close','native-sensor-observation')
+    $expected = @('hermes-runtime','native-ram','immutable-settings-and-native-watch','native-discovery-and-context-ownership','mixed-native-and-app-inventory','app-observed-viewport','observed-exact-integer-roundtrip','app-permission-coordination','independent-failure-sources','app-sensor-source-lifecycle','app-sensor-source-failure-and-close','native-sensor-observation')
     foreach ($name in $expected) {if (@($baseline | Where-Object {$_.name -eq $name -and $_.status -eq 'passed'}).Count -ne 1) {throw "Missing or duplicated baseline: $name"}}
     $memory = (Invoke-RnAdb @('shell','cat','/proc/meminfo')) -join "`n"
     $memory | Set-Content -LiteralPath "$taskPrefix-meminfo.txt" -Encoding utf8

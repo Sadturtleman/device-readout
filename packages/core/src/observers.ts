@@ -6,6 +6,7 @@ import { Duration } from './values.js';
 import type { DeviceSnapshot } from './structures.js';
 import type { PermissionStatus, PermissionCoordinator } from './permissions.js';
 import type { SensorObserverSource } from './sensor-source.js';
+import type { ObserverFailureSource } from './failure-source.js';
 export { PermissionStatus } from './permissions.js';
 function encode(value:unknown):unknown {
  if(value instanceof Duration)return value.milliseconds;
@@ -50,6 +51,10 @@ export class ObserverInputs {
  failure<S extends DeviceSnapshot>(entity:Entity<S>,error:DeviceReadoutError|null):void {
    if(error!==null&&!(error instanceof DeviceReadoutError))invalid('Expected a DeviceReadoutError or null.');
    this.client.publish({operation:'observer',entity:addressOf(entity,this.client,true),value:{type:'failure',error:error===null?null:{code:error.code,message:error.message}}});
+ }
+ /** An independently owned error channel; recovery never clears application or sibling policy. */
+ failureSource<S extends DeviceSnapshot>(entity:Entity<S>):ObserverFailureSource {
+   return this.client.failureSource(addressOf(entity,this.client,true));
  }
  onPermissionRequest(coordinator:PermissionCoordinator):()=>void {return this.client.coordinatePermissions(coordinator);}
  /** Register an app-owned source; get/watch control each observation and its lifetime. */

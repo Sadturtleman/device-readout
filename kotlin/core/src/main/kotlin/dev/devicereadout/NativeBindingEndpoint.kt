@@ -15,6 +15,7 @@ private class BindingRequest(val id: Int) : AbstractCoroutineContextElement(Key)
     companion object Key : CoroutineContext.Key<BindingRequest>
 }
 private class BindingTerminated(val error: DeviceReadoutException) : CancellationException(error.message)
+private data class BindingFailureOwner(val kind: EntityKind, val target: String?, val observed: Boolean, val ownerId: Int)
 
 private class BindingInventoryChanges {
     val changes = Channel<EntityKind>(EntityKind.entries.size)
@@ -67,6 +68,7 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
         emit(id, "permissionRequest", null)
     }
     private val sensorSources = BindingSensorSources(::control)
+    private val failureSources = HashMap<BindingFailureOwner, ObserverFailureSource>()
 
     init {
         scope.launch {
@@ -134,14 +136,25 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
                 access.observers.current(kind as Entity<DeviceSnapshot>, current as Entity<DeviceSnapshot>?)
             }
             "permission" -> access.observers.permission(entity, BindingValues.enum(input["status"], PermissionStatus.entries))
-            "failure" -> {
+            "failure", "failureSource" -> {
                 val raw = input["error"]
                 val failure = if (raw == null) null else {
                     val error = raw as? Map<*, *> ?: invalid("Invalid observer failure.")
                     DeviceReadoutException(BindingValues.enum(error["code"], ErrorCode.entries) ?: ErrorCode.ReadFailed,
                         error["message"] as? String ?: "Application observer failed.")
                 }
-                access.observers.failure(entity, failure)
+                if (input["type"] == "failure") access.observers.failure(entity, failure)
+                else {
+                    val rawId = (input["ownerId"] as? Number)?.toDouble() ?: invalid("Missing failure owner ID.")
+                    if (!rawId.isFinite() || rawId < 1 || rawId > Int.MAX_VALUE || rawId % 1 != 0.0) invalid("Invalid failure owner ID.")
+                    val key = BindingFailureOwner(kind.kind, target, address["observed"] == true, rawId.toInt())
+                    val owner = synchronized(failureSources) {
+                        if (closed.get()) return
+                        if (failure == null) {failureSources.remove(key)?.close();null}
+                        else failureSources.getOrPut(key) {access.observers.failureSource(entity)}
+                    }
+                    if (failure != null) owner?.publish(failure)
+                }
             }
             else -> throw DeviceReadoutException(ErrorCode.UnsupportedEntity, "Observer input is not connected.")
         }
@@ -356,6 +369,7 @@ internal class NativeBindingEndpoint(private val access: DeviceAccess) : AutoClo
         synchronized(identities) {targets.clear();identities.clear();requestTargets.clear()}
         observed.clear()
         sensorSources.close()
+        synchronized(failureSources) {failureSources.values.forEach {it.close()};failureSources.clear()}
         inventoryChanges?.close();inventoryKinds.clear();inventoryFailures.clear()
         synchronized(activityGate) {sensorWatches.clear()}
         permissionCoordinator.close()
