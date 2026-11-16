@@ -1,7 +1,7 @@
 namespace DeviceReadout.Windows;
 
-internal sealed record WindowsSensorInfo(string Id, string? Name, TimeSpan? MinimumInterval = null);
-internal readonly record struct WindowsSensorSample(double? Scalar = null, Vector3? Vector = null);
+internal sealed record WindowsSensorInfo(string Id, string? Name, TimeSpan? MinimumInterval = null, double? MaximumRange = null);
+internal readonly record struct WindowsSensorSample(double? Scalar = null, Vector3? Vector = null, Quaternion? Rotation = null, bool? Detected = null);
 internal interface IWindowsSensorPlatform : IDisposable
 {
     IReadOnlyList<WindowsSensorInfo> List(EntityKind kind, CancellationToken token);
@@ -22,7 +22,8 @@ internal sealed class WindowsSensors(IWindowsSensorPlatform platform) : IDisposa
     private readonly Dictionary<EntityKind, ResourceCatalog> catalogs = [];
     private readonly Dictionary<(EntityKind Kind, string Handle), Target> targets = [];
     internal static bool Supports(EntityKind kind) => kind is EntityKind.Illuminance or EntityKind.Pressure or EntityKind.Gyroscope or EntityKind.Magnetometer
-        or EntityKind.Accelerometer or EntityKind.LinearAcceleration or EntityKind.Gravity;
+        or EntityKind.Accelerometer or EntityKind.LinearAcceleration or EntityKind.Gravity or EntityKind.AbsoluteOrientation or EntityKind.RelativeOrientation
+        or EntityKind.ProximityNear or EntityKind.ProximityDistance or EntityKind.HingeAngle;
     internal IReadOnlyList<string> List(EntityKind kind, CancellationToken token)
     {
         var found = platform.List(kind, token);token.ThrowIfCancellationRequested();
@@ -57,8 +58,10 @@ internal sealed class WindowsSensors(IWindowsSensorPlatform platform) : IDisposa
             return new() {Kind = address.Kind switch {EntityKind.Illuminance => SensorKind.Illuminance, EntityKind.Pressure => SensorKind.Pressure,
                     EntityKind.Gyroscope => SensorKind.Gyroscope, EntityKind.Magnetometer => SensorKind.Magnetometer,
                     EntityKind.Accelerometer => SensorKind.Accelerometer, EntityKind.LinearAcceleration => SensorKind.LinearAcceleration,
-                    EntityKind.Gravity => SensorKind.Gravity, _ => null},
-                Name = info.Name ?? target.Info.Name, MinimumInterval = info.MinimumInterval};
+                    EntityKind.Gravity => SensorKind.Gravity, EntityKind.AbsoluteOrientation => SensorKind.AbsoluteOrientation,
+                    EntityKind.RelativeOrientation => SensorKind.RelativeOrientation, EntityKind.ProximityNear => SensorKind.ProximityNear,
+                    EntityKind.ProximityDistance => SensorKind.ProximityDistance, EntityKind.HingeAngle => SensorKind.HingeAngle, _ => null},
+                Name = info.Name ?? target.Info.Name, MinimumInterval = info.MinimumInterval, MaximumRange = info.MaximumRange};
         } catch (DeviceReadoutException error) when (error.Code == ErrorCode.EntityRemoved) {Retire(address, error);throw;}
     }
     private void Retire(EntityAddress address, DeviceReadoutException error)
@@ -95,6 +98,11 @@ internal sealed class WindowsSensors(IWindowsSensorPlatform platform) : IDisposa
                     EntityKind.Accelerometer => new AccelerometerSnapshot {Value = Acceleration(raw.Vector)},
                     EntityKind.LinearAcceleration => new LinearAccelerationSnapshot {Value = Acceleration(raw.Vector)},
                     EntityKind.Gravity => new GravitySnapshot {Value = Acceleration(raw.Vector)},
+                    EntityKind.AbsoluteOrientation => new AbsoluteOrientationSnapshot {Value = Rotation(raw.Rotation)},
+                    EntityKind.RelativeOrientation => new RelativeOrientationSnapshot {Value = Rotation(raw.Rotation)},
+                    EntityKind.ProximityNear => new ProximityNearSnapshot {Value = raw.Detected},
+                    EntityKind.ProximityDistance => new ProximityDistanceSnapshot {Value = raw.Scalar / 1000},
+                    EntityKind.HingeAngle => new HingeAngleSnapshot {Value = raw.Scalar * Math.PI / 180},
                     _ => throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Windows sensor mapping is unavailable.")
                 });
             }, Failure, token);
@@ -110,6 +118,13 @@ internal sealed class WindowsSensors(IWindowsSensorPlatform platform) : IDisposa
     // WinRT G-force points with gravity; common acceleration follows the Android/Generic Sensor sign.
     private static Vector3? Acceleration(Vector3? value)
         => value is { } v ? new(v.X * -9.80665, v.Y * -9.80665, v.Z * -9.80665) : null;
+    // WinRT uses the same right-handed device-to-reference direction; preserve named components.
+    private static Quaternion? Rotation(Quaternion? value)
+    {
+        if (value is not { } q) return null;
+        var length = Math.Sqrt(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W);
+        return double.IsFinite(length) && length > 0 ? new(q.X / length, q.Y / length, q.Z / length, q.W / length) : null;
+    }
     private sealed class Subscription(Action dispose) : ICollectorSubscription
     {
         private Action? cleanup = dispose;

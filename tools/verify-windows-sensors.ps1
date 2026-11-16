@@ -9,6 +9,9 @@ $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
 $awaitCollection = $asTask.MakeGenericMethod($collection)
 $acceleration = [Windows.Devices.Sensors.Accelerometer,Windows.Devices.Sensors,ContentType=WindowsRuntime]
 $accelerationKind = [Windows.Devices.Sensors.AccelerometerReadingType,Windows.Devices.Sensors,ContentType=WindowsRuntime]
+$orientation = [Windows.Devices.Sensors.OrientationSensor,Windows.Devices.Sensors,ContentType=WindowsRuntime]
+$orientationKind = [Windows.Devices.Sensors.SensorReadingType,Windows.Devices.Sensors,ContentType=WindowsRuntime]
+$proximity = [Windows.Devices.Sensors.ProximitySensor,Windows.Devices.Sensors,ContentType=WindowsRuntime]
 $selectors = [ordered]@{
     Illuminance = [Windows.Devices.Sensors.LightSensor,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
     Pressure = [Windows.Devices.Sensors.Barometer,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
@@ -17,6 +20,11 @@ $selectors = [ordered]@{
     Accelerometer = $acceleration::GetDeviceSelector($accelerationKind::Standard)
     LinearAcceleration = $acceleration::GetDeviceSelector($accelerationKind::Linear)
     Gravity = $acceleration::GetDeviceSelector($accelerationKind::Gravity)
+    AbsoluteOrientation = $orientation::GetDeviceSelector($orientationKind::Absolute)
+    RelativeOrientation = $orientation::GetDeviceSelector($orientationKind::Relative)
+    ProximityNear = $proximity::GetDeviceSelector()
+    ProximityDistance = $proximity::GetDeviceSelector()
+    HingeAngle = [Windows.Devices.Sensors.HingeAngleSensor,Windows.Devices.Sensors,ContentType=WindowsRuntime]::GetDeviceSelector()
 }
 $counts = [ordered]@{}
 foreach ($kind in $selectors.Keys) {

@@ -95,6 +95,11 @@ internal static class WindowsSensorTests
         var acceleration = await access.Sensors.List(Entities.Accelerometer);
         var linear = await access.Sensors.List(Entities.LinearAcceleration);
         var gravity = await access.Sensors.List(Entities.Gravity);
+        var absolute = await access.Sensors.List(Entities.AbsoluteOrientation);
+        var relative = await access.Sensors.List(Entities.RelativeOrientation);
+        var proximityNear = await access.Sensors.List(Entities.ProximityNear);
+        var proximityDistance = await access.Sensors.List(Entities.ProximityDistance);
+        var hinge = await access.Sensors.List(Entities.HingeAngle);
         Check((await access.Sensors.List(Entities.Illuminance)).SequenceEqual(light), "stable actual inventory handles");
         foreach (var item in light) Check((await access.Describe(item)).Kind == SensorKind.Illuminance, "actual light metadata");
         foreach (var item in pressure) Check((await access.Describe(item)).Kind == SensorKind.Pressure, "actual pressure metadata");
@@ -103,11 +108,16 @@ internal static class WindowsSensorTests
         foreach (var item in acceleration) Check((await access.Describe(item)).Kind == SensorKind.Accelerometer, "actual accelerometer metadata");
         foreach (var item in linear) Check((await access.Describe(item)).Kind == SensorKind.LinearAcceleration, "actual linear acceleration metadata");
         foreach (var item in gravity) Check((await access.Describe(item)).Kind == SensorKind.Gravity, "actual gravity metadata");
-        Check(runtime.Initializations == 1 && runtime.FactoryCount == 6, "one MTA context and cached sensor/enumeration factories");
+        foreach (var item in absolute) Check((await access.Describe(item)).Kind == SensorKind.AbsoluteOrientation, "actual absolute orientation metadata");
+        foreach (var item in relative) Check((await access.Describe(item)).Kind == SensorKind.RelativeOrientation, "actual relative orientation metadata");
+        foreach (var item in proximityNear) Check((await access.Describe(item)).Kind == SensorKind.ProximityNear, "actual proximity near metadata");
+        foreach (var item in proximityDistance) Check((await access.Describe(item)).Kind == SensorKind.ProximityDistance, "actual proximity distance metadata");
+        foreach (var item in hinge) Check((await access.Describe(item)).Kind == SensorKind.HingeAngle, "actual hinge metadata");
+        Check(runtime.Initializations == 1 && runtime.FactoryCount == 9, "one MTA context and cached sensor/enumeration factories");
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Check(runtime.Uninitializations == 1 && runtime.FactoryReleases == 6 && runtime.Threads.Distinct().Count() == 1 && !runtime.Threads.Contains(caller),
+        Check(runtime.Uninitializations == 1 && runtime.FactoryReleases == 9 && runtime.Threads.Distinct().Count() == 1 && !runtime.Threads.Contains(caller),
             "actual factories and MTA lifetime balance on one collection worker");
-        Console.WriteLine($"Native Windows sensor inventory: Illuminance={light.Length}, Pressure={pressure.Length}, Gyroscope={gyroscope.Length}, Magnetometer={magnetometer.Length}, Accelerometer={acceleration.Length}, LinearAcceleration={linear.Length}, Gravity={gravity.Length}; no identifiers or measurements logged.");
+        Console.WriteLine($"Native Windows sensor inventory: Illuminance={light.Length}, Pressure={pressure.Length}, Gyroscope={gyroscope.Length}, Magnetometer={magnetometer.Length}, Accelerometer={acceleration.Length}, LinearAcceleration={linear.Length}, Gravity={gravity.Length}, AbsoluteOrientation={absolute.Length}, RelativeOrientation={relative.Length}, ProximityNear={proximityNear.Length}, ProximityDistance={proximityDistance.Length}, HingeAngle={hinge.Length}; no identifiers or measurements logged.");
     }
     private sealed class RuntimeProbe : IWindowsSensorRuntime
     {
