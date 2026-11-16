@@ -282,10 +282,15 @@ internal static partial class WindowsBatteryTests
         Check((await access.Get(replacement)).Present == true, "another inaccessible slot cannot block selected pack");
         platform.Slots["battery-b"].TagError = null;platform.Slots["empty-slot"] = new BatterySlotFixture {Tag = 0};
         Check((await access.Batteries.List()).Length == 2, "equal tags in separate slots remain separate targets");
-        await using var stream = access.WithPollInterval(TimeSpan.FromMilliseconds(15)).Watch(replacement).GetAsyncEnumerator();
+        using var removalDeadline = new CancellationTokenSource();
+        await using var stream = access.WithPollInterval(TimeSpan.FromMilliseconds(15)).Watch(replacement, removalDeadline.Token).GetAsyncEnumerator();
         Check(await stream.MoveNextAsync(), "first selected battery snapshot");
+        await Task.Delay(75); // A slow consumer may already have valid pre-removal snapshots queued.
         slot.Tag = 8;
-        await Error(ErrorCode.EntityRemoved, async () => {await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));});
+        removalDeadline.CancelAfter(TimeSpan.FromSeconds(1));
+        await Error(ErrorCode.EntityRemoved, async () => {
+            while (await stream.MoveNextAsync()) Check(stream.Current.Level == 0.5, "queued pre-removal state");
+        });
         Check((await access.Capabilities.Get(replacement)).Readable == false, "retired capability");
         slot.Tag = 7;_ = await access.Batteries.List();
         await Error(ErrorCode.EntityRemoved, () => access.Get(replacement));

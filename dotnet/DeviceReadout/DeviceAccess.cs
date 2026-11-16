@@ -6,12 +6,12 @@ using System.Diagnostics;
 
 namespace DeviceReadout;
 
-public sealed class DeviceAccess : IDisposable
+public sealed partial class DeviceAccess : IDisposable
 {
     internal sealed class Context : IDisposable
     {
         internal readonly CollectionWorker Worker = new();
-        internal readonly CancellationTokenSource Lifetime = new();
+        internal readonly CancellationScope Lifetime = new();
         internal readonly ObservedCollector Collector;
         private readonly ConcurrentDictionary<ICollectorSubscription, byte> subscriptions = new();
         internal Context(IDeviceCollector collector)
@@ -23,20 +23,27 @@ public sealed class DeviceAccess : IDisposable
                 }
                 subscriptions.Clear();
                 try {Collector.Dispose();} catch (Exception) { /* Native teardown must not crash the host. */ }
+                finally {Lifetime.Dispose();}
             };
         }
         internal ICollectorSubscription? Observe(EntityAddress address, EntityMode mode, SensorSamplingRate rate, Action<DeviceSnapshot> emit, Action<Exception> fail, CancellationToken token,
             Action<Func<CancellationToken, DeviceSnapshot>>? changed = null)
         {
-            var native = Collector.Observe(address, rate, emit, fail, token, mode == EntityMode.State, changed);
-            if (native is null) return null;
+            var nativeLifetime = new CancellationScope(token);
+            ICollectorSubscription? native;
+            try {native = Collector.Observe(address, rate, emit, fail, nativeLifetime.Token, mode == EntityMode.State, changed);}
+            catch {nativeLifetime.Cancel();nativeLifetime.Dispose();throw;}
+            if (native is null) {nativeLifetime.Dispose();return null;}
             ICollectorSubscription? tracked = null;
-            tracked = new ActionSubscription(() => {try {native.Dispose();} finally {subscriptions.TryRemove(tracked!, out _);}}, native.PollingRequired);
+            tracked = new ActionSubscription(() => {
+                nativeLifetime.Cancel();
+                try {native.Dispose();} finally {nativeLifetime.Dispose();subscriptions.TryRemove(tracked!, out _);}
+            }, native.PollingRequired);
             subscriptions.TryAdd(tracked, 0);
             if (token.IsCancellationRequested || Lifetime.IsCancellationRequested) {tracked.Dispose();token.ThrowIfCancellationRequested();}
             return tracked;
         }
-        public void Dispose() {if (!Lifetime.IsCancellationRequested) Lifetime.Cancel();Worker.Dispose();}
+        public void Dispose() {Lifetime.Cancel();Worker.Dispose();}
     }
     private readonly Context context;
     public TimeSpan PollInterval { get; }
@@ -70,10 +77,10 @@ public sealed class DeviceAccess : IDisposable
             throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Duration must be positive.");
         return value;
     }
-    private CancellationTokenSource Link(CancellationToken cancellationToken)
+    private CancellationScope Link(CancellationToken cancellationToken)
     {
         if (context.Lifetime.IsCancellationRequested) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "DeviceAccess is closed.");
-        return CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, context.Lifetime.Token);
+        return new(cancellationToken, context.Lifetime.Token);
     }
     private static T Stamp<T>(DeviceSnapshot value) where T : DeviceSnapshot
         => value is T ? (T)(SnapshotRules.Normalize(value) with {CollectedAt = DateTimeOffset.UtcNow})
@@ -85,23 +92,22 @@ public sealed class DeviceAccess : IDisposable
         using var linked = Link(cancellationToken);
         if (entity.Mode == EntityMode.State)
             return await context.Worker.Run(token => Stamp<T>(context.Collector.Read(address, token)), ReadTimeout, linked.Token).ConfigureAwait(false);
-        var completion = new TaskCompletionSource<DeviceSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
-        AsyncTiming.ObserveFailure(completion.Task);
-        var deadline = Stopwatch.StartNew();
-        ICollectorSubscription? subscription = null;
+        await using var stream = SensorWatch(entity, SensorSamplingRate.PlatformDefault, linked.Token).GetAsyncEnumerator();
+        var pending = stream.MoveNextAsync().AsTask();
         try {
-            subscription = await context.Worker.Run(token => context.Observe(address, entity.Mode, SensorSamplingRate.PlatformDefault,
-                value => completion.TrySetResult(value),
-                error => completion.TrySetException(error), linked.Token), ReadTimeout, linked.Token).ConfigureAwait(false);
-            if (subscription is null) throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Sensor observation is unavailable.");
-            try {
-                var raw = await AsyncTiming.Wait(completion.Task, ReadTimeout - deadline.Elapsed, linked.Token).ConfigureAwait(false);
-                return await context.Worker.Run(_ => Stamp<T>(raw), ReadTimeout - deadline.Elapsed, linked.Token).ConfigureAwait(false);
-            }
-            catch (TimeoutException error) {throw new DeviceReadoutException(ErrorCode.ReadTimeout, "No sensor sample before the deadline.", error);}
-        } finally {
-            linked.Cancel();_ = Release(subscription);
-        }
+            if (!await AsyncTiming.Wait(pending, ReadTimeout, linked.Token).ConfigureAwait(false))
+                throw new DeviceReadoutException(ErrorCode.ReadFailed, "Sensor ended without a sample.");
+            return stream.Current;
+        } catch (TimeoutException error) {
+            linked.Cancel();
+            try {await pending.ConfigureAwait(false);} catch (Exception) { }
+            throw new DeviceReadoutException(ErrorCode.ReadTimeout, "No sensor sample before the deadline.", error);
+        } catch (OperationCanceledException) {
+            linked.Cancel();
+            // Async iterators cannot be disposed while MoveNextAsync is still completing cancellation.
+            try {await pending.ConfigureAwait(false);} catch (Exception) { }
+            throw;
+        } finally {linked.Cancel();}
     }
 
     public async Task<ImmutableArray<Entity<T>>> List<T>(Entity<T> kind, CancellationToken cancellationToken = default) where T : DeviceSnapshot
@@ -134,11 +140,16 @@ public sealed class DeviceAccess : IDisposable
 
     public async IAsyncEnumerable<T> Watch<T>(Entity<T> entity, [EnumeratorCancellation] CancellationToken cancellationToken = default) where T : DeviceSnapshot
     {
+        if (entity.Mode != EntityMode.State) {
+            var rate = entity.Mode == EntityMode.Sample ? SensorSamplingRate : SensorSamplingRate.PlatformDefault;
+            await foreach (var sample in SensorWatch(entity, rate, cancellationToken).ConfigureAwait(false)) yield return sample;
+            yield break;
+        }
         var address = entity.Address(context);
         using var linked = Link(cancellationToken);
         var queue = Channel.CreateBounded<T>(new BoundedChannelOptions(2048) {SingleReader = true, FullMode = BoundedChannelFullMode.Wait});
         var incoming = Channel.CreateBounded<SnapshotInput>(new BoundedChannelOptions(2048) {SingleReader = true, FullMode = BoundedChannelFullMode.Wait});
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
+        using var stop = new CancellationScope(linked.Token);
         var firstSample = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var normalization = Normalize();
         var producer = Produce();

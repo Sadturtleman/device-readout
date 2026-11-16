@@ -685,6 +685,151 @@ for (const [name, executablePath] of [
     assert.deepEqual(result.values[3],{x:Math.PI,y:Math.PI/2,z:-Math.PI/4});
     assert.deepEqual([result.initialAttached,result.afterDiscovery,result.attached,result.detached],[0,0,4,4]);
   });
+  test(`${name}: display recovery and disposal preserve application and independent provider failures`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage(),uncaught=[];page.on('pageerror',error=>uncaught.push(error.message));
+    await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebDisplays,core}=window.sdkTest;
+      const access=createWebDeviceAccess(),permission=Object.assign(new EventTarget(),{state:'granted'});
+      const screen=Object.assign(new EventTarget(),{label:'Initial',isPrimary:true,isInternal:false,left:0,top:0,
+        width:800,height:600,availLeft:0,availTop:0,availWidth:800,availHeight:600,devicePixelRatio:1,colorDepth:24});
+      const details=Object.assign(new EventTarget(),{screens:[screen],currentScreen:screen});
+      const denied=new core.DeviceReadoutError(core.ErrorCode.PermissionDenied,'Application blocks display access');
+      const appFailure=new core.DeviceReadoutError(core.ErrorCode.ReadFailed,'Application is still unavailable');
+      const code=async run=>run().then(()=> 'unexpected',error=>error.code),errors=[];
+      access.observers.failure(core.DisplayEntity,denied);
+      const observation=observeWebDisplays(access.withPollInterval(core.Duration.seconds(2)),window,details,{permission});
+      errors.push(await code(()=>access.displays.list()));
+      access.observers.failure(core.DisplayEntity,null);
+      const target=await access.displays.current();
+      access.observers.failure(core.DisplayEntity,appFailure);
+      permission.state='denied';permission.dispatchEvent(new Event('change'));
+      errors.push(await code(()=>access.get(target)));
+      access.observers.failure(core.DisplayEntity,null);
+      errors.push(await code(()=>access.get(target)));
+      access.observers.failure(core.DisplayEntity,appFailure);
+      screen.label='Fresh';permission.state='granted';permission.dispatchEvent(new Event('change'));
+      errors.push(await code(()=>access.get(target)));
+      access.observers.failure(core.DisplayEntity,null);
+      const recovered=(await access.get(target)).label;
+      const other=access.observers.failureSource(core.DisplayEntity);
+      other.publish(new core.DeviceReadoutError(core.ErrorCode.UnsupportedEntity,'A separate source blocks the inventory'));
+      details.dispatchEvent(new Event('screenschange'));
+      errors.push(await code(()=>access.displays.list()));
+      access.observers.failure(core.DisplayEntity,denied);
+      observation.close();observation.close();
+      errors.push(await code(()=>access.displays.list()));
+      access.observers.failure(core.DisplayEntity,null);
+      errors.push(await code(()=>access.displays.list()));
+      other.close();const empty=(await access.displays.list()).length;
+      errors.push(await code(()=>access.get(target)));
+      access.close();observation.close();
+      return {errors,recovered,empty};
+    });
+    assert.deepEqual(result,{errors:['PermissionDenied','ReadFailed','PermissionDenied','ReadFailed','UnsupportedEntity',
+      'PermissionDenied','UnsupportedEntity','EntityRemoved'],recovered:'Fresh',empty:0});
+    assert.deepEqual(uncaught,[]);
+  });
+  test(`${name}: display disposal retires every target when host listener cleanup throws`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage(),uncaught=[];page.on('pageerror',error=>uncaught.push(error.message));
+    await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebDisplays}=window.sdkTest;
+      const access=createWebDeviceAccess(),removed=[];let broken=false,reads=0;
+      const screen=label=>Object.assign(new class extends EventTarget {
+        removeEventListener(type,listener,...options){removed.push(label+':'+type);if(label==='First')throw Error('Host screen cleanup failed');super.removeEventListener(type,listener,...options);}
+      }(),{label,isPrimary:label==='First',isInternal:false,left:0,top:0,width:800,height:600,
+        availLeft:0,availTop:0,availWidth:800,availHeight:600,devicePixelRatio:1,colorDepth:24});
+      const screens=[screen('First'),screen('Second')];
+      const details=new class extends EventTarget {
+        get screens(){reads++;if(broken)throw Error('Host inventory failed');return screens;}
+        get currentScreen(){return screens[0];}
+        removeEventListener(type,listener,...options){removed.push('details:'+type);if(type==='screenschange')throw Error('Host details cleanup failed');super.removeEventListener(type,listener,...options);}
+      }();
+      const observation=observeWebDisplays(access,window,details),targets=await access.displays.list();
+      broken=true;details.dispatchEvent(new Event('screenschange'));
+      const before=await access.displays.list().then(()=> 'unexpected',error=>error.code);
+      let closeError=null;try{observation.close();}catch(error){closeError=error.message;}
+      const after=await access.displays.list().then(items=>items.length,error=>error.code);
+      const errors=await Promise.all(targets.map(target=>access.get(target).then(()=> 'unexpected',error=>error.code)));
+      const readsAtClose=reads;details.dispatchEvent(new Event('screenschange'));screens.forEach(screen=>screen.dispatchEvent(new Event('change')));
+      observation.close();access.close();observation.close();
+      return {before,closeError,after,errors,removed:removed.sort(),lateReads:reads-readsAtClose};
+    });
+    assert.deepEqual(result,{before:'ReadFailed',closeError:null,after:0,errors:['EntityRemoved','EntityRemoved'],
+      removed:['First:change','Second:change','details:currentscreenchange','details:screenschange'],lateReads:0});
+    assert.deepEqual(uncaught,[]);
+  });
+  test(`${name}: newer display inventories survive stale initial getter returns and failures`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebDisplays}=window.sdkTest,results=[];
+      for(const mode of ['return','throw']){
+        const screen=label=>Object.assign(new EventTarget(),{label,isPrimary:true,isInternal:false,left:0,top:0,
+          width:800,height:600,availLeft:0,availTop:0,availWidth:800,availHeight:600,devicePixelRatio:1,colorDepth:24});
+        const old=screen('Old'),fresh=screen('Fresh');let inventory=[old],current=old,reenter=true,reads=0;
+        const details=new class extends EventTarget {
+          get screens(){
+            reads++;const captured=inventory;
+            if(reenter){reenter=false;inventory=[fresh];current=fresh;this.dispatchEvent(new Event('screenschange'));
+              if(mode==='throw')throw Error('Initial inventory became stale');}
+            return captured;
+          }
+          get currentScreen(){return current;}
+        }();
+        const access=createWebDeviceAccess();let observation;
+        try {
+          observation=observeWebDisplays(access,window,details);
+          const targets=await access.displays.list(),selected=await access.displays.current();
+          const labels=await Promise.all(targets.map(async target=>(await access.get(target)).label));
+          const before=reads;await access.displays.list();await access.displays.current();
+          results.push({mode,labels,current:selected?(await access.get(selected)).label:null,queryReads:reads-before});
+        }catch(error){results.push({mode,error:error.code??error.message});}
+        finally{observation?.close();access.close();}
+      }
+      return results;
+    });
+    assert.deepEqual(result,[{mode:'return',labels:['Fresh'],current:'Fresh',queryReads:0},
+      {mode:'throw',labels:['Fresh'],current:'Fresh',queryReads:0}]);
+  });
+  test(`${name}: display hotplug retires handles and gates stale listeners when detachment fails`, {timeout:30000}, async t=>{
+    const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+    const page=await browser.newPage(),uncaught=[];page.on('pageerror',error=>uncaught.push(error.message));
+    await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);
+    const result=await page.evaluate(async()=>{
+      const {createWebDeviceAccess,observeWebDisplays}=window.sdkTest;
+      const access=createWebDeviceAccess();let reads=0;
+      const old=Object.assign(new class extends EventTarget {
+        get label(){reads++;return 'Reattached';}
+        removeEventListener(){throw Error('Host cannot detach this listener');}
+      }(),{isPrimary:true,isInternal:false,left:0,top:0,width:800,height:600,
+        availLeft:0,availTop:0,availWidth:800,availHeight:600,devicePixelRatio:1,colorDepth:24});
+      const kept=Object.assign(new EventTarget(),{label:'Kept',isPrimary:false,isInternal:false,left:800,top:0,width:800,height:600,
+        availLeft:800,availTop:0,availWidth:800,availHeight:600,devicePixelRatio:1,colorDepth:24});
+      const details=Object.assign(new EventTarget(),{screens:[old,kept],currentScreen:old});
+      const observation=observeWebDisplays(access,window,details),original=await access.displays.current();
+      const stream=access.watch(original)[Symbol.asyncIterator]();await stream.next();
+      const ended=stream.next().then(()=> 'unexpected',error=>error.code);
+      details.screens=[kept];details.currentScreen=kept;details.dispatchEvent(new Event('screenschange'));
+      const streamError=await ended;
+      const remaining=await access.displays.list().then(targets=>Promise.all(targets.map(async target=>(await access.get(target)).label)),error=>error.code);
+      const current=await access.displays.current().then(async target=>target?(await access.get(target)).label:null,error=>error.code);
+      const removed=await access.get(original).then(()=> 'unexpected',error=>error.code);
+      const before=reads;old.dispatchEvent(new Event('change'));const lateReads=reads-before;
+      details.screens=[old,kept];details.currentScreen=old;details.dispatchEvent(new Event('screenschange'));
+      const fresh=await access.displays.current().then(async target=>target?(await access.get(target)).label:null,error=>error.code);
+      const oldAfterReattach=await access.get(original).then(()=> 'unexpected',error=>error.code);
+      const reattachedReads=reads;old.dispatchEvent(new Event('change'));const onlyNewListenerReads=reads-reattachedReads;
+      observation.close();access.close();
+      return {streamError,remaining,current,removed,lateReads,fresh,oldAfterReattach,onlyNewListenerReads};
+    });
+    assert.deepEqual(result,{streamError:'EntityRemoved',remaining:['Kept'],current:'Kept',removed:'EntityRemoved',lateReads:0,
+      fresh:'Reattached',oldAfterReattach:'EntityRemoved',onlyNewListenerReads:1});
+    assert.deepEqual(uncaught,[]);
+  });
   test(`${name}: screen permission lost during inventory collection cannot be cleared by a partial refresh`, {timeout:30000}, async t=>{
     const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
     const page=await browser.newPage();await page.goto(url);await page.waitForFunction(()=>!!window.sdkTest);

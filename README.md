@@ -6,6 +6,12 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [.NET sensor-source checkpoint](docs/verification/2026-11-17-dotnet-sensor-sources.md) adds app-owned sensor registration, passive metadata, independent get/watch sessions and explicit activity-driven pause/resume. Cancellation and late-registration cleanup regressions are fixed. All 121 .NET/Windows checks pass; native Windows sensor collectors and physical-device evidence remain pending.
+
+The [web display ownership checkpoint](docs/verification/2026-11-17-web-display-ownership.md) preserves application errors through observer recovery/disposal, keeps newer inventories during reentrant initial reads, and retires removed handles even when host listener cleanup fails. Common/collector checks pass 34/34 and the full Chrome/Edge suite passes 64/64.
+
+The [.NET observer/cancellation checkpoint](docs/verification/2026-11-17-dotnet-observer-cancellation.md) adds independent provider failure handles and separates native cancellation callbacks from SDK control signals. All 115 .NET/Windows checks pass, including held native callbacks, caller deadlines, context disposal and in-flight result invalidation. Remaining physical-device and platform coverage is recorded in the checkpoint.
+
 The latest [observer ownership checkpoint](docs/verification/2026-11-17-observer-failure-ownership.md) preserves independent provider failures and delivers permission loss while sensors are inactive. Common/collector tests pass 34/34, actual Chrome/Edge tests 56/56, Kotlin contracts 43/43 and RN transport/framework contracts 12/12. The RN/Hermes/JSI app passes fifteen reported scenarios on each Android API 26/36.
 
 The [web Generic Sensor adapter](docs/verification/2026-11-16-web-generic-sensors.md) adds eight typed sensor mappings with explicit app-owned permission observation. Six families work in the tested default browser configurations; magnetic field and light additionally pass with an experimental browser feature. Physical devices, other browser engines and the full support matrix remain required.

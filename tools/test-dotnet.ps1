@@ -1,3 +1,4 @@
+param([string]$Filter)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $localDotnet = Join-Path $projectRoot '.tools/dotnet/dotnet.exe'
@@ -15,7 +16,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'C# generation failed.' }
     & $dotnet build (Join-Path $projectRoot 'dotnet/DeviceReadout.Tests') -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false --verbosity minimal
     if ($LASTEXITCODE -ne 0) { throw '.NET build failed.' }
-    & $dotnet (Join-Path $projectRoot 'dotnet/DeviceReadout.Tests/bin/Debug/net10.0/DeviceReadout.Tests.dll')
+    $testArguments = if ($Filter) { @('--filter', $Filter) } else { @() }
+    & $dotnet (Join-Path $projectRoot 'dotnet/DeviceReadout.Tests/bin/Debug/net10.0/DeviceReadout.Tests.dll') @testArguments
     if ($LASTEXITCODE -ne 0) { throw '.NET contract verification failed.' }
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }

@@ -14,7 +14,7 @@ await foreach (var value in fast.Watch(Entities.Ram, cancellationToken)) {
 }
 ```
 
-Configuration copies share the owning execution context but preserve their own settings. Dispose the context after use. Reads, discovery, normalization and native subscription setup/release run on a dedicated background lane. A 128-item request queue and two 2048-item stream queues (incoming and normalized snapshots) prevent unbounded accumulation; overload fails explicitly. Polling does not overlap or deduplicate samples.
+Configuration copies share the owning execution context but preserve their own settings. Dispose the context after use. Reads, discovery, normalization and native subscription setup/release run on a dedicated background lane. A 128-item request queue and 2048-item input/output stream queues prevent unbounded accumulation; sensor watches also have a 64-item lifecycle queue. Overload fails explicitly. Polling does not overlap or deduplicate samples.
 
 Collector adapters can supply state changes through `IDeviceCollector.ObserveChanges`. Native callbacks copy their payload and submit a deferred read; the SDK performs collection and normalization on the worker with the configured deadline. Cleanup for already-owned subscriptions has reserved admission even when the ordinary read queue is full. If a native call outlasts the caller's deadline, disposal remains queued until that lane can run it.
 
@@ -26,11 +26,23 @@ Permission checks and pending requests inherit the entity-kind observation when 
 
 `access.Observers.Failure(entity, new DeviceReadoutException(...))` reports a target or whole-collection observer failure. Permission status and collection failure are separate inputs: an app-owned permission observer publishes both `PermissionStatus.Denied` and `ErrorCode.PermissionDenied` when revocation prevents collection. This requires no SDK UI lookup or prompt.
 
+Each adapter can own a separate failure slot with `using var failure = access.Observers.FailureSource(entity)`. Call `failure.Publish(error)` to report a typed failure and `failure.Publish(null)` to clear only that slot. Disposing the handle releases its own failure permanently and is safe to repeat. Application policy takes priority; a provider's recovery or disposal cannot clear application policy, another provider or its replacement.
+
 Failures invalidate observed values and end affected streams, including native polling/event streams. Pending observed first-state reads receive the typed error. Native Get/List/Current/Describe discard a result if a matching failure occurred during that call, even if already cleared. `Observers.Failure(entity, null)` clears the gate; recovery needs fresh state, and does not restart old streams or revive removed handles. Fresh state may be published while failed before clearing. Native subscription cleanup runs on the collection lane.
+
+Application sensor sources attach through `Observers.SensorSource(sensor, subscribe, description)`, where `sensor` comes from `Observers.Target`. The returned disposable owns that registration and permanently retires its target when released. Duplicate sources for one target are rejected. `subscribe` runs on the collection worker and receives `SensorObserverSession<T>` with `SamplingRate`, `CancellationToken`, `Publish(T)` and `Fail(DeviceReadoutException)`. It returns native listener cleanup or null. Each get/watch has its own session; a session failure leaves siblings alive. Registration, discovery and metadata are passive. The entity determines metadata kind; normalization and collection timestamps remain worker-owned.
+
+`Observers.SensorActivity(false)` suspends sensor sessions while retaining pending watches; `true` starts fresh sessions with their original settings. This works while the consumer is between reads. Inactive get retains its overall timeout, while the watch first-sample timer runs only for an active session. Event watches wait for real occurrences without an event deadline. State queries remain available. The SDK does not infer inactivity from desktop focus or query UI/lifecycle state.
+
+See the [121-check sensor-source verification](../docs/verification/2026-11-17-dotnet-sensor-sources.md) for cancellation, source lifetime and remaining native/physical integration scope.
 
 `SnapshotJson.Serialize(snapshot)` uses camelCase fields and decimal strings for 64-bit byte/counter values. It preserves platform thermal-state tags. Public snapshot deserialization is not provided.
 
+Cancellation links dispatch downstream callbacks asynchronously. Native subscription cancellation has a separate scope from the SDK's stream-control callbacks, so a slow native callback cannot hold the caller's error notification, context disposal, read deadline or cancellation. Native cleanup stays on the collection worker and may remain pending until native work finishes. See the [ownership and cancellation checkpoint](../docs/verification/2026-11-17-dotnet-observer-cancellation.md), which records 115 passing checks and the remaining matrix.
+
 Run `tools/test-dotnet.ps1` from PowerShell at the repository root. It prefers the project-local SDK when present, otherwise uses `dotnet` from PATH. The console verification executable exits nonzero on any failed assertion and includes real Windows API queries when running on Windows. The projects currently use only the .NET runtime and have no external NuGet dependencies.
+
+For a focused reproduction, pass `-Filter 'provider failure'`; an unmatched name fails explicitly. Omit the filter for the complete suite.
 
 Windows battery targets are discovered with `await access.Batteries.List(token)` and read/watched through the same typed API. They represent individual OS device-path/tag generations; a tag change requires re-discovery and never revives an old handle. Native tags can change without a physical replacement. Empty slots are omitted, and a failed inventory cannot erase already observed removals or silently turn inaccessible batteries into an empty list.
 

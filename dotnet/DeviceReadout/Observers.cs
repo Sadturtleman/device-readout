@@ -3,6 +3,29 @@ namespace DeviceReadout;
 public enum PermissionStatus { Granted, Denied, NotDetermined, Restricted, Unavailable }
 public sealed record PermissionRequest(EntityKind Kind, string? TargetId);
 
+internal sealed class ObserverFailureOwner(EntityAddress address)
+{
+    internal readonly EntityAddress Address = address;
+    internal bool Closed;
+    internal DeviceReadoutException? Error;
+}
+
+/// <summary>An independent provider failure slot; application policy and other owners remain intact.</summary>
+public sealed class ObserverFailureSource : IDisposable
+{
+    private readonly DeviceAccess.Context context;
+    private readonly ObserverFailureOwner owner;
+    internal ObserverFailureSource(DeviceAccess.Context context, ObserverFailureOwner owner)
+        => (this.context, this.owner) = (context, owner);
+    public void Publish(DeviceReadoutException? error)
+    {
+        if (context.Lifetime.IsCancellationRequested) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "DeviceAccess is closed.");
+        context.Collector.SourceFailure(owner, error);
+    }
+    /// <summary>Releases only this owner; repeated disposal and disposal after context closure are safe.</summary>
+    public void Dispose() => context.Collector.ReleaseFailure(owner);
+}
+
 internal sealed class ActionSubscription(Action dispose, bool pollingRequired = false) : ICollectorSubscription
 {
     private Action? action = dispose;
@@ -12,6 +35,7 @@ internal sealed class ActionSubscription(Action dispose, bool pollingRequired = 
 
 internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollector
 {
+    internal readonly record struct Activity(bool Active, long Generation);
     public void Dispose() => source.Dispose();
     private sealed record FailureRecord(long Revision, DeviceReadoutException Error);
     private sealed class FailureListener(EntityAddress address, Action<Exception> fail)
@@ -23,6 +47,7 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
     {
         internal readonly EntityMode Mode = mode;
         internal DeviceSnapshot? Value;
+        internal ObservedSensorSource? SensorSource;
         internal bool Removed;
         internal TaskCompletionSource<DeviceSnapshot> First = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly List<(Action<DeviceSnapshot> Emit, Action<Exception> Fail)> Listeners = [];
@@ -31,14 +56,52 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
     private readonly Dictionary<EntityAddress, State> states = [];
     private readonly Dictionary<EntityKind, string?> current = [];
     private readonly Dictionary<EntityAddress, DeviceReadoutException> failures = [];
+    private readonly Dictionary<EntityAddress, List<ObserverFailureOwner>> sourceFailures = [];
     private readonly Dictionary<EntityAddress, FailureRecord> failureHistory = [];
     private long failureRevision;
     private readonly List<FailureListener> failureListeners = [];
     private readonly Dictionary<EntityAddress, PermissionStatus?> permissions = [];
     private readonly Dictionary<EntityAddress, List<Action<PermissionStatus?>>> permissionListeners = [];
     private Func<PermissionRequest, CancellationToken, Task>? coordinator;
+    private Activity activity = new(true, 0);
+    private readonly List<Action<Activity>> activityListeners = [];
+
+    internal void SensorActivity(bool active)
+    {
+        Action<Activity>[] listeners;Activity next;
+        lock (gate) {
+            if (activity.Active == active) return;
+            activity = next = new(active, activity.Generation + 1);listeners = activityListeners.ToArray();
+        }
+        foreach (var listener in listeners) listener(next);
+    }
+    internal bool IsActive(long generation) {lock (gate) return activity.Active && activity.Generation == generation;}
+    internal IDisposable OnActivity(Action<Activity> listener)
+    {
+        Activity initial;lock (gate) {activityListeners.Add(listener);initial = activity;}
+        listener(initial);
+        return new ActionSubscription(() => {lock (gate) activityListeners.Remove(listener);});
+    }
+    internal IDisposable OnFailure(EntityAddress address, Action<Exception> fail)
+    {
+        var listener = new FailureListener(address, fail);
+        lock (gate) {AssertAvailable(address);failureListeners.Add(listener);}
+        return new ActionSubscription(() => {lock (gate) failureListeners.Remove(listener);});
+    }
 
     internal void Register(EntityAddress address, EntityMode mode) {lock (gate) states.TryAdd(address, new(mode));}
+    internal IDisposable RegisterSensorSource(EntityAddress address, ObservedSensorSource sensorSource)
+    {
+        State state;
+        lock (gate) {
+            if (!states.TryGetValue(address, out state!) || state.Mode == EntityMode.State)
+                throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected an app-owned sensor target.");
+            if (state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed sensor was removed.");
+            if (state.SensorSource is not null) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "A sensor source is already registered for this target.");
+            state.SensorSource = sensorSource;state.Value = null;
+        }
+        return new ActionSubscription(() => Remove(address, state.Mode, sensorSource));
+    }
     internal void Publish(EntityAddress address, EntityMode mode, DeviceSnapshot snapshot)
     {
         Action<DeviceSnapshot>[] listeners;
@@ -50,22 +113,52 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
         }
         foreach(var emit in listeners) emit(snapshot);
     }
-    internal void Remove(EntityAddress address, EntityMode mode)
+    internal void Remove(EntityAddress address, EntityMode mode, ObservedSensorSource? expectedSource = null)
     {
         var error = new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.");
         Action<Exception>[] listeners;
         lock (gate) {
             if (!states.TryGetValue(address, out var state)) states[address] = state = new(mode);
+            if (expectedSource is not null && !ReferenceEquals(state.SensorSource, expectedSource)) return;
+            state.SensorSource = null;
             state.Removed = true;state.First.TrySetException(error);
             _ = state.First.Task.Exception;
-            listeners = state.Listeners.Select(listener => listener.Fail).ToArray();
+            var native = failureListeners.Where(listener => listener.Address == address).ToArray();
+            foreach (var listener in native) failureListeners.Remove(listener);
+            listeners = state.Listeners.Select(listener => listener.Fail).Concat(native.Select(listener => listener.Fail)).ToArray();
             state.Listeners.Clear();
         }
         foreach(var fail in listeners) fail(error);
     }
     internal void SetCurrent(EntityKind kind, string? id) {lock (gate) current[kind] = id;}
     private DeviceReadoutException? FailureFor(EntityAddress address) =>
-        failures.GetValueOrDefault(address) ?? failures.GetValueOrDefault(new(address.Kind, null));
+        failures.GetValueOrDefault(address) ?? failures.GetValueOrDefault(new(address.Kind, null)) ??
+        sourceFailures.GetValueOrDefault(address)?.FirstOrDefault()?.Error ??
+        sourceFailures.GetValueOrDefault(new(address.Kind, null))?.FirstOrDefault()?.Error;
+    internal ObserverFailureOwner FailureOwner(EntityAddress address)
+    {
+        lock (gate) {
+            if (states.TryGetValue(address, out var state) && state.Removed)
+                throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.");
+            return new(address);
+        }
+    }
+    private void ClearSourceFailure(ObserverFailureOwner owner)
+    {
+        owner.Error = null;
+        if (sourceFailures.TryGetValue(owner.Address, out var owners)) {
+            owners.Remove(owner);
+            if (owners.Count == 0) sourceFailures.Remove(owner.Address);
+        }
+    }
+    internal void ReleaseFailure(ObserverFailureOwner owner)
+    {
+        lock (gate) {
+            if (owner.Closed) return;
+            owner.Closed = true;ClearSourceFailure(owner);
+        }
+    }
+    internal void SourceFailure(ObserverFailureOwner owner, DeviceReadoutException? error) => ChangeFailure(owner.Address, error, owner);
     private void AssertAvailable(EntityAddress address, long? since = null)
     {
         if (states.TryGetValue(address, out var state) && state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.");
@@ -75,12 +168,22 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
             if (failureHistory.TryGetValue(new(address.Kind, null), out var family) && family.Revision > since.Value) throw family.Error;
         }
     }
-    internal void Failure(EntityAddress address, DeviceReadoutException? error)
+    internal void Failure(EntityAddress address, DeviceReadoutException? error) => ChangeFailure(address, error, null);
+    private void ChangeFailure(EntityAddress address, DeviceReadoutException? error, ObserverFailureOwner? owner)
     {
         Action<Exception>[] listeners;
         lock (gate) {
-            if (error is null) {failures.Remove(address);return;}
-            failures[address] = error;
+            if (owner?.Closed == true) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Failure source is closed.");
+            if (error is null) {
+                if (owner is null) failures.Remove(address);else ClearSourceFailure(owner);
+                return;
+            }
+            if (owner is null) failures[address] = error;
+            else {
+                if (!sourceFailures.TryGetValue(address, out var owners)) sourceFailures[address] = owners = [];
+                if (owner.Error is null) owners.Add(owner);
+                owner.Error = error;
+            }
             failureHistory[address] = new(++failureRevision, error);
             var affected = states.Where(item => item.Key.Kind == address.Kind && (address.TargetId is null || item.Key == address) && !item.Value.Removed).Select(item => item.Value).ToArray();
             var native = failureListeners.Where(item => item.Address.Kind == address.Kind && (address.TargetId is null || item.Address == address)).ToArray();
@@ -114,19 +217,29 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
     internal ICollectorSubscription? Observe(EntityAddress entity, SensorSamplingRate rate, Action<DeviceSnapshot> emit, Action<Exception> fail, CancellationToken token, bool allowPolling,
         Action<Func<CancellationToken, DeviceSnapshot>>? changed = null)
     {
+        ObservedSensorSource? sensorSource = null;
         lock (gate) {
             AssertAvailable(entity);
             if (states.TryGetValue(entity, out var state)) {
                 if (state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed target was removed.");
-                var listener = (emit, fail);state.Listeners.Add(listener);
-                return new ActionSubscription(() => {lock (gate) state.Listeners.Remove(listener);});
+                sensorSource = state.SensorSource;
+                if (sensorSource is null) {
+                    var listener = (emit, fail);state.Listeners.Add(listener);
+                    return new ActionSubscription(() => {lock (gate) state.Listeners.Remove(listener);});
+                }
             }
         }
         var failureListener = new FailureListener(entity, fail);
-        lock (gate) {AssertAvailable(entity);failureListeners.Add(failureListener);}
+        long sourceRevision;
+        lock (gate) {AssertAvailable(entity);sourceRevision = failureRevision;failureListeners.Add(failureListener);}
         ICollectorSubscription? native = null, changes = null;
         try {
-            native = source.Observe(entity, rate, emit, fail, token);
+            void Publish(DeviceSnapshot snapshot) {
+                try {lock (gate) AssertAvailable(entity, sourceRevision);emit(snapshot);}
+                catch (Exception error) {fail(error);}
+            }
+            token.ThrowIfCancellationRequested();
+            native = sensorSource is null ? source.Observe(entity, rate, emit, fail, token) : sensorSource.Subscribe(rate, Publish, fail, token);
             if (allowPolling && changed is not null) changes = source.ObserveChanges(entity, read => {
                 try {
                     long revision;lock (gate) {AssertAvailable(entity);revision = failureRevision;}
@@ -193,7 +306,7 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
             if (states.TryGetValue(entity, out var state)) {
                 if (state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed sensor was removed.");
                 if (state.Mode == EntityMode.State) throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Expected a sensor.");
-                return new SensorDescription {Kind = Enum.TryParse<SensorKind>(entity.Kind.ToString(), out var kind) ? kind : null};
+                return state.SensorSource?.Description ?? new SensorDescription {Kind = Enum.TryParse<SensorKind>(entity.Kind.ToString(), out var kind) ? kind : null};
             }
         }
         var result = source.Describe(entity, token);
@@ -236,7 +349,7 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
             if (!permissionListeners.TryGetValue(entity, out listeners!)) permissionListeners[entity] = listeners = [];
             listeners.Add(listener);
         }
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var lifetime = new CancellationScope(token);
         try {
             // This callback is application-owned. It must dispatch UI work to the application's UI dispatcher.
             var coordination = request(new(entity.Kind, entity.TargetId), lifetime.Token);
@@ -276,8 +389,30 @@ public sealed class ObserverInputs
         context.Collector.SetCurrent(kind.Kind, target?.Address(context).TargetId);
     }
     public void Permission<T>(Entity<T> entity, PermissionStatus? status) where T : DeviceSnapshot {Open();context.Collector.Permission(entity.Address(context, true), status);}
+    /// <summary>Feeds app foreground/visibility policy. Desktop focus loss alone need not deactivate sensors.</summary>
+    public void SensorActivity(bool active) {Open();context.Collector.SensorActivity(active);}
     /// <summary>Reports or clears an application observer failure for a target or an entire entity kind.</summary>
     public void Failure<T>(Entity<T> entity, DeviceReadoutException? error) where T : DeviceSnapshot {Open();context.Collector.Failure(entity.Address(context, true), error);}
+    /// <summary>Creates an inert, independently disposable provider error slot for a target or entity kind.</summary>
+    public ObserverFailureSource FailureSource<T>(Entity<T> entity) where T : DeviceSnapshot
+    {
+        Open();return new(context, context.Collector.FailureOwner(entity.Address(context, true)));
+    }
+    /// <summary>Registers an inert sensor source. Subscribe and returned cleanup run on the collector worker.</summary>
+    public IDisposable SensorSource<T>(Entity<T> entity, Func<SensorObserverSession<T>, IDisposable?> subscribe, SensorDescription? description = null) where T : DeviceSnapshot
+    {
+        Open();var address = entity.Address(context);
+        if (entity.Mode == EntityMode.State || subscribe is null)
+            throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected a sensor target and subscription callback.");
+        var metadata = (description ?? new()) with {Kind = Enum.TryParse<SensorKind>(entity.Kind.ToString(), out var kind) ? kind : null};
+        return context.Collector.RegisterSensorSource(address, new(metadata, (rate, emit, fail, token) => {
+            var session = new SensorObserverSession<T>(rate, token, emit, fail);
+            try {
+                var cleanup = subscribe(session);
+                return new ActionSubscription(() => {session.Stop();cleanup?.Dispose();});
+            } catch {session.Stop();throw;}
+        }));
+    }
     public IDisposable OnPermissionRequest(Func<PermissionRequest, CancellationToken, Task> coordinator) {Open();return context.Collector.Coordinate(coordinator);}
 }
 
@@ -290,7 +425,7 @@ public sealed class PermissionAccess
     public async Task<PermissionStatus?> Request<T>(Entity<T> entity, CancellationToken token = default) where T : DeviceSnapshot
     {
         if (context.Lifetime.IsCancellationRequested) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "DeviceAccess is closed.");
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, context.Lifetime.Token);
+        using var linked = new CancellationScope(token, context.Lifetime.Token);
         return await context.Collector.RequestPermission(entity.Address(context, true), linked.Token).ConfigureAwait(false);
     }
 }

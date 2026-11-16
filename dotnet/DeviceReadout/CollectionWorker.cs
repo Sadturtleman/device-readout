@@ -17,7 +17,7 @@ internal sealed class CollectionWorker : IDisposable
     internal async Task<T> Run<T>(Func<CancellationToken, T> collect, TimeSpan timeout, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var cancellation = new CancellationScope(token);
         var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         AsyncTiming.ObserveFailure(completion.Task);
         var work = new Work(() => {

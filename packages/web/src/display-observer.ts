@@ -37,6 +37,7 @@ export interface WebDisplayObserverOptions {
 
 type Target = {entity: Entity<DisplaySnapshot>; changed: () => void};
 let nextTarget = 0;
+const cleanup = (action: () => void) => {try {action();} catch { /* Remaining resources still need release; late callbacks are gated. */ }};
 
 /** Connect already-authorized ScreenDetails. This never calls getScreenDetails or requests UI. */
 export function observeWebDisplays(access: DeviceAccess, source: Window, details: WebScreenDetails, options: WebDisplayObserverOptions = {}): WebDisplayObservation {
@@ -49,31 +50,31 @@ export function observeWebDisplays(access: DeviceAccess, source: Window, details
     if (source.closed) throw new DeviceReadoutError(ErrorCode.EntityRemoved, 'The application window is closed.');
     orientation = source.screen.orientation;
   } catch (error) { throw displayError(error); }
+  const failureSource = access.observers.failureSource(DisplayEntity);
   const targets = new Map<WebScreenDetailed, Target>();
   let closed = false;
+  let inventoryRevision = 0;
   let permissionObserved = false;
   let previousPermissionState: PermissionState | undefined;
   const close = () => {
     if (closed) return;
     closed = true;
-    source.removeEventListener('pagehide', close);
-    details.removeEventListener('screenschange', changed);
-    details.removeEventListener('currentscreenchange', changed);
-    orientation?.removeEventListener('change', changed);
-    permission?.removeEventListener('change', changed);
+    cleanup(() => source.removeEventListener('pagehide', close));
+    cleanup(() => details.removeEventListener('screenschange', changed));
+    cleanup(() => details.removeEventListener('currentscreenchange', changed));
+    cleanup(() => orientation?.removeEventListener('change', changed));
+    cleanup(() => permission?.removeEventListener('change', changed));
     for (const [screen, target] of targets) {
-      screen.removeEventListener('change', target.changed);
-      try { access.observers.remove(target.entity); }
-      catch (error) { if (!(error instanceof DeviceReadoutError && error.code === ErrorCode.EntityRemoved)) throw error; }
+      cleanup(() => screen.removeEventListener('change', target.changed));
+      cleanup(() => access.observers.remove(target.entity));
     }
     targets.clear();
-    try { access.observers.failure(DisplayEntity, null); }
-    catch (error) { if (!(error instanceof DeviceReadoutError && error.code === ErrorCode.EntityRemoved)) throw error; }
+    cleanup(() => failureSource.close());
   };
   const report = (error: unknown) => {
     const failure = displayError(error);
     if (failure.code === ErrorCode.EntityRemoved) { close(); return; }
-    try { access.observers.failure(DisplayEntity, failure); }
+    try { failureSource.publish(failure); }
     catch (error) { if (error instanceof DeviceReadoutError && error.code === ErrorCode.EntityRemoved) close(); else throw error; }
   };
   const allowed = () => {
@@ -119,15 +120,15 @@ export function observeWebDisplays(access: DeviceAccess, source: Window, details
     const present = new Set(screens);
     for (const [screen, target] of targets) {
       if (present.has(screen)) continue;
-      screen.removeEventListener('change', target.changed);
       targets.delete(screen);
       access.observers.remove(target.entity);
+      cleanup(() => screen.removeEventListener('change', target.changed));
     }
     for (const screen of screens) {
       let target = targets.get(screen);
       if (!target) {
         const entity = access.observers.target(DisplayEntity, `web-display-${++nextTarget}`);
-        const changed = () => publish(screen, entity);
+        const changed = () => {if (targets.get(screen)?.entity === entity) publish(screen, entity);};
         target = {entity, changed};
         targets.set(screen, target);
         screen.addEventListener('change', changed);
@@ -138,12 +139,22 @@ export function observeWebDisplays(access: DeviceAccess, source: Window, details
     return true;
   };
   const refreshInput = () => {
-    if (!allowed()) return;
-    screens = details.screens;
-    current = details.currentScreen;
-    if (!Array.isArray(screens)) throw new DeviceReadoutError(ErrorCode.ReadFailed, 'Screen inventory is unavailable.');
-    if (!refresh() || !allowed()) return;
-    access.observers.failure(DisplayEntity, null);
+    const revision = ++inventoryRevision;
+    const superseded = () => closed || revision !== inventoryRevision;
+    try {
+      if (!allowed() || superseded()) return;
+      const nextScreens = details.screens;
+      if (superseded()) return;
+      const nextCurrent = details.currentScreen;
+      if (superseded()) return;
+      if (!Array.isArray(nextScreens)) throw new DeviceReadoutError(ErrorCode.ReadFailed, 'Screen inventory is unavailable.');
+      screens = nextScreens;
+      current = nextCurrent;
+      if (!refresh() || superseded() || !allowed() || superseded()) return;
+      failureSource.publish(null);
+    } catch (error) {
+      if (!superseded()) throw error;
+    }
   };
   const changed = () => {
     if (closed) return;

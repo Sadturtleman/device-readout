@@ -311,6 +311,12 @@ if (OperatingSystem.IsWindows()) tests.AddRange(WindowsNetworkTests.Cases());
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsIdentityTests.Cases());
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsConnectivityTests.Cases());
 tests.AddRange(StateChangeTests.Cases());
+tests.AddRange(ObserverFailureTests.Cases());
+tests.AddRange(SensorSourceTests.Cases());
+if (args is ["--filter", var filter]) {
+    tests = tests.Where(test => test.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
+    if (tests.Count == 0) {Console.Error.WriteLine("No tests match the filter.");return 2;}
+} else if (args.Length != 0) {Console.Error.WriteLine("Expected --filter <test name fragment>.");return 2;}
 var failures = 0;
 foreach(var (name, run) in tests) {
     try {await run();Console.WriteLine($"PASS {name}");}

@@ -15,7 +15,7 @@ internal static class AsyncTiming
     {
         if (timeout <= TimeSpan.Zero) throw new TimeoutException();
         if (timeout <= MaximumTimer) return await task.WaitAsync(timeout, token).ConfigureAwait(false);
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var lifetime = new CancellationScope(token);
         var deadline = Delay(timeout, lifetime.Token);
         try {
             if (await Task.WhenAny(task, deadline).ConfigureAwait(false) == task) return await task.ConfigureAwait(false);
