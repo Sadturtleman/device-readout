@@ -114,14 +114,15 @@ public sealed partial class DeviceAccess : IDisposable
     {
         _ = kind.Address(context, true);
         using var linked = Link(cancellationToken);
-        return await context.Worker.Run(token => context.Collector.List(kind.Kind, token).Select(id => kind.Bind(context, id)).ToImmutableArray(), ReadTimeout, linked.Token).ConfigureAwait(false);
+        return await context.Worker.Run(token => context.Collector.ListAddresses(kind.Kind, token)
+            .Select(address => kind.Bind(context, address.TargetId!, address.Observed)).ToImmutableArray(), ReadTimeout, linked.Token).ConfigureAwait(false);
     }
     public async Task<Entity<T>?> Current<T>(Entity<T> kind, CancellationToken cancellationToken = default) where T : DeviceSnapshot
     {
         _ = kind.Address(context, true);
         using var linked = Link(cancellationToken);
-        var id = await context.Worker.Run(token => context.Collector.Current(kind.Kind, token), ReadTimeout, linked.Token).ConfigureAwait(false);
-        return id is null ? null : kind.Bind(context, id);
+        var address = await context.Worker.Run(token => context.Collector.CurrentAddress(kind.Kind, token), ReadTimeout, linked.Token).ConfigureAwait(false);
+        return address is { } selected ? kind.Bind(context, selected.TargetId!, selected.Observed) : null;
     }
     public async Task<SensorDescription> Describe<T>(Entity<T> sensor, CancellationToken cancellationToken = default) where T : DeviceSnapshot
     {
@@ -133,7 +134,7 @@ public sealed partial class DeviceAccess : IDisposable
     {
         var address = entity.Address(context, true);
         using var linked = Link(cancellationToken);
-        return await context.Worker.Run(_ => context.Collector.Capabilities(address), ReadTimeout, linked.Token).ConfigureAwait(false);
+        return await context.Worker.Run(token => context.Collector.Capabilities(address, token), ReadTimeout, linked.Token).ConfigureAwait(false);
     }
 
     private sealed record SnapshotInput(Func<CancellationToken, DeviceSnapshot> Read, TaskCompletionSource? Completed = null);
@@ -178,7 +179,8 @@ public sealed partial class DeviceAccess : IDisposable
 
         async Task Produce()
         {
-            ICollectorSubscription? subscription = null;
+            ICollectorSubscription? allocated = null;
+            var releaseRequested = 0;
             void Enqueue(SnapshotInput input) {
                 try {
                     if (!stop.IsCancellationRequested && !incoming.Writer.TryWrite(input))
@@ -195,7 +197,13 @@ public sealed partial class DeviceAccess : IDisposable
             try {
                 var rate = entity.Mode == EntityMode.Sample ? SensorSamplingRate : SensorSamplingRate.PlatformDefault;
                 var deadline = Stopwatch.StartNew();
-                subscription = await context.Worker.Run(_ => context.Observe(address, entity.Mode, rate, Emit, Fail, stop.Token, Changed), ReadTimeout, stop.Token).ConfigureAwait(false);
+                var subscription = await context.Worker.Run(workerToken => {
+                    var created = context.Observe(address, entity.Mode, rate, Emit, Fail, stop.Token, Changed);
+                    Interlocked.Exchange(ref allocated, created);
+                    // Preserve ownership even when cancellation wins the caller's registration await.
+                    if (Volatile.Read(ref releaseRequested) != 0) _ = Release(Interlocked.Exchange(ref allocated, null));
+                    return created;
+                }, ReadTimeout, stop.Token).ConfigureAwait(false);
                 if (entity.Mode != EntityMode.State && subscription is null)
                     throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Sensor observation is unavailable.");
                 if (entity.Mode == EntityMode.State) {
@@ -213,7 +221,11 @@ public sealed partial class DeviceAccess : IDisposable
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
             catch (Exception error) {Fail(error);}
-            finally {await Release(subscription).ConfigureAwait(false);incoming.Writer.TryComplete();}
+            finally {
+                Interlocked.Exchange(ref releaseRequested, 1);
+                _ = Release(Interlocked.Exchange(ref allocated, null));
+                incoming.Writer.TryComplete();
+            }
         }
     }
 

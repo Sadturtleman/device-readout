@@ -1,7 +1,8 @@
 namespace DeviceReadout;
 
 public enum PermissionStatus { Granted, Denied, NotDetermined, Restricted, Unavailable }
-public sealed record PermissionRequest(EntityKind Kind, string? TargetId);
+/// <summary>Identifies the requested target, including its native or app-observed namespace.</summary>
+public sealed record PermissionRequest(EntityKind Kind, string? TargetId, bool Observed = false);
 
 internal sealed class ObserverFailureOwner(EntityAddress address)
 {
@@ -54,7 +55,7 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
     }
     private readonly object gate = new();
     private readonly Dictionary<EntityAddress, State> states = [];
-    private readonly Dictionary<EntityKind, string?> current = [];
+    private readonly Dictionary<EntityKind, EntityAddress?> current = [];
     private readonly Dictionary<EntityAddress, DeviceReadoutException> failures = [];
     private readonly Dictionary<EntityAddress, List<ObserverFailureOwner>> sourceFailures = [];
     private readonly Dictionary<EntityAddress, FailureRecord> failureHistory = [];
@@ -94,7 +95,7 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
     {
         State state;
         lock (gate) {
-            if (!states.TryGetValue(address, out state!) || state.Mode == EntityMode.State)
+            if (!address.Observed || !states.TryGetValue(address, out state!) || state.Mode == EntityMode.State)
                 throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected an app-owned sensor target.");
             if (state.Removed) throw new DeviceReadoutException(ErrorCode.EntityRemoved, "Observed sensor was removed.");
             if (state.SensorSource is not null) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "A sensor source is already registered for this target.");
@@ -130,7 +131,7 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
         }
         foreach(var fail in listeners) fail(error);
     }
-    internal void SetCurrent(EntityKind kind, string? id) {lock (gate) current[kind] = id;}
+    internal void SetCurrent(EntityKind kind, EntityAddress? address) {lock (gate) current[kind] = address;}
     private DeviceReadoutException? FailureFor(EntityAddress address) =>
         failures.GetValueOrDefault(address) ?? failures.GetValueOrDefault(new(address.Kind, null)) ??
         sourceFailures.GetValueOrDefault(address)?.FirstOrDefault()?.Error ??
@@ -267,35 +268,44 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
         }
     }
     public IReadOnlyList<string> List(EntityKind kind, CancellationToken token)
+        => ListAddresses(kind, token).Select(address => address.TargetId!).ToArray();
+    private bool HasObservedInventory(EntityKind kind) =>
+        states.Keys.Any(address => address.Kind == kind && address.Observed) || current.ContainsKey(kind) && current[kind] is null;
+    internal IReadOnlyList<EntityAddress> ListAddresses(EntityKind kind, CancellationToken token)
     {
         long revision;
         lock (gate) {
             AssertAvailable(new(kind, null));
             revision = failureRevision;
-            var targets = states.Where(item => item.Key.Kind == kind).ToArray();
-            if (targets.Length > 0 || current.ContainsKey(kind)) return targets.Where(item => !item.Value.Removed && item.Key.TargetId is not null).Select(item => item.Key.TargetId!).ToArray();
+            if (HasObservedInventory(kind)) return states.Where(item => item.Key.Kind == kind && item.Key.Observed && !item.Value.Removed)
+                .Select(item => item.Key).ToArray();
         }
         var result = source.List(kind, token);
         lock (gate) AssertAvailable(new(kind, null), revision);
-        return result;
+        return result.Select(id => new EntityAddress(kind, id)).ToArray();
     }
     public string? Current(EntityKind kind, CancellationToken token)
+        => CurrentAddress(kind, token)?.TargetId;
+    internal EntityAddress? CurrentAddress(EntityKind kind, CancellationToken token)
     {
         long revision;
         lock (gate) {
             AssertAvailable(new(kind, null));
             revision = failureRevision;
-            if (current.TryGetValue(kind, out var id)) return id is not null && states.TryGetValue(new(kind, id), out var state) && state.Removed ? null : id;
-            if (states.Keys.Any(address => address.Kind == kind)) return null;
+            if (current.TryGetValue(kind, out var address)) return address is { } selected && states.TryGetValue(selected, out var state) && state.Removed ? null : address;
+            if (HasObservedInventory(kind)) return null;
         }
         var result = source.Current(kind, token);
         lock (gate) AssertAvailable(new(kind, null), revision);
-        return result;
+        return result is null ? null : new(kind, result);
     }
     public EntityCapabilities Capabilities(EntityAddress entity)
+        => Capabilities(entity, CancellationToken.None);
+    public EntityCapabilities Capabilities(EntityAddress entity, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         lock (gate) {if (states.TryGetValue(entity, out var state)) return new(!state.Removed, !state.Removed);}
-        return source.Capabilities(entity);
+        return source.Capabilities(entity, token);
     }
     public SensorDescription Describe(EntityAddress entity, CancellationToken token)
     {
@@ -352,7 +362,7 @@ internal sealed class ObservedCollector(IDeviceCollector source) : IDeviceCollec
         using var lifetime = new CancellationScope(token);
         try {
             // This callback is application-owned. It must dispatch UI work to the application's UI dispatcher.
-            var coordination = request(new(entity.Kind, entity.TargetId), lifetime.Token);
+            var coordination = request(new(entity.Kind, entity.TargetId, entity.Observed), lifetime.Token);
             AsyncTiming.ObserveFailure(coordination);
             var observed = completion.Task.WaitAsync(lifetime.Token);
             var first = await Task.WhenAny(coordination, observed).ConfigureAwait(false);
@@ -377,8 +387,8 @@ public sealed class ObserverInputs
     public Entity<T> Target<T>(Entity<T> kind, string id) where T : DeviceSnapshot
     {
         Open();_ = kind.Address(context, true);
-        if (!kind.RequiresTarget || string.IsNullOrEmpty(id)) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected a multi-target kind and nonempty ID.");
-        var entity = kind.Bind(context, id);context.Collector.Register(entity.Address(context), kind.Mode);return entity;
+        if (!kind.RequiresTarget || kind.TargetId is not null || string.IsNullOrEmpty(id)) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected an unbound multi-target kind and nonempty ID.");
+        var entity = kind.Bind(context, id, observed: true);context.Collector.Register(entity.Address(context), kind.Mode);return entity;
     }
     public void Publish<T>(Entity<T> entity, T snapshot) where T : DeviceSnapshot {Open();context.Collector.Publish(entity.Address(context), entity.Mode, snapshot);}
     public void Remove<T>(Entity<T> entity) where T : DeviceSnapshot {Open();context.Collector.Remove(entity.Address(context), entity.Mode);}
@@ -386,7 +396,7 @@ public sealed class ObserverInputs
     {
         Open();_ = kind.Address(context, true);
         if (!kind.RequiresTarget || (target is not null && target.Kind != kind.Kind)) throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Expected a target of the same kind.");
-        context.Collector.SetCurrent(kind.Kind, target?.Address(context).TargetId);
+        context.Collector.SetCurrent(kind.Kind, target?.Address(context));
     }
     public void Permission<T>(Entity<T> entity, PermissionStatus? status) where T : DeviceSnapshot {Open();context.Collector.Permission(entity.Address(context, true), status);}
     /// <summary>Feeds app foreground/visibility policy. Desktop focus loss alone need not deactivate sensors.</summary>

@@ -93,6 +93,7 @@ internal static partial class WindowsConnectivityTests
         runtime.Fire();Check(await first.MoveNextAsync() && await second.MoveNextAsync(), "equal native notifications are retained");
         var lateHandler = runtime.RetainFirstHandler();
         await first.DisposeAsync();
+        await TestCompletion.Until(() => runtime.HandlerCount == 1, "first path registration removed");
         Check(runtime.Removals == 1 && runtime.HandlerCount == 1, "one closure leaves the other subscription active");
         var reads = runtime.Reads;
         ConnectivityFixture.Invoke(lateHandler);Marshal.Release(lateHandler);
@@ -100,6 +101,7 @@ internal static partial class WindowsConnectivityTests
         runtime.NoProfile = true;runtime.Fire();
         Check(await second.MoveNextAsync() && second.Current.ConnectionState == ConnectionState.Disconnected, "remaining stream follows disappearance of the preferred path");
         await second.DisposeAsync();
+        await TestCompletion.Until(() => runtime.HandlerCount == 0, "all path registrations removed");
         Check(runtime.Removals == 2 && runtime.HandlerCount == 0, "all watch registrations released");
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Check(runtime.References.Values.All(count => count == 0) && runtime.Threads.Distinct().Count() == 1 && !runtime.Threads.Contains(caller), "native register/read/remove/release stay on the worker");
@@ -129,6 +131,7 @@ internal static partial class WindowsConnectivityTests
             runtime.ProfileResult = unchecked((int)0x80070005);runtime.Fire();
             await Error(ErrorCode.PermissionDenied, async () => {await stream.MoveNextAsync();});
         }
+        await TestCompletion.Until(() => runtime.HandlerCount == 0, "failed path registration removed");
         Check(runtime.HandlerCount == 0 && runtime.Registrations == runtime.Removals, "whole-query error releases native observation");
         runtime.ProfileResult = 0;
         Check((await access.Get(Entities.NetworkPath)).InternetValidated == true, "new explicit read can recover");
@@ -183,6 +186,7 @@ internal static partial class WindowsConnectivityTests
             Check(runtime.Active == 1 && runtime.Registrations == 1, "actual native status registration succeeded");
             Check(await stream.MoveNextAsync(), "actual serial poll remains active");
         }
+        await TestCompletion.Until(() => Volatile.Read(ref runtime.Active) == 0, "actual path registration removed");
         Check(runtime.Active == 0 && runtime.Removals == 1 && runtime.RemovalResult == 0, "actual native status handler removed successfully");
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Check(runtime.Initializations == 1 && runtime.Uninitializations == 1 && runtime.FactoryReleases == 1, "native factory and runtime lifetime balanced");

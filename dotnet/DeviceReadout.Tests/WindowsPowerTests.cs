@@ -36,6 +36,7 @@ internal static class WindowsPowerTests
             platform.Emit(WindowsPowerSettings.Source, uint.MaxValue);
             Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)) && stream.Current.PowerSource is null, "unknown native power source");
         } finally {await stream.DisposeAsync();}
+        await TestCompletion.Until(() => Volatile.Read(ref platform.Active) == 0, "power notifications released");
         Check(platform.Active == 0, "notifications released with stream");
         Check(platform.NativeThreads.All(thread => thread == platform.NativeThreads[0] && thread != caller), "registration, reads and cleanup share collection lane");
         var reads = platform.Reads;platform.Emit(WindowsPowerSettings.Source, 1);
@@ -56,6 +57,7 @@ internal static class WindowsPowerTests
                 Check(stream.Current.CollectedAt > DateTimeOffset.UtcNow.AddSeconds(-4), "native snapshot timestamp");
             } while (samples < 3 || !native.Callbacks.ContainsKey(WindowsPowerSettings.Source) || !native.Callbacks.ContainsKey(WindowsPowerSettings.Saving));
         }
+        await TestCompletion.Until(() => Volatile.Read(ref native.Active) == 0, "actual power notifications released");
         Check(native.Active == 0 && native.ReleaseFailures.IsEmpty, "both actual native registrations unregistered successfully");
         Console.WriteLine("Native power notifications: source and battery saver callbacks received and unregistered without a window.");
     }
@@ -91,6 +93,7 @@ internal static class WindowsPowerTests
                 Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)) && stream.Current.CollectedAt > first, "fallback/hybrid polling retains equal states");
                 Check(platform.Active == (available ? 2 : 0), "optional native registrations");
             }
+            await TestCompletion.Until(() => Volatile.Read(ref platform.Active) == 0, "polled power notifications released");
             Check(platform.Active == 0, "polled stream releases notifications");
         }
         var failed = new PowerPlatformFixture {RegistrationFailure = WindowsPowerSettings.Saving};
@@ -107,6 +110,7 @@ internal static class WindowsPowerTests
             try {await stream.MoveNextAsync();throw new Exception("Expected native callback failure");}
             catch (DeviceReadoutException error) when (error.Code == ErrorCode.PermissionDenied) { }
         }
+        await TestCompletion.Until(() => Volatile.Read(ref failed.Active) == 0, "failed power notifications released");
         Check(failed.Active == 0, "native failure releases all registrations");
         Check((await failureAccess.Get(Entities.Power)).PowerSaveMode == false, "a failed subscription does not poison independent reads");
     }

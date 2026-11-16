@@ -6,6 +6,12 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [Windows scalar sensor checkpoint](docs/verification/2026-11-17-windows-scalar-sensors.md) adds native Illuminance and Pressure discovery, metadata, get/watch and sampling configuration. The complete .NET/Windows suite passes 136/136 with zero build warnings or errors. Controlled native ABI tests cover measurements and ownership; independent native enumeration confirms that this host has neither sensor. Physical measurements and the remaining Windows sensor families are still required.
+
+The [.NET state lifetime checkpoint](docs/verification/2026-11-17-dotnet-state-lifetime.md) fixes cancellation/error/disposal waiting on native cleanup and a missed subscription release during registration cancellation. The complete Windows suite passes 129/129, including 128 repeated registration/cancellation cycles and actual native removal checks.
+
+The [.NET target identity checkpoint](docs/verification/2026-11-17-dotnet-target-identity.md) separates same-name native and app targets across state/sensor queries, discovery, current selection, permission requests, errors and removal. The complete Windows run passes 125/125; broader concurrency and physical/platform coverage remain pending.
+
 The [.NET sensor-source checkpoint](docs/verification/2026-11-17-dotnet-sensor-sources.md) adds app-owned sensor registration, passive metadata, independent get/watch sessions and explicit activity-driven pause/resume. Cancellation and late-registration cleanup regressions are fixed. All 121 .NET/Windows checks pass; native Windows sensor collectors and physical-device evidence remain pending.
 
 The [web display ownership checkpoint](docs/verification/2026-11-17-web-display-ownership.md) preserves application errors through observer recovery/disposal, keeps newer inventories during reentrant initial reads, and retires removed handles even when host listener cleanup fails. Common/collector checks pass 34/34 and the full Chrome/Edge suite passes 64/64.

@@ -210,6 +210,7 @@ internal static partial class WindowsBatteryTests
             Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)) && stream.Current.Level == 0.6, "equal battery event retained");
             slot.TagError = 1167;power.Emit(WindowsPowerSettings.BatteryPercentage, 70);
             await Error(ErrorCode.EntityRemoved, async () => {await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));});
+            await TestCompletion.Until(() => Volatile.Read(ref power.Active) == 0, "removed battery notifications released");
             Check(power.Active == 0, "removal releases both notifications");
             slot.TagError = null;await Error(ErrorCode.EntityRemoved, () => access.Get(target));
             Check(power.Reads == 0, "individual battery data never comes from aggregate power status");

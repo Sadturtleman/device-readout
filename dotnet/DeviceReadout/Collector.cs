@@ -12,6 +12,9 @@ public interface IDeviceCollector : IDisposable
     SensorDescription Describe(EntityAddress sensor, CancellationToken cancellationToken)
         => throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "Sensor descriptions are unavailable.");
     EntityCapabilities Capabilities(EntityAddress entity) => new(null, null);
+    /// <summary>Override for capability probes that perform cancellable native work.</summary>
+    EntityCapabilities Capabilities(EntityAddress entity, CancellationToken cancellationToken)
+    {cancellationToken.ThrowIfCancellationRequested();return Capabilities(entity);}
     ICollectorSubscription? Observe(EntityAddress entity, SensorSamplingRate samplingRate,
         Action<DeviceSnapshot> emit, Action<Exception> fail, CancellationToken cancellationToken) => null;
     /// <summary>State callbacks copy event data and enqueue a read; the SDK executes that read on its collection lane with a deadline.</summary>

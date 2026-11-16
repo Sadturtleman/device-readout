@@ -27,9 +27,10 @@ internal sealed class WindowsCollector : IDeviceCollector
     private readonly WindowsNetworkInterfaces networks;
     private readonly WindowsPublisherIdentity publisherIdentity;
     private readonly WindowsConnectivity connectivity;
-    internal WindowsCollector(IWindowsBatteryPlatform? batteryPlatform = null, IWindowsPowerPlatform? powerPlatform = null, IWindowsAggregateBatteryPlatform? aggregatePlatform = null, IWindowsCpuPlatform? cpuPlatform = null, IWindowsCpuAvailabilityPlatform? cpuAvailabilityPlatform = null, IWindowsNetworkPlatform? networkPlatform = null, IWindowsRoutePlatform? routePlatform = null, IWindowsIdentityRuntime? identityRuntime = null, IWindowsConnectivityRuntime? connectivityRuntime = null, IWindowsWlanApi? wlanApi = null)
-    {batteries = new(batteryPlatform ?? new WindowsBatteryPlatform());power = powerPlatform ?? new WindowsPowerPlatform();aggregate = aggregatePlatform ?? new WindowsAggregateBatteryPlatform();cpus = new(cpuPlatform ?? new WindowsCpuPlatform());cpuAvailability = new(cpuAvailabilityPlatform ?? new WindowsCpuAvailabilityPlatform());networks = new(networkPlatform ?? new WindowsNetworkPlatform(), routePlatform ?? new WindowsRoutePlatform());publisherIdentity = new(identityRuntime);connectivity = new(connectivityRuntime, wlanApi);}
-    public void Dispose() {try {batteries.Dispose();} finally {try {aggregate.Dispose();} finally {try {networks.Dispose();} finally {try {publisherIdentity.Dispose();} finally {connectivity.Dispose();}}}}}
+    private readonly WindowsSensors sensors;
+    internal WindowsCollector(IWindowsBatteryPlatform? batteryPlatform = null, IWindowsPowerPlatform? powerPlatform = null, IWindowsAggregateBatteryPlatform? aggregatePlatform = null, IWindowsCpuPlatform? cpuPlatform = null, IWindowsCpuAvailabilityPlatform? cpuAvailabilityPlatform = null, IWindowsNetworkPlatform? networkPlatform = null, IWindowsRoutePlatform? routePlatform = null, IWindowsIdentityRuntime? identityRuntime = null, IWindowsConnectivityRuntime? connectivityRuntime = null, IWindowsWlanApi? wlanApi = null, IWindowsSensorPlatform? sensorPlatform = null)
+    {batteries = new(batteryPlatform ?? new WindowsBatteryPlatform());power = powerPlatform ?? new WindowsPowerPlatform();aggregate = aggregatePlatform ?? new WindowsAggregateBatteryPlatform();cpus = new(cpuPlatform ?? new WindowsCpuPlatform());cpuAvailability = new(cpuAvailabilityPlatform ?? new WindowsCpuAvailabilityPlatform());networks = new(networkPlatform ?? new WindowsNetworkPlatform(), routePlatform ?? new WindowsRoutePlatform());publisherIdentity = new(identityRuntime);connectivity = new(connectivityRuntime, wlanApi);sensors = new(sensorPlatform ?? new WindowsSensorPlatform());}
+    public void Dispose() {try {batteries.Dispose();} finally {try {aggregate.Dispose();} finally {try {networks.Dispose();} finally {try {publisherIdentity.Dispose();} finally {try {connectivity.Dispose();} finally {sensors.Dispose();}}}}}}
     public DeviceSnapshot Read(EntityAddress entity, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -60,7 +61,11 @@ internal sealed class WindowsCollector : IDeviceCollector
     }
 
     public EntityCapabilities Capabilities(EntityAddress entity)
+        => Capabilities(entity, CancellationToken.None);
+    public EntityCapabilities Capabilities(EntityAddress entity, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+        if (WindowsSensors.Supports(entity.Kind)) return sensors.Capabilities(entity, token);
         if (entity.Kind == EntityKind.Battery) return entity.TargetId == AggregateBatteryTarget ? new(true, true) : batteries.Capabilities(entity.TargetId);
         if (entity.Kind == EntityKind.CpuCore) return cpus.Capabilities(entity.TargetId);
         if (entity.Kind == EntityKind.NetworkInterface) return networks.Capabilities(entity.TargetId);
@@ -134,6 +139,7 @@ internal sealed class WindowsCollector : IDeviceCollector
     public IReadOnlyList<string> List(EntityKind kind, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (WindowsSensors.Supports(kind)) return sensors.List(kind, cancellationToken);
         return kind switch {
             EntityKind.StorageVolume => RefreshVolumes(),
             EntityKind.Battery => BatteryTargets(cancellationToken),
@@ -158,6 +164,12 @@ internal sealed class WindowsCollector : IDeviceCollector
         if (!Native.GetVolumeNameForVolumeMountPoint(new string(volume).TrimEnd('\0'), guid, (uint)guid.Length)) return null;
         RefreshVolumes();return volumes.Find(new string(guid).TrimEnd('\0'));
     }
+
+    public SensorDescription Describe(EntityAddress entity, CancellationToken token)
+        => WindowsSensors.Supports(entity.Kind) ? sensors.Describe(entity, token)
+            : throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "This Windows sensor description is unavailable.");
+    public ICollectorSubscription? Observe(EntityAddress entity, SensorSamplingRate rate, Action<DeviceSnapshot> emit, Action<Exception> fail, CancellationToken token)
+        => WindowsSensors.Supports(entity.Kind) ? sensors.Observe(entity, rate, emit, fail, token) : null;
 
     private IReadOnlyList<string> BatteryTargets(CancellationToken token)
     {

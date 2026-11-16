@@ -310,9 +310,13 @@ if (OperatingSystem.IsWindows()) tests.AddRange(WindowsCpuAvailabilityTests.Case
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsNetworkTests.Cases());
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsIdentityTests.Cases());
 if (OperatingSystem.IsWindows()) tests.AddRange(WindowsConnectivityTests.Cases());
+if (OperatingSystem.IsWindows()) tests.AddRange(WindowsSensorTests.Cases());
+if (OperatingSystem.IsWindows()) tests.AddRange(WindowsSensorAbiTests.Cases());
 tests.AddRange(StateChangeTests.Cases());
+tests.AddRange(StateLifetimeTests.Cases());
 tests.AddRange(ObserverFailureTests.Cases());
 tests.AddRange(SensorSourceTests.Cases());
+tests.AddRange(TargetIdentityTests.Cases());
 if (args is ["--filter", var filter]) {
     tests = tests.Where(test => test.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();
     if (tests.Count == 0) {Console.Error.WriteLine("No tests match the filter.");return 2;}

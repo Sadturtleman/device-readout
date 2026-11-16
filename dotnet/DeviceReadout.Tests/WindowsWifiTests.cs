@@ -65,6 +65,7 @@ internal static partial class WindowsConnectivityTests
         await Error(ErrorCode.EntityRemoved, async () => {await a.MoveNextAsync();});
         Check(await b.MoveNextAsync() && b.Current.Ssid == "Second", "unrelated Wi-Fi stream survives disconnection");
         await a.DisposeAsync();
+        await TestCompletion.Until(() => runtime.HandlerCount == 1, "removed Wi-Fi registration released");
         Check(runtime.Removals == 1 && runtime.HandlerCount == 1, "only removed connection unsubscribes");
         var reads = runtime.InventoryReads;ConnectivityFixture.Invoke(lateHandler);Marshal.Release(lateHandler);
         await Task.Delay(25);Check(runtime.InventoryReads == reads, "callback retained after removal does not enqueue native work");
@@ -79,6 +80,7 @@ internal static partial class WindowsConnectivityTests
         await Error(ErrorCode.EntityRemoved, () => access.Get(replacement));
         Check((await access.List(Entities.WifiConnection)).Length == 2, "different network on the same adapter replaces the old connection");
         await b.DisposeAsync();
+        await TestCompletion.Until(() => runtime.HandlerCount == 0, "Wi-Fi registrations removed");
         Check(runtime.Registrations == runtime.Removals && runtime.HandlerCount == 0, "native event sources are balanced");
         await using (var polled = access.WithPollInterval(TimeSpan.FromMilliseconds(25)).Watch(targets[1], deadline.Token).GetAsyncEnumerator()) {
             Check(await polled.MoveNextAsync() && await polled.MoveNextAsync() && polled.Current.Ssid == "Second", "equal serial polls remain active with native events");
@@ -131,6 +133,7 @@ internal static partial class WindowsConnectivityTests
             runtime.InventoryResult = denied;runtime.Fire();
             await Error(ErrorCode.PermissionDenied, async () => {await stream.MoveNextAsync();});
         }
+        await TestCompletion.Until(() => runtime.HandlerCount == 0, "failed Wi-Fi registration removed");
         Check(runtime.HandlerCount == 0 && runtime.Registrations == runtime.Removals, "failed event read stops its registration");
         runtime.InventoryResult = 0;
         Check((await access.Get(target)).Ssid == "Selected", "later explicit read can recover without cached data");
@@ -208,6 +211,7 @@ internal static partial class WindowsConnectivityTests
             await using var stream = access.WithPollInterval(TimeSpan.FromMilliseconds(25)).Watch(target, deadline.Token).GetAsyncEnumerator();
             Check(await stream.MoveNextAsync() && await stream.MoveNextAsync(), "actual native initial snapshot and poll");
         }
+        await TestCompletion.Until(() => Volatile.Read(ref runtime.Active) == 0, "actual Wi-Fi registrations removed");
         Check(runtime.Active == 0 && runtime.Registrations == runtime.Removals && runtime.RemovalResult == 0, "available physical Wi-Fi registrations are removed");
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Check(runtime.FactoryReleases == 1 && runtime.Initializations == 1 && runtime.Uninitializations == 1

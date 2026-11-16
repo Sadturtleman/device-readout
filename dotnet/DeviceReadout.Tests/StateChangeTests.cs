@@ -25,7 +25,7 @@ internal static class StateChangeTests
             Check(collectionThreads.Count == 2 && collectionThreads.All(thread => thread == collector.ReadThread && thread != caller), "event reads use collection lane");
             Check(collector.Reads == 1, "event-only source does not poll");
         } finally {await stream.DisposeAsync();}
-        Check(collector.Stopped.Task.IsCompletedSuccessfully, "subscription cleanup");
+        await collector.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(1));
         var lateRead = false;collector.Emit(_ => {lateRead = true;return new PowerSnapshot();});
         await Task.Delay(20);Check(!lateRead, "late event cannot read after cancellation");
     }

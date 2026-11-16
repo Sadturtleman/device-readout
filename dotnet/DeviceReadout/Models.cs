@@ -26,7 +26,7 @@ public sealed class DeviceReadoutException(ErrorCode code, string message, Excep
     public ErrorCode Code { get; } = code;
 }
 public enum EntityMode { State, Sample, Event }
-public readonly record struct EntityAddress(EntityKind Kind, string? TargetId = null);
+public readonly record struct EntityAddress(EntityKind Kind, string? TargetId = null, bool Observed = false);
 public sealed record EntityCapabilities(bool? Readable, bool? Watchable);
 
 public sealed class Entity<T> : IEquatable<Entity<T>> where T : DeviceSnapshot
@@ -36,23 +36,24 @@ public sealed class Entity<T> : IEquatable<Entity<T>> where T : DeviceSnapshot
     internal bool RequiresTarget { get; }
     internal object? Owner { get; }
     internal string? TargetId { get; }
-    internal Entity(EntityKind kind, bool requiresTarget, EntityMode mode, object? owner = null, string? targetId = null)
-        => (Kind, RequiresTarget, Mode, Owner, TargetId) = (kind, requiresTarget, mode, owner, targetId);
+    internal bool Observed { get; }
+    internal Entity(EntityKind kind, bool requiresTarget, EntityMode mode, object? owner = null, string? targetId = null, bool observed = false)
+        => (Kind, RequiresTarget, Mode, Owner, TargetId, Observed) = (kind, requiresTarget, mode, owner, targetId, observed);
     internal EntityAddress Address(object owner, bool collection = false)
     {
         if (Owner is not null && !ReferenceEquals(Owner, owner))
             throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Entity handle belongs to another DeviceAccess context.");
         if (RequiresTarget && TargetId is null && !collection)
             throw new DeviceReadoutException(ErrorCode.InvalidConfiguration, "Discover or observe a target before reading this entity.");
-        return new(Kind, TargetId);
+        return new(Kind, TargetId, Observed);
     }
-    internal Entity<T> Bind(object owner, string id) => new(Kind, true, Mode, owner, id);
+    internal Entity<T> Bind(object owner, string id, bool observed = false) => new(Kind, true, Mode, owner, id, observed);
     public bool Equals(Entity<T>? other) => other is not null && Kind == other.Kind && Mode == other.Mode
-        && RequiresTarget == other.RequiresTarget && ReferenceEquals(Owner, other.Owner)
+        && RequiresTarget == other.RequiresTarget && Observed == other.Observed && ReferenceEquals(Owner, other.Owner)
         && string.Equals(TargetId, other.TargetId, StringComparison.Ordinal);
     public override bool Equals(object? other) => other is Entity<T> entity && Equals(entity);
     public override int GetHashCode() => HashCode.Combine(Kind, Mode, RequiresTarget,
-        Owner is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Owner), TargetId);
+        Owner is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Owner), TargetId, Observed);
     public static bool operator ==(Entity<T>? left, Entity<T>? right) => ReferenceEquals(left, right) || (left is not null && left.Equals(right));
     public static bool operator !=(Entity<T>? left, Entity<T>? right) => !(left == right);
 }

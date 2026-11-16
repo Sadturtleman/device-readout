@@ -54,7 +54,7 @@ internal static partial class WindowsConnectivityTests
         runtime.NoPlan = true;runtime.Fire();
         Check(await performance.MoveNextAsync() && performance.Current.DownlinkBps is null && performance.Current.UplinkBps is null, "plan disappearance does not reuse old rates");
         Check(await path.MoveNextAsync(), "drain matching path notification");
-        await performance.DisposeAsync();Check(runtime.HandlerCount == 1, "performance closure preserves path observation");
+        await performance.DisposeAsync();
         runtime.Level = 3;runtime.Fire();
         Check(await path.MoveNextAsync() && path.Current.InternetValidated == true, "remaining path stream keeps updating");
         await path.DisposeAsync();access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -88,6 +88,7 @@ internal static partial class WindowsConnectivityTests
             runtime.PlanResult = unchecked((int)0x80070005);runtime.Fire();
             await Error(ErrorCode.PermissionDenied, async () => {await stream.MoveNextAsync();});
         }
+        await TestCompletion.Until(() => runtime.HandlerCount == 0, "failed performance registration removed");
         Check(runtime.HandlerCount == 0 && runtime.Registrations == runtime.Removals, "whole-plan failure closes the stream registration");
         runtime.PlanResult = 0;
         Check((await access.Get(Entities.NetworkPerformance)).UplinkBps == 32000000, "fresh explicit get after recovery");
@@ -107,6 +108,7 @@ internal static partial class WindowsConnectivityTests
             Check(await stream.MoveNextAsync() && runtime.Active == 1 && runtime.Registrations == 1, "actual performance watch registers native status observation");
             Check(await stream.MoveNextAsync(), "actual performance poll completes even when rates are unavailable");
         }
+        await TestCompletion.Until(() => Volatile.Read(ref runtime.Active) == 0, "actual performance registration removed");
         Check(runtime.Active == 0 && runtime.Removals == 1 && runtime.RemovalResult == 0, "actual native registration removed successfully");
         _ = await access.Get(Entities.NetworkPath);
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));

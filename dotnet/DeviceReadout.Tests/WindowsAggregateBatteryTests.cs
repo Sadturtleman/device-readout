@@ -46,6 +46,7 @@ internal static class WindowsAggregateBatteryTests
                 Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)) && stream.Current.Level == 0 && stream.Current.ChargeRateMilliwatts == 0 && stream.Current.State == BatteryState.Idle, "equal report updates retain zero and idle status");
             }
         }
+        await TestCompletion.Until(() => Volatile.Read(ref runtime.Handler) == 0, "aggregate event reference released");
         Check(runtime.Handler == 0, "native event reference released");
         runtime.Values[2] = null;runtime.Failures[0] = unchecked((int)0x80004005);runtime.Status = 99;
         var partial = await access.Get(current);
@@ -123,6 +124,7 @@ internal static class WindowsAggregateBatteryTests
             Check(await stream.MoveNextAsync(), "native aggregate initial watch state");
             Check(platform.Active == 1, "actual WinRT ReportUpdated registration");
         }
+        await TestCompletion.Until(() => Volatile.Read(ref platform.Active) == 0, "actual aggregate handler removed");
         Check(platform.Active == 0 && platform.ReleaseFailure is null, "native ReportUpdated handler removed successfully");
         Check(!runtime.Stopped.Task.IsCompleted, "closing one watch retains the context runtime");
         access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(2));
