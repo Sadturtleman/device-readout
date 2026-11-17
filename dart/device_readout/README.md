@@ -105,6 +105,8 @@ Remaining platform collectors are pending. The [Flutter adapters](../../flutter/
 
 ## Browser use
 
+Native browser state polling waits for typed snapshot handoff before scheduling its next interval. Pausing a subscription retains its pending polling result; other subscriptions and native events remain independent. A completed read does not consume its timeout while delivery is paused. Event overload fails the affected watch explicitly. Deploy this Dart SDK together with the worker asset from the same build. See [delivery verification](../../docs/verification/2026-11-17-dart-watch-delivery.md) for sixteen scenarios per Chrome/Edge and 51/51 native/JIT contracts.
+
 Large input/output graphs and typed collections are prepared across event-loop turns, with cancellation/deadline checks between traversal slices. The 128 active-read limit includes preparation through typed delivery; excess demand fails explicitly. Streams preserve order and duplicates with a bounded delivery queue. Browser cloning, allocation and application callbacks can still perform synchronous work. See the [transfer scheduling evidence](../../docs/verification/2026-11-17-dart-web-transfer.md) for the 12,000-mode checks and remaining limits.
 
 Serve the built `packages/web/dist/dart-worker.js` module with your application. The web package also exposes this asset as `@device-readout/web/dart-worker`; package publication and automated Flutter asset packaging remain pending. Then pass its served URL explicitly:

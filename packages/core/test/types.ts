@@ -1,5 +1,14 @@
 import { DeviceAccess, RamEntity, OsEntity, Duration, DisplayEntity, AccelerometerEntity, SensorSamplingRate, type RamSnapshot, type OsSnapshot } from '../dist/index.js';
 import {DeviceReadoutError, ErrorCode, type ObserverFailureSource} from '../dist/index.js';
+import type {CollectorPort} from '../dist/collector.js';
+
+// Existing void send callbacks may return an incidental value, such as push().
+const sent: unknown[] = [];
+const synchronousPort: CollectorPort = {
+  send: response => sent.push(response),
+  listen: () => () => {},
+};
+void synchronousPort;
 declare const access: DeviceAccess;
 async function consumer(): Promise<void> {
   const ram:RamSnapshot=await access.get(RamEntity);

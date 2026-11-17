@@ -75,6 +75,7 @@ final class _StateWatch<S extends DeviceSnapshot> {
               sdk.pollInterval,
               sdk.readTimeout,
               _nativeCancellation,
+              onCollected: () => _initialDeadline?.cancel(),
             )
             .listen(
               (value) {

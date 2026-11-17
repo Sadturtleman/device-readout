@@ -6,6 +6,7 @@ final class _NativeStateWatch {
   final EntityAddress entity;
   final Duration pollInterval, readTimeout;
   final CancellationToken cancellation;
+  final void Function()? onCollected;
   final _pending = Queue<DeviceSnapshot?>();
   late final StreamController<DeviceSnapshot?> _controller;
   Timer? _deadline;
@@ -20,6 +21,7 @@ final class _NativeStateWatch {
     this.pollInterval,
     this.readTimeout,
     this.cancellation,
+    this.onCollected,
   ) {
     _controller = StreamController<DeviceSnapshot?>(
       onListen: _start,
@@ -89,6 +91,7 @@ final class _NativeStateWatch {
       return;
     }
     _pending.add(snapshot);
+    if (snapshot != null) onCollected?.call();
     _drain();
   }
 

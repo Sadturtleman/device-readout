@@ -12,7 +12,8 @@ final class _WebReading {
 final class _WebDelivery {
   final JSAny? value;
   final _WebReading reading;
-  _WebDelivery(this.value, this.reading);
+  final int? deliveryId;
+  _WebDelivery(this.value, this.reading, this.deliveryId);
 }
 
 final class _WebWatch {
@@ -21,7 +22,8 @@ final class _WebWatch {
   final EntityAddress entity;
   final Duration pollInterval, readTimeout;
   final CancellationToken cancellation;
-  final _pending = Queue<DeviceSnapshot>();
+  final void Function()? onCollected;
+  final _pending = Queue<(DeviceSnapshot, int?)>();
   final _incoming = Queue<_WebDelivery>();
   final _readings = <_WebReading>{};
   late final StreamController<DeviceSnapshot?> _controller;
@@ -39,6 +41,7 @@ final class _WebWatch {
     this.pollInterval,
     this.readTimeout,
     this.cancellation,
+    this.onCollected,
   ) {
     _controller = StreamController<DeviceSnapshot?>(
       onListen: _start,
@@ -132,8 +135,21 @@ final class _WebWatch {
           }
           final reading = _reading();
           _currentRead = null;
+          final deliveryId = message
+              .getProperty<JSAny?>('deliveryId'.toJS)
+              .dartify();
+          if (deliveryId != null &&
+              (deliveryId is! int ||
+                  deliveryId <= 0 ||
+                  deliveryId > 9007199254740991)) {
+            throw const FormatException('Invalid snapshot delivery identity.');
+          }
           _incoming.add(
-            _WebDelivery(message.getProperty<JSAny?>('value'.toJS), reading),
+            _WebDelivery(
+              message.getProperty<JSAny?>('value'.toJS),
+              reading,
+              deliveryId as int?,
+            ),
           );
           unawaited(_process());
         case 'error':
@@ -190,7 +206,8 @@ final class _WebWatch {
         budget.check();
         item.reading.finish();
         _readings.remove(item.reading);
-        _pending.add(snapshot);
+        onCollected?.call();
+        _pending.add((snapshot, item.deliveryId));
         _drain();
       }
     } catch (error) {
@@ -215,7 +232,25 @@ final class _WebWatch {
     Timer.run(() {
       _scheduled = false;
       if (_closed || _paused || _pending.isEmpty) return;
-      _controller.add(_pending.removeFirst());
+      final delivery = _pending.removeFirst();
+      _controller.add(delivery.$1);
+      // A read is ready for the next poll only after typed conversion and
+      // handoff. Paused consumers retain one polling result, not a backlog.
+      if (delivery.$2 != null) {
+        try {
+          owner._worker?.postMessage(
+            {'id': id, 'operation': 'ack', 'deliveryId': delivery.$2}.jsify(),
+          );
+        } catch (_) {
+          fail(
+            const DeviceReadoutException(
+              ErrorCode.readFailed,
+              'Worker delivery acknowledgement failed.',
+            ),
+          );
+          return;
+        }
+      }
       _drain();
       _finishIfEnded();
     });

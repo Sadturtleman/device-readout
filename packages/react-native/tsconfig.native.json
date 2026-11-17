@@ -8,6 +8,7 @@
     "typeRoots": ["../../.tools/react-native-0.88/node_modules/@types"],
     "paths": {
       "@device-readout/core": ["packages/core/dist/index.d.ts"],
+      "@device-readout/web": ["packages/web/dist/index.d.ts"],
       "react-native": [".tools/react-native-0.88/node_modules/react-native/types_generated/index.d.ts"]
     }
   },

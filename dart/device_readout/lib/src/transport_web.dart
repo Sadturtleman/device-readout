@@ -475,14 +475,16 @@ final class _WebChannel implements CollectionChannel {
     EntityAddress entity,
     Duration pollInterval,
     Duration readTimeout,
-    CancellationToken cancellation,
-  ) => _WebWatch(
+    CancellationToken cancellation, {
+    void Function()? onCollected,
+  }) => _WebWatch(
     this,
     ++_nextId,
     entity,
     pollInterval,
     readTimeout,
     cancellation,
+    onCollected,
   ).stream;
 }
 

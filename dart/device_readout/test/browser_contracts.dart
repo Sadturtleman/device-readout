@@ -81,6 +81,22 @@ Future<void> main() async {
     checks.add('lazy typed browser reads and owned worker cleanup');
     await browserWatch().timeout(const Duration(seconds: 10));
     checks.add('cold native state watch, equal polls and immutable cadence');
+    await pausedPolling().timeout(const Duration(seconds: 10));
+    checks.add('paused consumers do not accumulate native polling snapshots');
+    await completedPausedRead().timeout(const Duration(seconds: 10));
+    checks.add(
+      'completed reads do not time out while their consumer is paused',
+    );
+    await independentDeliveries().timeout(const Duration(seconds: 10));
+    checks.add(
+      'native events and other watches remain independent of paused polling',
+    );
+    await pendingDeliveryTermination().timeout(const Duration(seconds: 10));
+    checks.add('cancellation and closure release watches awaiting delivery');
+    await nativeEventOverflow().timeout(const Duration(seconds: 10));
+    checks.add(
+      'native event overload fails only its watch and keeps the worker usable',
+    );
     await browserObservers().timeout(const Duration(seconds: 10));
     checks.add('observed state, sensors and metadata normalize in the worker');
     await workerDeadlines().timeout(const Duration(seconds: 10));
@@ -125,6 +141,205 @@ Future<void> main() async {
         'stack': '$stack',
       }.jsify(),
     );
+  }
+}
+
+Future<void> pausedPolling() async {
+  final sdk = DeviceAccess.web(workerUri: Uri.base.resolve('/paced-worker.js'))
+      .withPollInterval(const Duration(milliseconds: 5));
+  int produced() =>
+      globalContext.getProperty<JSNumber>('pacedSnapshots'.toJS).toDartInt;
+  final baseline = produced();
+  final values = <CpuSnapshot>[];
+  final failures = <Object>[];
+  final subscription = sdk
+      .watch(Entities.cpu)
+      .listen(values.add, onError: (Object error) => failures.add(error));
+  subscription.pause();
+  try {
+    await until(() => produced() > baseline || failures.isNotEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    check(
+      failures.isEmpty && values.isEmpty && produced() == baseline + 1,
+      'A paused watch may retain its initial read but must not accumulate polling snapshots.',
+    );
+    subscription.resume();
+    await until(() => values.length >= 3 || failures.isNotEmpty);
+    check(
+      failures.isEmpty &&
+          values.length >= 3 &&
+          values
+              .take(3)
+              .every(
+                (value) =>
+                    value.availableLogicalProcessorCount ==
+                    values.first.availableLogicalProcessorCount,
+              ),
+      'Resuming preserves equal samples and starts subsequent polls.',
+    );
+    await subscription.cancel();
+    final settled = produced();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    check(produced() <= settled + 1, 'Cancellation stops subsequent polling.');
+    check(
+      (await sdk.get(Entities.cpu)).availableLogicalProcessorCount != null,
+      'A completed watch does not prevent later reads on the shared worker.',
+    );
+  } finally {
+    await subscription.cancel();
+    sdk.dispose();
+  }
+}
+
+Future<void> completedPausedRead() async {
+  final sdk = DeviceAccess.web(workerUri: Uri.base.resolve('/paced-worker.js'))
+      .withReadTimeout(const Duration(milliseconds: 150));
+  StreamSubscription<CpuSnapshot>? subscription;
+  try {
+    await sdk.get(Entities.cpu);
+    final before = globalContext
+        .getProperty<JSNumber>('pacedSnapshots'.toJS)
+        .toDartInt;
+    final values = <CpuSnapshot>[];
+    final failures = <Object>[];
+    subscription = sdk
+        .watch(Entities.cpu)
+        .listen(values.add, onError: (Object error) => failures.add(error));
+    subscription.pause();
+    await until(
+      () =>
+          globalContext.getProperty<JSNumber>('pacedSnapshots'.toJS).toDartInt >
+          before,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    subscription.resume();
+    await until(() => values.isNotEmpty || failures.isNotEmpty);
+    check(
+      failures.isEmpty && values.length == 1,
+      'A completed initial read must not become ReadTimeout solely because the consumer pauses delivery.',
+    );
+  } finally {
+    await subscription?.cancel();
+    sdk.dispose();
+  }
+}
+
+Future<void> independentDeliveries() async {
+  final sdk = DeviceAccess.web(workerUri: Uri.base.resolve('/paced-worker.js'))
+      .withPollInterval(const Duration(milliseconds: 5));
+  int produced() =>
+      globalContext.getProperty<JSNumber>('pacedSnapshots'.toJS).toDartInt;
+  final before = produced();
+  final cpu = <CpuSnapshot>[];
+  final failures = <Object>[];
+  final subscription = sdk
+      .watch(Entities.cpu)
+      .listen(cpu.add, onError: (Object error) => failures.add(error));
+  subscription.pause();
+  try {
+    await until(() => produced() > before);
+    final locales = await sdk.watch(Entities.locale).take(3).toList();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    check(
+      locales.length == 3 &&
+          locales.every(
+            (value) =>
+                value.currentLanguageTag == locales.first.currentLanguageTag,
+          ),
+      'Native language events retain both equal updates while another watch is paused.',
+    );
+    check(
+      failures.isEmpty && cpu.isEmpty && produced() == before + 4,
+      'Delivery of another stream must not release the paused polling read.',
+    );
+    final other = await sdk.watch(Entities.cpu).take(3).toList();
+    check(
+      other.length == 3 && cpu.isEmpty,
+      'Another polling subscription has an independent delivery lifetime.',
+    );
+    subscription.resume();
+    await until(() => cpu.length >= 2 || failures.isNotEmpty);
+    check(
+      failures.isEmpty && cpu.length >= 2,
+      'The paused subscription resumes independently.',
+    );
+  } finally {
+    await subscription.cancel();
+    sdk.dispose();
+  }
+}
+
+Future<void> pendingDeliveryTermination() async {
+  for (final close in [false, true]) {
+    final sdk = DeviceAccess.web(
+      workerUri: Uri.base.resolve('/paced-worker.js'),
+    ).withPollInterval(const Duration(milliseconds: 5));
+    int produced() =>
+        globalContext.getProperty<JSNumber>('pacedSnapshots'.toJS).toDartInt;
+    final before = produced();
+    final failures = <Object>[];
+    final values = <CpuSnapshot>[];
+    final subscription = sdk
+        .watch(Entities.cpu)
+        .listen(values.add, onError: (Object error) => failures.add(error));
+    subscription.pause();
+    try {
+      await until(() => produced() > before);
+      if (close) sdk.dispose();
+      await subscription.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      check(
+        values.isEmpty && produced() == before + 1,
+        'Ending a paused watch cannot release another poll or deliver retained state.',
+      );
+      if (!close) {
+        final resumed = await sdk.watch(Entities.cpu).take(2).toList();
+        check(
+          resumed.length == 2,
+          'Cancelling an undelivered read leaves the shared worker reusable.',
+        );
+      }
+    } finally {
+      await subscription.cancel();
+      sdk.dispose();
+    }
+  }
+}
+
+Future<void> nativeEventOverflow() async {
+  final sdk = DeviceAccess.web(
+    workerUri: Uri.base.resolve('/paced-worker.js?burst'),
+  );
+  final before = globalContext
+      .getProperty<JSNumber>('pacedErrors'.toJS)
+      .toDartInt;
+  final failures = <Object>[];
+  final subscription = sdk
+      .watch(Entities.locale)
+      .listen((_) {}, onError: (Object error) => failures.add(error));
+  subscription.pause();
+  try {
+    await until(
+      () =>
+          globalContext.getProperty<JSNumber>('pacedErrors'.toJS).toDartInt >
+          before,
+    );
+    subscription.resume();
+    await until(() => failures.isNotEmpty);
+    check(
+      failures.length == 1 &&
+          failures.single is DeviceReadoutException &&
+          (failures.single as DeviceReadoutException).code ==
+              ErrorCode.readFailed,
+      'An event source exceeding bounded delivery fails explicitly instead of dropping updates silently.',
+    );
+    check(
+      (await sdk.get(Entities.cpu)).availableLogicalProcessorCount != null,
+      'An overloaded watch cannot poison unrelated reads or its shared worker.',
+    );
+  } finally {
+    await subscription.cancel();
+    sdk.dispose();
   }
 }
 

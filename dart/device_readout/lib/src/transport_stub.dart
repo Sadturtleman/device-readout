@@ -58,8 +58,9 @@ final class _UnsupportedChannel implements CollectionChannel {
     EntityAddress entity,
     Duration pollInterval,
     Duration readTimeout,
-    CancellationToken cancellation,
-  ) async* {
+    CancellationToken cancellation, {
+    void Function()? onCollected,
+  }) async* {
     cancellation.throwIfCancelled();
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,

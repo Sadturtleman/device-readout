@@ -432,7 +432,47 @@ Future<void> nativeCancellationFailureIsContained() async {
   }
 }
 
+Future<void> completedReadSurvivesPause() async {
+  final probe = ReceivePort();
+  final listener = probe.listen((_) {});
+  final sdk = DeviceAccess.isolated(
+    eventCollector,
+    initialData: probe.sendPort,
+  );
+  StreamSubscription<RamSnapshot>? subscription;
+  try {
+    await sdk.get(Entities.ram);
+    final values = <RamSnapshot>[];
+    final failures = <Object>[];
+    final finished = Completer<void>();
+    subscription = sdk
+        .withReadTimeout(const Duration(milliseconds: 150))
+        .watch(Entities.ram)
+        .listen(
+          values.add,
+          onError: (Object error) => failures.add(error),
+          onDone: finished.complete,
+        );
+    subscription.pause();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    subscription.resume();
+    await finished.future.timeout(const Duration(seconds: 2));
+    check(
+      failures.isEmpty &&
+          values.map((value) => value.availableBytes).join(',') == '7,7,9',
+      'Completed native readings retain ordered duplicates beyond readTimeout while the consumer pauses delivery.',
+    );
+  } finally {
+    await subscription?.cancel();
+    sdk.dispose();
+    await listener.cancel();
+    probe.close();
+  }
+}
+
 final checks = <String, Future<void> Function()>{
+  'completed native readings do not expire during consumer pause':
+      completedReadSurvivesPause,
   'native state streams are cold, worker-owned and preserve duplicate updates':
       nativeStateStreamSettings,
   'app-observed state replaces a native stream without leaking cancellation':

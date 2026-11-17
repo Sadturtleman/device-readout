@@ -8,6 +8,20 @@ import {chromium} from 'playwright-core';
 const root=resolve('.');
 const temp=resolve('.tools/dart-browser-temp');
 await mkdir(temp,{recursive:true});process.env.TEMP=temp;process.env.TMP=temp;
+const pacedWorker=`
+import '/packages/web/dist/dart-worker.js';
+const send=globalThis.postMessage.bind(globalThis);
+globalThis.postMessage=(value,...args)=>{
+ if(value.type==='snapshot')send({id:0,type:'result',value:{fixture:'paced-snapshot'}});
+ if(value.type==='error')send({id:0,type:'result',value:{fixture:'paced-error'}});
+ return send(value,...args);
+};
+addEventListener('message',event=>{
+ if(event.data.operation==='watch'&&event.data.entity?.kind==='Locale')setTimeout(()=>{
+  const count=new URL(location.href).searchParams.has('burst')?3000:2;
+  for(let i=0;i<count;i++)dispatchEvent(new Event('languagechange'));
+ },20);
+});`;
 const heldWorker=`
 const stamp=value=>({collectedAt:new Date().toISOString(),...value});
 const phase=value=>postMessage({id:0,type:'result',value:{fixture:value}});
@@ -47,6 +61,7 @@ onmessage=e=>{const r=e.data;if(r.operation==='cancel')return;
 const server=createServer(async(request,response)=>{
   try {
     const path=new URL(request.url,'http://localhost').pathname;
+    if(path==='/paced-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(pacedWorker);return;}
     if(path==='/held-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(heldWorker);return;}
     if(path==='/slow-delivery-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(slowDeliveryWorker);return;}
     if(path==='/large-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(largeWorker);return;}
@@ -72,6 +87,8 @@ for(const [name,executablePath] of [
   const page=await browser.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{
     globalThis.workersCreated=0;globalThis.workersClosed=0;
+    globalThis.pacedSnapshots=0;
+    globalThis.pacedErrors=0;
     globalThis.heldOperations=0;globalThis.releasedOperations=0;
     globalThis.latePayloadReads=0;
     globalThis.slowPayloadReads=0;
@@ -83,6 +100,8 @@ for(const [name,executablePath] of [
     const NativeWorker=Worker;
     globalThis.Worker=class extends NativeWorker{
       constructor(...args){super(...args);globalThis.workersCreated++;this.addEventListener('message',e=>{
+        if(e.data?.id===0&&e.data.value?.fixture==='paced-snapshot')globalThis.pacedSnapshots++;
+        if(e.data?.id===0&&e.data.value?.fixture==='paced-error')globalThis.pacedErrors++;
         if(e.data?.id===0&&e.data.value?.fixture==='held')globalThis.heldOperations++;
         if(e.data?.id===0&&e.data.value?.fixture==='released')globalThis.releasedOperations++;
         if(e.data?.probeStale)Object.defineProperty(e.data,'value',{enumerable:true,get(){globalThis.latePayloadReads++;throw Error('Retired response payload must not be traversed.');}});

@@ -2,6 +2,8 @@
 
 The actual Flutter example and a public-API consumer now run against the served DeviceReadout module worker. This checkpoint covers representative Chrome/Edge applications, not the full 46-entity, binding, physical-device or platform acceptance matrix.
 
+The subsequent [Dart watch-delivery checkpoint](2026-11-17-dart-watch-delivery.md) rebuilds these same applications after adding polling handoff and completed-read deadline handling; all application scenarios remain passing.
+
 ## Changes and reproduced defects
 
 The example previously constructed native access in the browser and rendered an UnsupportedEntity read error. It now selects `DeviceAccess.web(workerUri: ...)` on web and native access elsewhere. The build helper bundles Flutter's web resources locally and copies the built SDK worker beside the app. The contract consumer is also served under `/contracts/`, exercising a relative worker URL and a non-root base path.

@@ -29,6 +29,15 @@ function number(value:unknown,positive=false):number|null {
 
 /** Explicit app-owned Dimensions connection. Only setup reads get('window'); changes copy their payload. */
 export function observeReactNativeViewport(access:DeviceAccess,source:ReactNativeDimensionsSource):ReactNativeViewportObservation {
+  return observeViewport(access,source,true);
+}
+
+/** Web Dimensions reports a constant fontScale, not a system text preference. */
+export function observeReactNativeWebViewport(access:DeviceAccess,source:ReactNativeDimensionsSource):ReactNativeViewportObservation {
+  return observeViewport(access,source,false);
+}
+
+function observeViewport(access:DeviceAccess,source:ReactNativeDimensionsSource,fontScaleAvailable:boolean):ReactNativeViewportObservation {
   if(!source||typeof source.get!=='function'||typeof source.addEventListener!=='function')
     throw new DeviceReadoutError(ErrorCode.InvalidConfiguration,'Expected an application-owned Dimensions source.');
   const entity=access.observers.target(ViewportEntity,`rn-viewport-${++nextViewport}`);
@@ -45,7 +54,7 @@ export function observeReactNativeViewport(access:DeviceAccess,source:ReactNativ
       return width===null||height===null?null:{width,height};
     });
     try {
-      access.observers.publish(entity,{size,textScaleFactor:optional(()=>number(metrics?.fontScale,true)),
+      access.observers.publish(entity,{size,textScaleFactor:fontScaleAvailable?optional(()=>number(metrics?.fontScale,true)):null,
         visualViewportSize:null,visualViewportScale:null,safeAreaInsets:null});
     }catch{close();}
   };

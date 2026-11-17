@@ -19,12 +19,14 @@ abstract interface class CollectionChannel {
   );
 
   /// A single null update selects common polling; it is never public SDK data.
+  /// onCollected reports a completed non-null snapshot before consumer delivery.
   Stream<DeviceSnapshot?> watch(
     EntityAddress entity,
     Duration pollInterval,
     Duration readTimeout,
-    CancellationToken cancellation,
-  );
+    CancellationToken cancellation, {
+    void Function()? onCollected,
+  });
   Future<DeviceSnapshot> read(
     EntityAddress entity,
     SensorSamplingRate rate,

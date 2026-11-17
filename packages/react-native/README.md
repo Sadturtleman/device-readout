@@ -1,5 +1,7 @@
 # DeviceReadout React Native binding
 
+The [React Native Web checkpoint](../../docs/verification/2026-11-17-react-native-web.md) adds a browser worker entrypoint verified with RN Web 0.21.4 / React 19.3.0 in actual Chrome/Edge applications. Local tarball consumers pass TypeScript 5.0 and inert server import checks without installing the mobile framework. This remains a development checkpoint; packages have not been published to a registry.
+
 This is an implementation checkpoint, not a release-ready platform claim. The Android TurboModule compiles against React Native 0.88.0 and its actual generated interface. Native get/watch, discovery/current, capabilities, sensor metadata, native inventory notifications and app-owned state/permission/lifecycle/sensor-source inputs connect to the existing Kotlin runtime. The autolinked Hermes/JSI example passes twelve baseline scenarios plus actual focus loss, window change and native sensor resume on API 26 and API 36 emulators: fifteen reported passes each, with independent kernel-memory and sensor-registration checks. See [independent observer failure verification](../../docs/verification/2026-11-17-observer-failure-ownership.md), [framework-observer verification](../../docs/verification/2026-11-16-react-native-framework-observers.md) and the preceding [app-owned sensor-source verification](../../docs/verification/2026-11-15-react-native-sensor-sources.md).
 
 The intended application entrypoint preserves the shared API:
@@ -53,7 +55,40 @@ The first native discovery registers one context-owned inventory observer on the
 
 `access.observers.sensorSource(target, {description, subscribe})` now connects app-owned sensor sources on Android. Registration and metadata reads are inert. Every get/watch receives its own observation; gets and event sources use the platform-default rate, while continuous watches receive their configured rate. Return listener cleanup from `subscribe`, copy event values with `session.publish`, and report a request-scoped error with `session.fail`. Cancellation, timeout, inactivity, removal and close abort the session and release its listener; resume creates a fresh session. Keep the app's JS subscription and cleanup callbacks nonblocking. Samples are decoded and normalized by native background work, and late samples cannot enter a different session.
 
-**Still required:** Display, safe-area and visual viewport framework integrations, physical app-source plugin integration, broader source replacement/concurrency, all-kind native inventory notifications, broader mixed-inventory/target-retirement and malformed-input handling, blocked-event/cleanup and overload coverage, external package consumption and distribution, iOS/Windows/macOS/web adapters and the complete version/field/device matrix. The earlier [observer verification](../../docs/verification/2026-11-11-react-native-observers.md) retains its controlled-test scope.
+**Still required:** Native Display, safe-area and visual viewport framework integrations, physical app-source plugin integration, broader source replacement/concurrency, all-kind native inventory notifications, broader mixed-inventory/target-retirement and malformed-input handling, blocked-event/cleanup and overload coverage, native package consumption and distribution, iOS/Windows/macOS adapters, remaining web environments and the complete version/field/device matrix. The earlier [observer verification](../../docs/verification/2026-11-11-react-native-observers.md) retains its controlled-test scope.
+
+## React Native Web
+
+Browser-aware bundlers select the web entrypoint for the same package import. An explicit import is available for server/pre-render toolchains and web-specific options:
+
+```typescript
+import {Dimensions, AppState} from 'react-native';
+import {createReactNativeDeviceAccess, observeReactNativeViewport,
+  observeReactNativeSensorActivity} from '@device-readout/react-native/web';
+
+// Attach from the application's mounted lifecycle, and close in its cleanup.
+const access = createReactNativeDeviceAccess({
+  workerUrl: new URL('/assets/device-readout-worker.js', window.location.href),
+});
+const viewport = observeReactNativeViewport(access, Dimensions);
+const activity = observeReactNativeSensorActivity(access, AppState);
+// ...await access.get(viewport.entity), consume access.watch(...)
+activity.close();
+viewport.close();
+access.close();
+```
+
+Alias `react-native` to `react-native-web` in the app bundler, as described by [RN Web setup](https://necolas.github.io/react-native-web/docs/setup/). Serve `@device-readout/web/worker` at the selected URL. Without an override the worker URL is relative to the bundled web module; the example copies worker.js beside app.js. The browser API also exports the existing explicit web display, viewport and sensor observers. Apps select which observer owns a target/context; they are not attached automatically.
+
+The RN web viewport supplies logical window size. Its textScaleFactor is null because RN Web's fontScale is a fixed 1, not a system preference. Native RN retains its actual fontScale mapping. Safe-area and visual viewport values remain null for the RN Dimensions adapter; use the explicit web viewport adapter when browser visual viewport state is needed. RN AppState follows document visibility in the pinned implementation. The integration test uses controlled visibility events; real background throttling remains unverified.
+
+```powershell
+./tools/prepare-react-native-web.ps1
+./tools/test-react-native-web.ps1
+./tools/test-react-native-web-packages.ps1
+```
+
+The last command packs three local SDK packages, installs them into an isolated consumer and runs the real browser application plus server import and TypeScript checks. It verifies that mobile React Native is absent and that tarballs exclude build caches and include LICENSE. It does not publish anything or validate Android installation from those packages. Both platform peers are optional; applications supply the framework they use. Browser consumer types use TypeScript 5.0 `moduleResolution: "Bundler"` and `customConditions: ["browser"]`; the explicit `/web` entrypoint also resolves its own declarations.
 
 The preceding example-only `Isolation` checkpoint passes deliberately blocked get/watch/close checks through the real TurboModule and Hermes on API 26 and API 36. Both JS and Android UI loops advance while collection is held, deadlines and close settle before external release, and the worker exits after release. That checkpoint retains its original build and eleven ordinary-app scenarios. See the [runtime evidence and limits](../../docs/verification/2026-11-15-react-native-isolation.md); the earlier [fixture checkpoint](../../docs/verification/2026-11-15-react-native-isolation-fixture.md) records compilation separately.
 

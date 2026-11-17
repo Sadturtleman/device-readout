@@ -12,11 +12,49 @@ function wire(value: unknown): unknown {
   return value;
 }
 const scope = globalThis as unknown as BrowserEnvironment & { postMessage(value: unknown): void };
+let nextDeliveryId = 0;
+const deliveries = new Map<number, Map<number, () => void>>();
+function releaseDeliveries(id: number): void {
+  const pending = deliveries.get(id);
+  deliveries.delete(id);
+  for (const release of pending?.values() ?? []) release();
+}
 const port: CollectorPort = {
-  send: response => scope.postMessage(wire(response)),
+  send(response) {
+    if (response.type === 'error' || response.type === 'end') releaseDeliveries(response.id);
+    scope.postMessage(wire(response));
+  },
+  deliver(response, signal) {
+    if (signal.aborted) return Promise.resolve();
+    const pending = deliveries.get(response.id) ?? new Map<number, () => void>();
+    if (pending.size >= 2048 || nextDeliveryId >= Number.MAX_SAFE_INTEGER) {
+      throw new DeviceReadoutError(ErrorCode.ReadFailed, 'The Dart worker delivery queue is full.');
+    }
+    const deliveryId = ++nextDeliveryId;
+    let release!: () => void;
+    const delivered = new Promise<void>(resolve => {
+      release = () => {
+        signal.removeEventListener('abort', release);
+        if (!pending.delete(deliveryId)) return;
+        if (pending.size === 0) deliveries.delete(response.id);
+        resolve();
+      };
+    });
+    pending.set(deliveryId, release);
+    deliveries.set(response.id, pending);
+    signal.addEventListener('abort', release, {once: true});
+    try { scope.postMessage(wire({...response, deliveryId})); }
+    catch (error) { releaseDeliveries(response.id); throw error; }
+    return delivered;
+  },
   listen(listener) {
     const message = (event: Event) => {
       const request = (event as MessageEvent).data;
+      if (request?.operation === 'ack') {
+        deliveries.get(request.id)?.get(request.deliveryId)?.();
+        return;
+      }
+      if (request?.operation === 'cancel') releaseDeliveries(request.id);
       if (request?.operation !== 'normalize') { listener(request); return; }
       try {
         const description = request.value?.description === true;

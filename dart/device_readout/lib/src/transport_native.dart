@@ -109,14 +109,16 @@ final class _IsolateChannel implements CollectionChannel {
     EntityAddress entity,
     Duration pollInterval,
     Duration readTimeout,
-    CancellationToken cancellation,
-  ) => _NativeStateWatch(
+    CancellationToken cancellation, {
+    void Function()? onCollected,
+  }) => _NativeStateWatch(
     this,
     ++_nextId,
     entity,
     pollInterval,
     readTimeout,
     cancellation,
+    onCollected,
   ).stream;
 
   @override

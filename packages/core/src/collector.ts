@@ -13,7 +13,13 @@ export interface Collector {
   describe?(entity:EntityAddress,signal:AbortSignal):Promise<unknown>;
   supports?(entity:EntityAddress):boolean;
 }
-export interface CollectorPort {send(response:Response):void;listen(listener:(request:Request)=>void):()=>void;}
+export interface CollectorPort {
+ send(response:Response):void;
+ /** Optional snapshot handoff. Delays subsequent polling, never native events.
+  * Settle outstanding delivery when the owning signal is aborted. */
+ deliver?(response:Response,signal:AbortSignal):Promise<void>;
+ listen(listener:(request:Request)=>void):()=>void;
+}
 /** Run this endpoint in a worker or native collection context, never in the host UI path. */
 export function serveCollector(collector:Collector,port:CollectorPort):()=>void {
  const observed=new ObservedCollector(collector,response=>port.send(response));collector=observed;
@@ -31,12 +37,16 @@ export function serveCollector(collector:Collector,port:CollectorPort):()=>void 
      const cleanup=()=>{cancelActivity?.();cancelFailure?.();sampleControl?.abort();unsubscribe?.();cancelPoll?.();cancelDeadline?.();running.delete(request.id);};
      control.signal.addEventListener('abort',cleanup,{once:true});
      const fail=(error:unknown)=>{if(control.signal.aborted)return;port.send({id:request.id,type:'error',error:{code:error instanceof DeviceReadoutError?error.code:ErrorCode.ReadFailed,message:error instanceof Error?error.message:'Collection failed.'}});control.abort();};
-     const emit=(raw:unknown)=>{if(control.signal.aborted)return;try{port.send({id:request.id,type:'snapshot',value:normalizeSnapshot(entity.kind,raw)});}catch(error){fail(error);}};
+     const emit=(raw:unknown)=>{if(control.signal.aborted)return;try{
+       const response:Response={id:request.id,type:'snapshot',value:normalizeSnapshot(entity.kind,raw)};
+       if(port.deliver)return port.deliver(response,control.signal).catch(fail);
+       port.send(response);
+     }catch(error){fail(error);}};
      const read=async()=>{
        if(control.signal.aborted)return;
        port.send({id:request.id,type:'reading'});
        cancelDeadline=schedule(settings.readTimeoutMs,()=>fail(new DeviceReadoutError(ErrorCode.ReadTimeout,'Read deadline exceeded.')));
-       try {const raw=await collector.read(entity,control.signal,settings);cancelDeadline?.();emit(raw);}
+       try {const raw=await collector.read(entity,control.signal,settings);cancelDeadline?.();await emit(raw);}
        catch(error){fail(error);}
        if(!control.signal.aborted&&(!collector.observe||collector.pollingRequired?.(entity)))cancelPoll=schedule(settings.pollIntervalMs,()=>{void read();});
      };
