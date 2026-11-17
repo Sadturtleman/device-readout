@@ -30,11 +30,26 @@ onmessage=e=>{const r=e.data;if(r.operation==='cancel')return;
   setTimeout(()=>{postMessage({id:r.id,type:'reading'});postMessage({id:r.id,type:'snapshot',slowDelivery:true,value:value()});},30);
  }else postMessage({id:r.id,type:'result',slowDelivery:r.entity.kind==='Ram',value:value()});
 };`;
+const largeWorker=`
+onmessage=e=>{const r=e.data;if(r.operation==='cancel')return;
+ if(r.operation==='list'){postMessage({id:r.id,type:'result',value:['screen']});return;}
+ if(r.entity.kind==='Cpu'){postMessage({id:r.id,type:'result',value:{collectedAt:new Date().toISOString(),availableLogicalProcessorCount:2}});return;}
+ const large={collectedAt:new Date().toISOString(),label:'large',primary:false,
+  supportedModes:Array.from({length:12000},(_,i)=>({pixelSize:{width:1920,height:1080},refreshRateHz:i}))};
+ if(r.operation==='watch'){
+  postMessage({id:r.id,type:'reading'});postMessage({id:r.id,type:'snapshot',largeDelivery:true,value:large});
+  const small={collectedAt:large.collectedAt,label:'small',primary:false,supportedModes:[]};
+  for(let i=0;i<2;i++){postMessage({id:r.id,type:'reading'});postMessage({id:r.id,type:'snapshot',value:small});}
+  postMessage({id:r.id,type:'end'});return;
+ }
+ postMessage({id:r.id,type:'result',largeDelivery:true,value:large});
+};`;
 const server=createServer(async(request,response)=>{
   try {
     const path=new URL(request.url,'http://localhost').pathname;
     if(path==='/held-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(heldWorker);return;}
     if(path==='/slow-delivery-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(slowDeliveryWorker);return;}
+    if(path==='/large-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(largeWorker);return;}
     if(path==='/malformed-worker.js'){response.setHeader('Content-Type','text/javascript');response.end("onmessage=e=>postMessage({id:e.data.id,type:'error',error:7});");return;}
     if(path==='/'){
       response.setHeader('Content-Type','text/html');
@@ -60,6 +75,10 @@ for(const [name,executablePath] of [
     globalThis.heldOperations=0;globalThis.releasedOperations=0;
     globalThis.latePayloadReads=0;
     globalThis.slowPayloadReads=0;
+    globalThis.largePayloadYielded=false;
+    globalThis.largePayloadStarts=0;globalThis.largePayloadEnds=0;
+    globalThis.largePayloadAction=null;
+    globalThis.outboundHostTurn=false;globalThis.outboundYielded=false;
     globalThis.expectedCpuCount=navigator.hardwareConcurrency;
     const NativeWorker=Worker;
     globalThis.Worker=class extends NativeWorker{
@@ -68,7 +87,17 @@ for(const [name,executablePath] of [
         if(e.data?.id===0&&e.data.value?.fixture==='released')globalThis.releasedOperations++;
         if(e.data?.probeStale)Object.defineProperty(e.data,'value',{enumerable:true,get(){globalThis.latePayloadReads++;throw Error('Retired response payload must not be traversed.');}});
         if(e.data?.slowDelivery){const value=e.data.value;Object.defineProperty(e.data,'value',{enumerable:true,get(){globalThis.slowPayloadReads++;const end=performance.now()+200;while(performance.now()<end){}return value;}});}
+        if(e.data?.largeDelivery){
+          const modes=e.data.value.supportedModes,last=modes.at(-1);let yielded=false;
+          globalThis.largePayloadStarts++;
+          setTimeout(()=>{yielded=true;globalThis.largePayloadAction?.();},0);
+          Object.defineProperty(modes,modes.length-1,{enumerable:true,get(){globalThis.largePayloadEnds++;globalThis.largePayloadYielded=yielded;return last;}});
+        }
       });}
+      postMessage(value,...args){
+        if(value.operation==='normalize'&&value.value?.snapshot?.supportedModes?.length===12000)globalThis.outboundYielded=globalThis.outboundHostTurn;
+        return super.postMessage(value,...args);
+      }
       terminate(){globalThis.workersClosed++;return super.terminate();}
     };
     Object.defineProperty(navigator,'hardwareConcurrency',{get(){throw Error('SDK queried the UI navigator.');}});

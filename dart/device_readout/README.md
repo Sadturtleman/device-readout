@@ -105,6 +105,8 @@ Remaining platform collectors are pending. The [Flutter adapters](../../flutter/
 
 ## Browser use
 
+Large input/output graphs and typed collections are prepared across event-loop turns, with cancellation/deadline checks between traversal slices. The 128 active-read limit includes preparation through typed delivery; excess demand fails explicitly. Streams preserve order and duplicates with a bounded delivery queue. Browser cloning, allocation and application callbacks can still perform synchronous work. See the [transfer scheduling evidence](../../docs/verification/2026-11-17-dart-web-transfer.md) for the 12,000-mode checks and remaining limits.
+
 Serve the built `packages/web/dist/dart-worker.js` module with your application. The web package also exposes this asset as `@device-readout/web/dart-worker`; package publication and automated Flutter asset packaging remain pending. Then pass its served URL explicitly:
 
 ```dart

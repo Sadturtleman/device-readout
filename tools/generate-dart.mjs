@@ -30,9 +30,13 @@ function decode(t, v, hydrated = false) {
     return `${hydrated?'_wireComponents':'_components'}(${v}, [${keys.map(k=>`'${k}'`).join(', ')}], (n) => ${ctor}(${keys.map((_,i)=>`n[${i}]`).join(', ')}))`;
   }
   const list = /^(List|Set)<(.+)>$/.exec(t);
-  if (list) return `_${list[1].toLowerCase()}(${v}, (raw) => ${decode(list[2], 'raw', hydrated)})`;
+  if (list) return hydrated
+    ? `await _wire${list[1]}(${v}, (raw) => ${decode(list[2], 'raw', true)}, budget)`
+    : `_${list[1].toLowerCase()}(${v}, (raw) => ${decode(list[2], 'raw')})`;
   const map = /^Map<(.+), (.+)>$/.exec(t);
-  if (map) return `_map(${v}, (raw) => ${decode(map[1], 'raw', hydrated)}, (raw) => ${decode(map[2], 'raw', hydrated)})`;
+  if (map) return hydrated
+    ? `await _wireMap(${v}, (raw) => ${decode(map[1], 'raw', true)}, (raw) => ${decode(map[2], 'raw', true)}, budget)`
+    : `_map(${v}, (raw) => ${decode(map[1], 'raw')}, (raw) => ${decode(map[2], 'raw')})`;
   throw Error(`Unhandled Dart field type: ${t}`);
 }
 let code = "// Generated from schema/device-readout.json and schema/enums.json.\npart of 'core.dart';\n\n";
@@ -61,6 +65,13 @@ for (const e of models) {
   code += '  })';
   if (collections.length) code += ' : '+collections.map(f=>`${f.name} = ${f.name} == null ? null : ${f.type.split('<')[0]}.unmodifiable(${f.name})`).join(',\n      ');
   code += ';\n';
+  if (collections.length) {
+    // Hydration owns its backing collections and freezes them incrementally.
+    // Do not repeat an unbounded synchronous copy in the public constructor.
+    code += `  ${model}._hydrated({required super.collectedAt,\n`;
+    for (const f of e.fields) code += `    this.${f.name},\n`;
+    code += '  });\n';
+  }
   // Only the worker calls this after decoding. Reuse normalized immutable fields
   // so collection copying and validation finish before the completion clock.
   code += `  ${model}._completed(${model} snapshot)\n    : `;
@@ -83,14 +94,15 @@ code += '  };\n';
 code += '  static SensorDescription describe(Map<String, Object?> fields, {DateTime? collectedAt}) => SensorDescription(collectedAt: collectedAt,\n';
 for (const f of schema.sensorDescription) code += `    ${f.name}: ${decode(f.type,`fields['${f.name}']`)},\n`;
 code += '  );\n';
-code += '  static DeviceSnapshot _hydrate(EntityKind kind, Map<String, Object?> fields, DateTime collectedAt) => switch(kind) {\n';
+code += '  static Future<DeviceSnapshot> _hydrate(EntityKind kind, Map<String, Object?> fields, DateTime collectedAt, WorkerTransferBudget budget) async => switch(kind) {\n';
 for (const e of schema.entities) {
-  code += `    EntityKind.${lower(e.name)} => ${e.name}Snapshot(collectedAt: collectedAt,\n`;
+  const ctor = e.fields.some(f=>/^(List|Set|Map)</.test(f.type)) ? '._hydrated' : '';
+  code += `    EntityKind.${lower(e.name)} => ${e.name}Snapshot${ctor}(collectedAt: collectedAt,\n`;
   for (const f of e.fields) code += `      ${f.name}: ${decode(f.type,`fields['${f.name}']`,true)},\n`;
   code += '    ),\n';
 }
 code += '  };\n';
-code += '  static SensorDescription _hydrateDescription(Map<String, Object?> fields, DateTime collectedAt) => SensorDescription(collectedAt: collectedAt,\n';
+code += '  static Future<SensorDescription> _hydrateDescription(Map<String, Object?> fields, DateTime collectedAt, WorkerTransferBudget budget) async => SensorDescription(collectedAt: collectedAt,\n';
 for (const f of schema.sensorDescription) code += `    ${f.name}: ${decode(f.type,`fields['${f.name}']`,true)},\n`;
 code += '  );\n}\n';
 const destination = new URL('dart/device_readout/lib/src/', root);

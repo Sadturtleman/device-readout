@@ -93,6 +93,24 @@ Future<void> main() async {
     );
     await deliveryDeadlines().timeout(const Duration(seconds: 10));
     checks.add('read deadlines include live response materialization');
+    await largeResponse().timeout(const Duration(seconds: 15));
+    checks.add(
+      'large typed responses yield to host tasks without losing values',
+    );
+    await largeObservedInput().timeout(const Duration(seconds: 15));
+    checks.add('large app snapshots yield before worker publication');
+    await transferTermination().timeout(const Duration(seconds: 15));
+    checks.add(
+      'cancel, close and deadlines stop active transfers independently',
+    );
+    await largeWatch().timeout(const Duration(seconds: 15));
+    checks.add(
+      'large streams preserve order, duplicates and pause/resume through end',
+    );
+    await boundedTransferAdmission().timeout(const Duration(seconds: 10));
+    checks.add(
+      'read admission includes outbound preparation and typed delivery',
+    );
     globalContext.setProperty(
       'deviceReadoutWebReport'.toJS,
       {'passed': true, 'checks': checks}.jsify(),
@@ -107,6 +125,276 @@ Future<void> main() async {
         'stack': '$stack',
       }.jsify(),
     );
+  }
+}
+
+Future<void> boundedTransferAdmission() async {
+  final sdk = DeviceAccess.web(
+    workerUri: Uri.base.resolve('/packages/web/dist/dart-worker.js'),
+  );
+  try {
+    final display = sdk.observers.target(Entities.display, 'bounded-input');
+    sdk.observers.publish(
+      display,
+      DisplaySnapshot(
+        supportedModes: List.filled(
+          12000,
+          const DisplayMode(refreshRateHz: 60),
+        ),
+      ),
+    );
+    final token = CancellationToken();
+    final created = workersCreated;
+    Timer.run(token.cancel);
+    final outcomes = await Future.wait(
+      List.generate(129, (_) => outcome(sdk.get(display, cancellation: token))),
+    );
+    check(
+      outcomes.last is DeviceReadoutException &&
+          (outcomes.last as DeviceReadoutException).code ==
+              ErrorCode.readFailed,
+      'Admission must reject excess reads before they marshal app snapshots.',
+    );
+    check(
+      outcomes.take(128).every((value) => value is DeviceReadoutCancelled) &&
+          workersCreated == created,
+      'Cancelling admitted preparations releases them without starting a worker.',
+    );
+    check(
+      (await sdk.get(Entities.cpu)).availableLogicalProcessorCount != null,
+      'Cancelled transfer slots can be used by subsequent reads.',
+    );
+  } finally {
+    sdk.dispose();
+  }
+}
+
+Future<void> transferTermination() async {
+  // Cancellation during outbound preparation never starts a collection worker.
+  for (final close in [false, true]) {
+    final sdk = DeviceAccess.web(
+      workerUri: Uri.base.resolve('/packages/web/dist/dart-worker.js'),
+    );
+    try {
+      final display = sdk.observers.target(Entities.display, 'large-cancel');
+      sdk.observers.publish(
+        display,
+        DisplaySnapshot(
+          supportedModes: List.filled(
+            12000,
+            const DisplayMode(refreshRateHz: 60),
+          ),
+        ),
+      );
+      final created = workersCreated;
+      final token = CancellationToken();
+      Timer.run(() => close ? sdk.dispose() : token.cancel());
+      final failure = await outcome(sdk.get(display, cancellation: token));
+      check(
+        failure is DeviceReadoutCancelled && workersCreated == created,
+        'Outbound cancellation/closure must finish before starting the worker.',
+      );
+    } finally {
+      sdk.dispose();
+    }
+  }
+  for (final mode in [
+    'cancel',
+    'close',
+    'timeout',
+    'watch-timeout',
+    'watch-cancel',
+  ]) {
+    final sdk = DeviceAccess.web(
+      workerUri: Uri.base.resolve('/large-worker.js'),
+    );
+    StreamSubscription<DisplaySnapshot>? subscription;
+    try {
+      final display = (await sdk.displays.list()).single;
+      final starts = globalContext
+          .getProperty<JSNumber>('largePayloadStarts'.toJS)
+          .toDartInt;
+      final ends = globalContext
+          .getProperty<JSNumber>('largePayloadEnds'.toJS)
+          .toDartInt;
+      final token = CancellationToken();
+      final stopped = Completer<Object?>();
+      globalContext.setProperty(
+        'largePayloadAction'.toJS,
+        (() {
+          if (mode == 'cancel') token.cancel();
+          if (mode == 'close') sdk.dispose();
+          if (mode == 'watch-cancel') {
+            unawaited(
+              subscription!.cancel().then(
+                (_) => stopped.complete(const DeviceReadoutCancelled()),
+              ),
+            );
+          }
+        }).toJS,
+      );
+      final bounded = sdk.withReadTimeout(const Duration(milliseconds: 150));
+      final future = mode == 'watch-cancel'
+          ? stopped.future
+          : mode == 'watch-timeout'
+          ? outcome(bounded.watch(display).toList())
+          : outcome(bounded.get(display, cancellation: token));
+      if (mode == 'watch-cancel') {
+        subscription = sdk
+            .watch(display)
+            .listen(
+              (_) =>
+                  stopped.complete('Unexpected snapshot after cancellation.'),
+              onError: (Object error) {
+                if (!stopped.isCompleted) stopped.complete(error);
+              },
+            );
+      }
+      final failure = await future;
+      check(
+        mode.endsWith('timeout')
+            ? failure is DeviceReadoutException &&
+                  failure.code == ErrorCode.readTimeout
+            : failure is DeviceReadoutCancelled,
+        'Active $mode preserves its original terminal outcome.',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      check(
+        globalContext
+                    .getProperty<JSNumber>('largePayloadStarts'.toJS)
+                    .toDartInt ==
+                starts + 1 &&
+            globalContext
+                    .getProperty<JSNumber>('largePayloadEnds'.toJS)
+                    .toDartInt ==
+                ends,
+        'Termination must stop traversal before the last array value.',
+      );
+      if (mode != 'close') {
+        check(
+          (await sdk.get(Entities.cpu)).availableLogicalProcessorCount == 2,
+          'One cancelled or timed-out transfer does not fail its context.',
+        );
+      }
+    } finally {
+      globalContext.setProperty('largePayloadAction'.toJS, null);
+      await subscription?.cancel();
+      sdk.dispose();
+    }
+  }
+}
+
+Future<void> largeWatch() async {
+  final sdk = DeviceAccess.web(workerUri: Uri.base.resolve('/large-worker.js'));
+  StreamSubscription<DisplaySnapshot>? subscription;
+  try {
+    final display = (await sdk.displays.list()).single;
+    final values = <DisplaySnapshot>[];
+    final done = Completer<void>();
+    subscription = sdk
+        .watch(display)
+        .listen(
+          (value) {
+            values.add(value);
+            if (values.length == 1) {
+              subscription!.pause();
+              Timer(const Duration(milliseconds: 30), () {
+                if (values.length != 1)
+                  done.completeError(
+                    StateError('A paused stream delivered another value.'),
+                  );
+                subscription!.resume();
+              });
+            }
+          },
+          onError: done.completeError,
+          onDone: done.complete,
+        );
+    await done.future;
+    check(
+      values.length == 3 &&
+          values[0].label == 'large' &&
+          values[0].supportedModes?.length == 12000 &&
+          values[1].label == 'small' &&
+          values[2].label == 'small' &&
+          values[1].supportedModes!.isEmpty &&
+          values[2].supportedModes!.isEmpty,
+      'Queued small updates and duplicates remain ordered behind a large update through normal end.',
+    );
+    check(
+      globalContext.getProperty<JSBoolean>('largePayloadYielded'.toJS).toDart,
+      'Large watch responses admit host tasks while materializing.',
+    );
+  } finally {
+    await subscription?.cancel();
+    sdk.dispose();
+  }
+}
+
+Future<void> largeObservedInput() async {
+  final sdk = DeviceAccess.web(
+    workerUri: Uri.base.resolve('/packages/web/dist/dart-worker.js'),
+  );
+  try {
+    final display = sdk.observers.target(Entities.display, 'large-screen');
+    final source = DisplaySnapshot(
+      primary: false,
+      supportedModes: List.generate(
+        12000,
+        (i) => DisplayMode(
+          pixelSize: const Size(1920, 1080),
+          refreshRateHz: i == 0 ? double.nan : i.toDouble(),
+        ),
+      ),
+    );
+    sdk.observers.publish(display, source);
+    globalContext.setProperty('outboundHostTurn'.toJS, false.toJS);
+    Timer.run(
+      () => globalContext.setProperty('outboundHostTurn'.toJS, true.toJS),
+    );
+    final value = await sdk.get(display);
+    check(
+      globalContext.getProperty<JSBoolean>('outboundYielded'.toJS).toDart,
+      'Host tasks must run while a large observed snapshot is prepared for the worker.',
+    );
+    check(
+      value.supportedModes?.length == 12000 &&
+          value.supportedModes!.first.refreshRateHz == null &&
+          value.supportedModes!.last.refreshRateHz == 11999 &&
+          value.primary == false &&
+          source.supportedModes!.first.refreshRateHz!.isNaN,
+      'Worker normalization retains independent values and leaves app input unchanged.',
+    );
+  } finally {
+    sdk.dispose();
+  }
+}
+
+Future<void> largeResponse() async {
+  final sdk = DeviceAccess.web(workerUri: Uri.base.resolve('/large-worker.js'));
+  try {
+    final display = (await sdk.displays.list()).single;
+    final snapshot = await sdk.get(display);
+    check(
+      snapshot.supportedModes?.length == 12000 &&
+          snapshot.supportedModes!.first.pixelSize?.width == 1920 &&
+          snapshot.supportedModes!.last.refreshRateHz == 11999 &&
+          snapshot.primary == false,
+      'Large worker responses retain every mode, ordering and independent fields.',
+    );
+    check(
+      globalContext.getProperty<JSBoolean>('largePayloadYielded'.toJS).toDart,
+      'Host tasks must execute before the SDK finishes traversing a large response.',
+    );
+    var immutable = false;
+    try {
+      snapshot.supportedModes!.clear();
+    } on UnsupportedError {
+      immutable = true;
+    }
+    check(immutable, 'Delivered collections remain immutable.');
+  } finally {
+    sdk.dispose();
   }
 }
 

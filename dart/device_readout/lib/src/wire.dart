@@ -1,16 +1,106 @@
 part of 'core.dart';
 
+// Shallow projection for the browser encoder. Snapshot fields and collection
+// elements are traversed only by the budgeted transport, never by toJson().
+Object? workerWireValue(Object? value) => switch (value) {
+  DeviceSnapshot snapshot => {
+    'collectedAt': snapshot.collectedAt.toIso8601String(),
+    ...snapshot._fields(),
+  },
+  Iterable<Object?> _ => value,
+  Map<Object?, Object?> _ => value,
+  _ => _jsonValue(value),
+};
+
 // Internal binding boundary: the owned worker has already normalized fields.
 // This materializes Dart values without repeating unit/range normalization.
-DeviceSnapshot hydrateWorkerSnapshot(
+Future<DeviceSnapshot> hydrateWorkerSnapshot(
   EntityKind kind,
   Map<String, Object?> fields, {
   bool description = false,
+  required WorkerTransferBudget budget,
 }) {
   final collectedAt = DateTime.parse(fields['collectedAt'] as String).toUtc();
   return description
-      ? SnapshotCodec._hydrateDescription(fields, collectedAt)
-      : SnapshotCodec._hydrate(kind, fields, collectedAt);
+      ? SnapshotCodec._hydrateDescription(fields, collectedAt, budget)
+      : SnapshotCodec._hydrate(kind, fields, collectedAt, budget);
+}
+
+// Internal browser binding helper. Each traversal shares a budget, including
+// nested collections. Event-loop turns (not microtasks) admit host work.
+final class WorkerTransferBudget {
+  final void Function() check;
+  final _slice = Stopwatch()..start();
+  int _steps = 0;
+  WorkerTransferBudget(this.check);
+  Future<void>? checkpoint() {
+    check();
+    if (++_steps < 512 && _slice.elapsedMilliseconds < 4) return null;
+    return _yield();
+  }
+
+  Future<void> _yield() async {
+    await Future<void>.delayed(Duration.zero);
+    check();
+    _steps = 0;
+    _slice.reset();
+  }
+}
+
+Future<List<T>?> _wireList<T>(
+  Object? value,
+  T? Function(Object?) read,
+  WorkerTransferBudget budget,
+) async {
+  if (value is! Iterable<Object?>) return null;
+  final result = <T>[];
+  for (final raw in value) {
+    final pause = budget.checkpoint();
+    if (pause != null) await pause;
+    final item = read(raw);
+    if (item == null) return null;
+    result.add(item);
+  }
+  budget.check();
+  // The mutable backing collection never escapes and is never changed again.
+  return UnmodifiableListView(result);
+}
+
+Future<Set<T>?> _wireSet<T>(
+  Object? value,
+  T? Function(Object?) read,
+  WorkerTransferBudget budget,
+) async {
+  if (value is! Iterable<Object?>) return null;
+  final result = <T>{};
+  for (final raw in value) {
+    final pause = budget.checkpoint();
+    if (pause != null) await pause;
+    final item = read(raw);
+    if (item == null) return null;
+    result.add(item);
+  }
+  budget.check();
+  return UnmodifiableSetView(result);
+}
+
+Future<Map<K, V>?> _wireMap<K, V>(
+  Object? value,
+  K? Function(Object?) key,
+  V? Function(Object?) read,
+  WorkerTransferBudget budget,
+) async {
+  if (value is! Map<Object?, Object?>) return null;
+  final result = <K, V>{};
+  for (final entry in value.entries) {
+    final pause = budget.checkpoint();
+    if (pause != null) await pause;
+    final k = key(entry.key), v = read(entry.value);
+    if (k == null || v == null || result.containsKey(k)) return null;
+    result[k] = v;
+  }
+  budget.check();
+  return UnmodifiableMapView(result);
 }
 
 int? _wireInteger(Object? value) => value as int?;

@@ -1,5 +1,20 @@
 part of 'transport_web.dart';
 
+final class _WebReading {
+  final clock = Stopwatch()..start();
+  late final Timer deadline;
+  _WebReading(Duration timeout, void Function() expire) {
+    deadline = Timer(timeout, expire);
+  }
+  void finish() => deadline.cancel();
+}
+
+final class _WebDelivery {
+  final JSAny? value;
+  final _WebReading reading;
+  _WebDelivery(this.value, this.reading);
+}
+
 final class _WebWatch {
   final _WebChannel owner;
   final int id;
@@ -7,13 +22,15 @@ final class _WebWatch {
   final Duration pollInterval, readTimeout;
   final CancellationToken cancellation;
   final _pending = Queue<DeviceSnapshot>();
+  final _incoming = Queue<_WebDelivery>();
+  final _readings = <_WebReading>{};
   late final StreamController<DeviceSnapshot?> _controller;
-  Timer? _deadline;
-  Stopwatch? _readingClock;
+  _WebReading? _currentRead;
   bool get expired =>
-      _readingClock != null && _readingClock!.elapsed >= readTimeout;
+      _readings.any((read) => read.clock.elapsed >= readTimeout);
   void Function()? _detach;
   bool _closed = false, _paused = false, _scheduled = false;
+  bool _processing = false, _ended = false;
 
   _WebWatch(
     this.owner,
@@ -83,32 +100,28 @@ final class _WebWatch {
     }
   }
 
-  void _reading() {
-    _readingClock = Stopwatch()..start();
-    _deadline?.cancel();
-    _deadline = Timer(
-      readTimeout,
-      () => fail(
-        const DeviceReadoutException(
-          ErrorCode.readTimeout,
-          'A worker state read exceeded its deadline.',
-        ),
-      ),
-    );
+  _WebReading _reading() {
+    // Initial registration already owns a deadline. A duplicate reading header
+    // cannot extend it, and a later read cannot reset a queued value's deadline.
+    if (_currentRead != null) return _currentRead!;
+    final read = _WebReading(readTimeout, () => fail(_readTimeout));
+    _readings.add(read);
+    return _currentRead = read;
   }
 
-  void receive(Map<String, Object?> message) {
-    if (_closed) return;
+  void receive(JSObject message) {
+    if (_closed || _ended) return;
     if (expired) {
       fail(_readTimeout);
       return;
     }
     try {
-      switch (message['type']) {
+      switch (message.getProperty<JSAny?>('type'.toJS).dartify()) {
         case 'reading':
           _reading();
         case 'snapshot':
-          if (_pending.length >= 2048) {
+          if (_pending.length + _incoming.length + (_processing ? 1 : 0) >=
+              2048) {
             fail(
               const DeviceReadoutException(
                 ErrorCode.readFailed,
@@ -117,22 +130,29 @@ final class _WebWatch {
             );
             return;
           }
-          final raw = (message['value'] as Map<Object?, Object?>)
-              .cast<String, Object?>();
-          final snapshot = hydrateWorkerSnapshot(entity.kind, raw);
-          if (expired) {
-            fail(_readTimeout);
-            return;
-          }
-          _deadline?.cancel();
-          _readingClock = null;
-          _pending.add(snapshot);
-          _drain();
+          final reading = _reading();
+          _currentRead = null;
+          _incoming.add(
+            _WebDelivery(message.getProperty<JSAny?>('value'.toJS), reading),
+          );
+          unawaited(_process());
         case 'error':
-          fail(_workerError(message['error']));
+          final raw = message.getProperty<JSAny?>('error'.toJS);
+          if (raw == null || !raw.isA<JSObject>())
+            throw const FormatException('Invalid worker error.');
+          final error = raw as JSObject;
+          fail(
+            _workerError({
+              'code': error.getProperty<JSAny?>('code'.toJS).dartify(),
+              'message': error.getProperty<JSAny?>('message'.toJS).dartify(),
+            }),
+          );
         case 'end':
-          _stop();
-          unawaited(_controller.close());
+          _ended = true;
+          _currentRead?.finish();
+          _readings.remove(_currentRead);
+          _currentRead = null;
+          _finishIfEnded();
         default:
           fail(
             const DeviceReadoutException(
@@ -151,15 +171,65 @@ final class _WebWatch {
     }
   }
 
+  Future<void> _process() async {
+    if (_processing || _closed) return;
+    _processing = true;
+    try {
+      while (!_closed && _incoming.isNotEmpty) {
+        final item = _incoming.removeFirst();
+        final budget = WorkerTransferBudget(() {
+          if (_closed) throw const DeviceReadoutCancelled();
+          if (item.reading.clock.elapsed >= readTimeout) throw _readTimeout;
+        });
+        final raw = await _decodeJs(item.value, budget) as Map<String, Object?>;
+        final snapshot = await hydrateWorkerSnapshot(
+          entity.kind,
+          raw,
+          budget: budget,
+        );
+        budget.check();
+        item.reading.finish();
+        _readings.remove(item.reading);
+        _pending.add(snapshot);
+        _drain();
+      }
+    } catch (error) {
+      if (!_closed)
+        fail(
+          error is DeviceReadoutException
+              ? error
+              : const DeviceReadoutException(
+                  ErrorCode.readFailed,
+                  'Invalid worker stream response.',
+                ),
+        );
+    } finally {
+      _processing = false;
+      _finishIfEnded();
+    }
+  }
+
   void _drain() {
     if (_closed || _paused || _scheduled || _pending.isEmpty) return;
     _scheduled = true;
-    scheduleMicrotask(() {
+    Timer.run(() {
       _scheduled = false;
       if (_closed || _paused || _pending.isEmpty) return;
       _controller.add(_pending.removeFirst());
       _drain();
+      _finishIfEnded();
     });
+  }
+
+  void _finishIfEnded() {
+    if (_closed ||
+        !_ended ||
+        _processing ||
+        _incoming.isNotEmpty ||
+        _pending.isNotEmpty)
+      return;
+    _stop();
+    unawaited(_controller.close());
   }
 
   void fail(Object error) {
@@ -172,9 +242,14 @@ final class _WebWatch {
   void _stop() {
     if (_closed) return;
     _closed = true;
-    _deadline?.cancel();
+    for (final reading in _readings) {
+      reading.finish();
+    }
+    _readings.clear();
+    _currentRead = null;
     _detach?.call();
     _pending.clear();
+    _incoming.clear();
     owner._watches.remove(id);
     try {
       owner._worker?.postMessage({'id': id, 'operation': 'cancel'}.jsify());

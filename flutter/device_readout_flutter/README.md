@@ -59,7 +59,7 @@ displays.dispose();
 
 | Display field | Mapping |
 |---|---|
-| `pixelSize` | Positive finite whole-pixel `Display.size`; unavailable/invalid dimensions leave the whole field null |
+| `pixelSize` | Native: positive finite whole-pixel `Display.size`; unavailable/invalid dimensions leave the whole field null. Web: null because the pinned engine reports CSS screen dimensions, not physical mode pixels |
 | `scaleFactor` | Positive finite `Display.devicePixelRatio` |
 | `currentMode` | Windows only: current pixel size and positive `Display.refreshRate` above the Windows 0/1 unspecified sentinel; null when mode rate is unavailable |
 | All other fields | null; no invented monitor origin, primary status, physical DPI, maximum rate or supported mode list |
@@ -205,6 +205,16 @@ The Android build command creates the test entrypoint's debug APK. The runner ch
 
 ## Example and verification
 
+For web, construct the access context with an explicitly served module worker:
+
+```dart
+final access = DeviceAccess.web(
+  workerUri: Uri.base.resolve('device-readout-dart-worker.js'),
+);
+```
+
+The example selects this factory with `kIsWeb`. Run `./tools/build-flutter-web.ps1` to build the example and copy the SDK worker into the output, or `./tools/test-flutter-web.ps1` to build both consumers and verify installed Chrome/Edge. Serve the resulting directory over HTTP. Flutter viewport, display and sensor-activity observers remain explicitly attached by the app; permissions and sensor sources remain app-owned. Each browser passes the rendered-example case and six integration scenarios. See [Flutter web verification](../../docs/verification/2026-11-17-flutter-web.md) for real browser versus controlled fixture evidence and remaining coverage.
+
 Native state and sensor adapters can share one DeviceAccess. The actual API 26/36 suite verifies concurrent polling/sensors/queries, scoped failure and cancellation, sensor-provider replacement, and whole-context closure. During the real Activity pause fixture, sensor collection stops while native OS/RAM work remains usable. See [shared-context verification](../../docs/verification/2026-11-11-flutter-android-mixed.md) for the tested scope and background-execution limits.
 
 The [example widget](example/lib/main.dart) attaches in `didChangeDependencies`, watches snapshots, explicitly selects its current viewport and disposes the observer before the SDK context. It now includes a Windows runner and builds as a Release executable. It is an unpackaged example, not an installer or signed release.
@@ -213,4 +223,4 @@ Run `./tools/test-flutter.ps1` for twenty-two engine checks and `./tools/test-fl
 
 The scripts use the bundled Dart analyzer and offline package resolution. Initial dependencies must first be available in the repository's `.tools/dart-pub-cache`; lockfiles record the validated versions. The Windows build also requires Visual Studio's C++ desktop tools. On this host the Flutter test compiler and native app verification run in a normal-user process. Scripts restore their environment and do not change global telemetry preferences.
 
-This package implements Viewport, partial Display, sensor activity observation, twenty native Android state mappings with discovery/current/capabilities, and seventeen Android sensor mappings. Other platform collectors, full physical sensor evidence, mobile/desktop permission adapters and the web worker bridge remain required. The common Dart permission coordinator remains app-owned; no observer opens UI. See the [capability queries](../../docs/verification/2026-11-11-flutter-android-capabilities.md), [Android discovery](../../docs/verification/2026-11-11-flutter-android-discovery.md), [state bridge](../../docs/verification/2026-11-11-flutter-android-state.md), [sensor bridge](../../docs/verification/2026-11-11-flutter-android-sensors.md), [sensor/lifecycle record](../../docs/verification/2026-11-11-dart-sensors.md), [screen verification](../../docs/verification/2026-11-11-flutter-screens.md) and [earlier viewport checkpoint](../../docs/verification/2026-11-11-flutter-viewport.md).
+This package implements Viewport, partial Display, sensor activity observation, twenty native Android state mappings with discovery/current/capabilities, seventeen Android sensor mappings and the explicit Dart web-worker connection. Other platform collectors, full physical sensor evidence, mobile/desktop permission adapters and the full browser matrix remain required. The common Dart permission coordinator remains app-owned; no observer opens UI. See the [capability queries](../../docs/verification/2026-11-11-flutter-android-capabilities.md), [Android discovery](../../docs/verification/2026-11-11-flutter-android-discovery.md), [state bridge](../../docs/verification/2026-11-11-flutter-android-state.md), [sensor bridge](../../docs/verification/2026-11-11-flutter-android-sensors.md), [sensor/lifecycle record](../../docs/verification/2026-11-11-dart-sensors.md), [screen verification](../../docs/verification/2026-11-11-flutter-screens.md) and [earlier viewport checkpoint](../../docs/verification/2026-11-11-flutter-viewport.md).

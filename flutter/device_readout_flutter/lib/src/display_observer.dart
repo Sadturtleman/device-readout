@@ -80,7 +80,10 @@ final class FlutterDisplayObserver with WidgetsBindingObserver {
           ),
         );
         final display = entry.value;
-        final size = _read(() => display.size);
+        // The pinned web engine caches Screen.width/height in CSS pixels.
+        // Those dimensions and the zoom-sensitive view ratio do not identify
+        // a physical display mode, so they cannot populate pixelSize.
+        final size = kIsWeb ? null : _read(() => display.size);
         final width = _pixel(size?.width), height = _pixel(size?.height);
         final pixels = width == null || height == null
             ? null

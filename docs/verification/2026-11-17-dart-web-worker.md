@@ -42,6 +42,8 @@ Logs are local ignored artifacts: `.tools/dart-web-core-final.log`, `.tools/dart
 
 ## Remaining scope and execution limits
 
+Follow-up: the [transfer scheduling checkpoint](2026-11-17-dart-web-transfer.md) implements cooperative host marshaling/materialization, full-read admission and additional ordered-stream/lifetime checks. It records eleven browser scenarios per Chrome/Edge. The paragraphs below retain this initial connection checkpoint's original scope; the follow-up defines the current transfer evidence and remaining limits.
+
 Live app snapshots must still be marshaled and received values materialized on the Dart host. Large-payload scheduling, response-size budgeting, full schema/enum wire equivalence, overload and pause/resume interleavings need further verification. A deadline check cannot preempt synchronous host work already executing. The implementation therefore does not establish zero main-thread cost or process-crash isolation.
 
 All ten existing BrowserCollector kinds are connected structurally, but this checkpoint's actual native Dart browser reads cover CPU and language, with other values supplied by controlled fixtures. Full field/API coverage, native event and permission/lifecycle transitions through Dart, Firefox/Safari, Dart Wasm and real Flutter web applications remain pending. Android APKs, native bridge units, React Native apps, Apple collectors/builds and native Windows Flutter screen scenarios were not rebuilt here; their earlier evidence remains separate. External package consumption and the complete minimum/latest-version matrix remain unfinished.

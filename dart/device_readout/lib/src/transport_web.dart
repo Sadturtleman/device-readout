@@ -8,6 +8,7 @@ import 'transport_api.dart';
 import 'transport_stub.dart' as unsupported;
 
 part 'transport_web_watch.dart';
+part 'transport_web_values.dart';
 
 // Closures cannot be transferred into browser workers. Keep the explicit
 // isolate factory unsupported; web() supplies a separately built module asset.
@@ -39,6 +40,7 @@ final class _Pending {
   final elapsed = Stopwatch()..start();
   _Pending(this.timeout);
   bool get expired => elapsed.elapsed >= timeout;
+  bool receiving = false;
   final result = Completer<Object?>();
   Timer? timer;
   void Function()? detach;
@@ -75,6 +77,7 @@ final class _WebChannel implements CollectionChannel {
     );
   }).toJS;
   int _nextId = 0;
+  int _activeReads = 0;
   bool _closed = false;
   DeviceReadoutException? _failure;
   _WebChannel(this.uri);
@@ -104,7 +107,7 @@ final class _WebChannel implements CollectionChannel {
     EntityAddress entity,
     Duration timeout,
     CancellationToken? cancellation, {
-    Object? value,
+    JSAny? value,
     SensorSamplingRate rate = SensorSamplingRate.platformDefault,
   }) {
     if (_closed || cancellation?.isCancelled == true)
@@ -135,22 +138,23 @@ final class _WebChannel implements CollectionChannel {
     try {
       _start();
       final name = entity.kind.name;
-      _worker!.postMessage(
-        {
-          'id': id,
-          'operation': operation,
-          'entity': {
-            'kind': '${name[0].toUpperCase()}${name.substring(1)}',
-            if (entity.targetId != null) 'targetId': entity.targetId,
-          },
-          'settings': {
-            'pollIntervalMs': 1000,
-            'readTimeoutMs': timeout.inMicroseconds / 1000,
-            'sensorHertz': rate.hertz,
-          },
-          if (value != null) 'value': value,
-        }.jsify(),
-      );
+      final message =
+          {
+                'id': id,
+                'operation': operation,
+                'entity': {
+                  'kind': '${name[0].toUpperCase()}${name.substring(1)}',
+                  if (entity.targetId != null) 'targetId': entity.targetId,
+                },
+                'settings': {
+                  'pollIntervalMs': 1000,
+                  'readTimeoutMs': timeout.inMicroseconds / 1000,
+                  'sensorHertz': rate.hertz,
+                },
+              }.jsify()
+              as JSObject;
+      if (value != null) message.setProperty('value'.toJS, value);
+      _worker!.postMessage(message);
     } catch (error) {
       _fail(
         error is DeviceReadoutException
@@ -193,19 +197,40 @@ final class _WebChannel implements CollectionChannel {
         _watches[id]!.fail(_readTimeout);
         return;
       }
-      final message = (event.data.dartify() as Map<Object?, Object?>)
-          .cast<String, Object?>();
       final watch = _watches[id];
       if (watch != null) {
-        watch.receive(message);
+        watch.receive(data);
         return;
       }
       final pending = _pending[id];
       if (pending == null) return;
-      if (pending.expired) {
-        _cancel(id, _readTimeout);
-        return;
-      }
+      if (pending.receiving)
+        throw const FormatException('Duplicate worker response.');
+      pending.receiving = true;
+      unawaited(_completeResponse(id, pending, data));
+    } catch (error) {
+      _fail(
+        DeviceReadoutException(
+          ErrorCode.readFailed,
+          'Invalid worker response: $error',
+        ),
+      );
+    }
+  }
+
+  Future<void> _completeResponse(
+    int id,
+    _Pending pending,
+    JSObject data,
+  ) async {
+    final budget = WorkerTransferBudget(() {
+      if (!identical(_pending[id], pending))
+        throw const DeviceReadoutCancelled();
+      if (pending.expired) throw _readTimeout;
+    });
+    try {
+      final message = (await _decodeJs(data, budget) as Map<String, Object?>);
+      budget.check();
       if (message['type'] == 'result') {
         _pending.remove(id);
         pending.finish();
@@ -226,12 +251,20 @@ final class _WebChannel implements CollectionChannel {
         );
       }
     } catch (error) {
-      _fail(
-        DeviceReadoutException(
-          ErrorCode.readFailed,
-          'Invalid worker response: $error',
-        ),
-      );
+      // A scheduled traversal can outlive cancellation/timeout/context closure.
+      // Its abandoned result must not fail another operation or restart work.
+      if (!identical(_pending[id], pending)) return;
+      if (error is DeviceReadoutException &&
+          error.code == ErrorCode.readTimeout) {
+        _cancel(id, error);
+      } else {
+        _fail(
+          DeviceReadoutException(
+            ErrorCode.readFailed,
+            'Invalid worker response: $error',
+          ),
+        );
+      }
     }
   }
 
@@ -283,8 +316,46 @@ final class _WebChannel implements CollectionChannel {
     CancellationToken? cancellation, {
     DeviceSnapshot? observed,
     bool description = false,
+  }) {
+    if (_closed || cancellation?.isCancelled == true) {
+      return Future.error(const DeviceReadoutCancelled());
+    }
+    if (_failure != null) return Future.error(_failure!);
+    if (_activeReads >= 128) {
+      return Future.error(
+        const DeviceReadoutException(
+          ErrorCode.readFailed,
+          'The bounded worker read queue is full.',
+        ),
+      );
+    }
+    // Admission spans encoding, RPC and typed delivery, not only time on wire.
+    _activeReads++;
+    return _read(
+      entity,
+      rate,
+      timeout,
+      cancellation,
+      observed: observed,
+      description: description,
+    ).whenComplete(() => _activeReads--);
+  }
+
+  Future<DeviceSnapshot> _read(
+    EntityAddress entity,
+    SensorSamplingRate rate,
+    Duration timeout,
+    CancellationToken? cancellation, {
+    DeviceSnapshot? observed,
+    bool description = false,
   }) async {
     final elapsed = Stopwatch()..start();
+    final budget = WorkerTransferBudget(() {
+      if (_closed) throw const DeviceReadoutCancelled();
+      cancellation?.throwIfCancelled();
+      if (_failure != null) throw _failure!;
+      if (elapsed.elapsed >= timeout) throw _readTimeout;
+    });
     if (observed != null &&
         (description
             ? observed is! SensorDescription
@@ -296,7 +367,10 @@ final class _WebChannel implements CollectionChannel {
     }
     final value = observed == null
         ? null
-        : {'description': description, 'snapshot': observed.toJson()};
+        : await _encodeJs({
+            'description': description,
+            'snapshot': observed,
+          }, budget);
     final remaining = timeout - elapsed.elapsed;
     if (remaining <= Duration.zero) throw _readTimeout;
     final raw = await _request(
@@ -313,18 +387,23 @@ final class _WebChannel implements CollectionChannel {
     );
     late final DeviceSnapshot snapshot;
     try {
-      snapshot = hydrateWorkerSnapshot(
+      snapshot = await hydrateWorkerSnapshot(
         entity.kind,
         (raw as Map<Object?, Object?>).cast<String, Object?>(),
         description: description,
+        budget: budget,
       );
+    } on DeviceReadoutCancelled {
+      rethrow;
+    } on DeviceReadoutException {
+      rethrow;
     } catch (_) {
       throw const DeviceReadoutException(
         ErrorCode.readFailed,
         'Invalid worker snapshot.',
       );
     }
-    if (elapsed.elapsed >= timeout) throw _readTimeout;
+    budget.check();
     return snapshot;
   }
 

@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:device_readout_flutter/device_readout_flutter.dart' as readout;
 
@@ -12,7 +13,11 @@ class ViewportReadout extends StatefulWidget {
 }
 
 class _ViewportReadoutState extends State<ViewportReadout> {
-  final access = readout.DeviceAccess.native();
+  final access = kIsWeb
+      ? readout.DeviceAccess.web(
+          workerUri: Uri.base.resolve('device-readout-dart-worker.js'),
+        )
+      : readout.DeviceAccess.native();
   ui.FlutterView? view;
   readout.FlutterViewportObserver? observer;
   Stream<readout.ViewportSnapshot>? snapshots;
