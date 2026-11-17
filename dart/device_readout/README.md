@@ -2,6 +2,12 @@
 
 Implementation foundation, verified with Dart 3.13.7 from Flutter 3.47.9 on Windows x64. This is not yet a complete Flutter plugin or a claim of support for the complete platform matrix.
 
+Windows `get(Entities.locale)` / `watch(Entities.locale)` now read the default formatting locale, distinct user/system/process language lists and NLS/ICU format preferences. The [locale checkpoint](../../docs/verification/2026-11-18-dart-windows-locale.md) passes 66/66 JIT/native contracts, with all eleven fields compared on this host. Process MUI languages do not automatically describe a framework's private locale override; app-local observations and further locale combinations remain required.
+
+On Windows, `get(Entities.timeZone)` and `watch(Entities.timeZone)` collect Windows/IANA IDs, current UTC offset and DST state without modifying app defaults. The [time-zone checkpoint](../../docs/verification/2026-11-18-dart-windows-time-zone.md) records independent native/.NET agreement and final 65/65 JIT/native suites, alongside an earlier unreproduced JIT compiler abort. Other zones, native failures and the complete platform matrix remain unverified.
+
+The [Windows registry boundary checkpoint](../../docs/verification/2026-11-18-dart-windows-registry.md) accepts complete strings at the 64 KiB bound despite extra native sizing allowance. Public get/watch tests cover Unicode, malformed and missing fields, empty strings, oversized values and field recovery. JIT/native suites pass 64/64 each. Collection remains isolate-owned; the complete collector/platform matrix is still pending.
+
 Orientation snapshots return unit quaternions while preserving axes and signs; zero-length or nonfinite rotations are null. get/watch/describe normalize values on the collection isolate and stamp collectedAt afterward. Direct snapshot constructors and SnapshotCodec retain explicitly supplied timestamps, or the epoch default when omitted. The [normalization checkpoint](../../docs/verification/2026-11-17-dart-normalization.md) passes 50/50 JIT and native contracts, Flutter framework checks and rebuilt Android applications.
 
 ```dart

@@ -50,14 +50,93 @@ Future<bool> runChildIfRequested(List<String> arguments) async {
       'Cannot populate the child registry fixture.',
     );
     final snapshot = await access.get(Entities.deviceInfo);
-    check(
-      snapshot.manufacturer == null &&
-          snapshot.modelName == 'Fixture model' &&
-          snapshot.board == null,
-      'Wrong-type and missing fields must stay null without hiding a readable model.',
-    );
+    if (scenario == 4) {
+      final sizes = fixture
+          .lookupFunction<ffi.Uint64 Function(), int Function()>(
+            'readout_registry_sizes',
+          )();
+      print(
+        'REGISTRY_SIZE ${jsonEncode({'storedBytes': sizes >> 32, 'sizingBytes': sizes & 0xffffffff})}',
+      );
+      check(
+        snapshot.manufacturer == 'A' * 32767 &&
+            snapshot.modelName == null &&
+            snapshot.board == null,
+        'A terminated 64 KiB value must survive; values exceeding the allocation bound must be null. Lengths: ${[snapshot.manufacturer?.length, snapshot.modelName?.length, snapshot.board?.length]}.',
+      );
+    } else if (scenario == 3) {
+      check(
+        snapshot.manufacturer == '가B' &&
+            snapshot.modelName == '' &&
+            snapshot.board == null,
+        'OS-terminated strings must be preserved while odd byte counts become null: ${[snapshot.manufacturer, snapshot.modelName, snapshot.board]}.',
+      );
+    } else if (scenario == 2) {
+      check(
+        snapshot.manufacturer == null &&
+            snapshot.modelName == null &&
+            snapshot.board == 'Fixture board',
+        'Unpaired UTF-16 surrogates must become null while valid fields survive.',
+      );
+    } else if (scenario == 1) {
+      check(
+        snapshot.manufacturer == '가🚀é' &&
+            snapshot.modelName == '' &&
+            snapshot.board == 'Fixture board',
+        'Unicode and empty registry strings must survive native collection.',
+      );
+    } else {
+      check(
+        snapshot.manufacturer == null &&
+            snapshot.modelName == 'Fixture model' &&
+            snapshot.board == null,
+        'Wrong-type and missing fields must stay null without hiding a readable model.',
+      );
+    }
+    if (scenario == 5) {
+      var beforeRecovery = 0, afterRecovery = 0;
+      DateTime? previous;
+      DeviceInfoSnapshot? first;
+      await for (final current
+          in access
+              .withPollInterval(const Duration(milliseconds: 20))
+              .watch(Entities.deviceInfo)
+              .timeout(const Duration(seconds: 2))) {
+        check(
+          previous == null || current.collectedAt.isAfter(previous),
+          'Each polled snapshot must have a fresh completion time.',
+        );
+        previous = current.collectedAt;
+        first ??= current;
+        if (current.manufacturer == null) {
+          check(
+            afterRecovery == 0 && current.modelName == 'Fixture model',
+            'Before recovery, independently readable fields must survive.',
+          );
+          if (++beforeRecovery == 2) {
+            check(prepare(1) == 0, 'Cannot restore readable registry fields.');
+          }
+        } else {
+          check(
+            beforeRecovery >= 2 &&
+                current.manufacturer == '가🚀é' &&
+                current.modelName == '' &&
+                current.board == 'Fixture board',
+            'The existing watch must recover without restarting or stale fields.',
+          );
+          if (++afterRecovery == 2) break;
+        }
+      }
+      check(
+        beforeRecovery >= 2 &&
+            afterRecovery == 2 &&
+            first?.manufacturer == null &&
+            first?.modelName == 'Fixture model',
+        'Equal snapshots must be delivered before and after recovery without mutating old snapshots.',
+      );
+    }
     print(
-      'REGISTRY_CHILD ${jsonEncode({'childPid': pid, 'scenario': scenario, 'partialFields': true})}',
+      'REGISTRY_CHILD ${jsonEncode({'childPid': pid, 'scenario': scenario, 'fieldsVerified': true})}',
     );
   } finally {
     access.dispose();
@@ -115,6 +194,9 @@ Future<void> _run(int scenario) async {
     terminal = true;
     final stdout = await output, stderr = await errors;
     check(code == 0, 'Owned registry child failed ($code): $stdout $stderr');
+    for (final line in const LineSplitter().convert(stdout)) {
+      if (line.startsWith('REGISTRY_SIZE ')) print(line);
+    }
     final line = const LineSplitter()
         .convert(stdout)
         .singleWhere((line) => line.startsWith('REGISTRY_CHILD '));
@@ -160,9 +242,25 @@ Future<void> _run(int scenario) async {
 final checks = <String, Future<void> Function()>{
   'native registry wrong-type and missing device fields preserve readable data':
       () => _run(0),
+  'native registry Unicode and empty device fields retain their exact values':
+      () => _run(1),
+  'native registry malformed surrogates do not discard independent device fields':
+      () => _run(2),
+  'native registry terminator repair and odd byte lengths preserve field boundaries':
+      () => _run(3),
+  'native registry size bound accepts complete values and rejects excess data':
+      () => _run(4),
+  'native registry watch recovers fields and delivers unchanged snapshots':
+      () => _run(5),
 };
 
 Future<void> main(List<String> arguments) async {
   if (await runChildIfRequested(arguments)) return;
-  await _run(0);
+  if (arguments.isNotEmpty) {
+    await _run(int.parse(arguments.single));
+  } else {
+    for (final test in checks.values) {
+      await test();
+    }
+  }
 }

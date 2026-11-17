@@ -50,7 +50,7 @@ Display references: [Window Management](https://www.w3.org/TR/window-management/
 
 ## Windows Dart and Flutter
 
-The standalone `DeviceAccess.native()` collector currently implements five entity kinds on Windows, inherited by Flutter Windows without another platform plugin. These mappings do not establish support for every field or the full Windows version/architecture matrix. The [latest verification](verification/2026-11-17-dart-windows-device-info.md) passes 58 Dart JIT/native contracts per mode, ten actual Flutter Windows scenarios and 24 framework tests.
+The standalone `DeviceAccess.native()` collector currently implements seven entity kinds on Windows, inherited by Flutter Windows without another platform plugin. These mappings do not establish support for every field or the full Windows version/architecture matrix. The [latest verification](verification/2026-11-18-dart-windows-locale.md) passes 66 Dart JIT/native contracts per mode, twelve actual Flutter Windows scenarios and 24 framework tests. An earlier compiler abort in a test child remains recorded; it did not recur in this run.
 
 | Entity | Native mapping |
 |---|---|
@@ -59,6 +59,8 @@ The standalone `DeviceAccess.native()` collector currently implements five entit
 | Runtime | Dart ABI and pointer size for process fields; IsWow64Process2 native-machine result for host architecture. Supported ABIs remain null. |
 | Ram | Installed bytes from firmware-backed API, OS-accessible/available bytes from GlobalMemoryStatusEx, current native low-memory state. Advertised/free/threshold fields remain null. |
 | ProcessMemory | GlobalMemoryStatusEx.ullAvailPageFile for the process's available commit budget. |
+| TimeZone | GetDynamicTimeZoneInformation Windows key, current bias and DST state; Windows ICU default Windows-to-IANA mapping. App defaults and caches are unchanged. |
+| Locale | User formatting locale plus separate user/system/process MUI lists; NLS region/calendar/time/digit/weekday/measurement preferences, ICU script and decimal numbering identifiers. App-framework locale overrides require observations. |
 
 Binding, collection, normalization and cleanup run on the collection isolate. Capability probes do not load bindings or collect values. Reads are lazy and state watch uses serial polling with fresh timestamps and equal-value delivery. App-owned screen/permission/lifecycle observers remain separate from these native sources.
 

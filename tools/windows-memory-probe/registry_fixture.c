@@ -8,6 +8,16 @@ static HKEY fixture_root;
 static HKEY fixture_bios;
 static BOOL overridden;
 
+/* Independent size-query evidence for boundary tests, not an SDK hook. */
+__declspec(dllexport) uint64_t readout_registry_sizes(void) {
+    DWORD raw = 0, requested = 0;
+    if (RegQueryValueExW(fixture_bios, L"SystemManufacturer", NULL, NULL, NULL, &raw) != ERROR_SUCCESS)
+        return UINT64_MAX;
+    if (RegGetValueW(fixture_bios, NULL, L"SystemManufacturer", RRF_RT_REG_SZ, NULL, NULL, &requested) != ERROR_SUCCESS)
+        return UINT64_MAX;
+    return ((uint64_t)raw << 32) | requested;
+}
+
 static int key_name(WCHAR* output, size_t count, DWORD pid, uint64_t nonce) {
     if (pid == 0 || nonce == 0) return 0;
     return swprintf_s(output, count, L"DeviceReadoutTest_%lu_%016llx",
@@ -79,7 +89,58 @@ __declspec(dllexport) LONG readout_registry_start(DWORD parent, uint64_t nonce) 
 }
 
 __declspec(dllexport) LONG readout_registry_prepare(int scenario) {
-    if (!fixture_bios || !overridden || scenario != 0) return ERROR_INVALID_PARAMETER;
+    if (!fixture_bios || !overridden) return ERROR_INVALID_PARAMETER;
+    if (scenario == 5) scenario = 0;
+    if (scenario == 4) {
+        WCHAR* text = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 65538);
+        if (!text) return ERROR_NOT_ENOUGH_MEMORY;
+        for (int i = 0; i < 32767; ++i) text[i] = L'A';
+        LSTATUS status = RegSetValueExW(fixture_bios, L"SystemManufacturer", 0,
+            REG_SZ, (const BYTE*)text, 65536);
+        text[32767] = L'A';
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"SystemProductName", 0,
+            REG_SZ, (const BYTE*)text, 65538);
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"BaseBoardProduct", 0,
+            REG_SZ, (const BYTE*)text, 65536);
+        HeapFree(GetProcessHeap(), 0, text);
+        return status;
+    }
+    if (scenario == 3) {
+        const WCHAR unterminated[] = { 0xac00, L'B' };
+        const BYTE odd[] = { 'X', 0, 0 };
+        LSTATUS status = RegSetValueExW(fixture_bios, L"SystemManufacturer", 0,
+            REG_SZ, (const BYTE*)unterminated, sizeof(unterminated));
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"SystemProductName", 0,
+            REG_SZ, NULL, 0);
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"BaseBoardProduct", 0,
+            REG_SZ, odd, sizeof(odd));
+        return status;
+    }
+    if (scenario == 2) {
+        const WCHAR high[] = { 0xd800, 0 };
+        const WCHAR low[] = { 0xdc00, 0 };
+        const WCHAR board[] = L"Fixture board";
+        LSTATUS status = RegSetValueExW(fixture_bios, L"SystemManufacturer", 0,
+            REG_SZ, (const BYTE*)high, sizeof(high));
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"SystemProductName", 0,
+            REG_SZ, (const BYTE*)low, sizeof(low));
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"BaseBoardProduct", 0,
+            REG_SZ, (const BYTE*)board, sizeof(board));
+        return status;
+    }
+    if (scenario == 1) {
+        const WCHAR manufacturer[] = { 0xac00, 0xd83d, 0xde80, 0x00e9, 0 };
+        const WCHAR model[] = L"";
+        const WCHAR board[] = L"Fixture board";
+        LSTATUS status = RegSetValueExW(fixture_bios, L"SystemManufacturer", 0,
+            REG_SZ, (const BYTE*)manufacturer, sizeof(manufacturer));
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"SystemProductName", 0,
+            REG_SZ, (const BYTE*)model, sizeof(model));
+        if (status == ERROR_SUCCESS) status = RegSetValueExW(fixture_bios, L"BaseBoardProduct", 0,
+            REG_SZ, (const BYTE*)board, sizeof(board));
+        return status;
+    }
+    if (scenario != 0) return ERROR_INVALID_PARAMETER;
     DWORD wrong_type = 42;
     LSTATUS status = RegSetValueExW(fixture_bios, L"SystemManufacturer", 0,
         REG_DWORD, (const BYTE*)&wrong_type, sizeof(wrong_type));

@@ -50,12 +50,12 @@ try {
     if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { throw 'Windows test host produced no report.' }
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
     Write-Output (Get-Content -LiteralPath $reportPath -Raw)
-    if (-not $report.passed -or $report.checks.Count -ne 10) { throw "Windows verification failed; see $reportPath" }
+    if (-not $report.passed -or $report.checks.Count -ne 12) { throw "Windows verification failed; see $reportPath" }
     # Leave a regular example executable after verification. It has no test channel
     # and uses the original application entrypoint.
     $env:DEVICE_READOUT_WINDOWS_TEST = $null
     Invoke-LocalFlutter build windows --release --no-pub --target=lib/main.dart
-    Write-Output "10/10 native Windows screen, memory, runtime, OS and device scenarios passed. Report: $reportPath"
+    Write-Output "12/12 native Windows screen, memory, runtime, OS, locale, time-zone and device scenarios passed. Report: $reportPath"
 } finally {
     $env:FLUTTER_ROOT = $oldFlutterRoot
     $env:PUB_CACHE = $oldPubCache

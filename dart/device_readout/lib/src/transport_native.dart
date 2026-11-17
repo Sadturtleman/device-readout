@@ -12,6 +12,9 @@ part 'windows_memory.dart';
 part 'windows_runtime.dart';
 part 'windows_os.dart';
 part 'windows_device_info.dart';
+part 'windows_time_zone.dart';
+part 'windows_locale.dart';
+part 'windows_locale_unicode.dart';
 
 CollectionChannel createWebChannel(Uri workerUri) =>
     throw const DeviceReadoutException(
@@ -35,6 +38,8 @@ final class _NativeCollector
   _WindowsRuntime? windowsRuntime;
   _WindowsOs? windowsOs;
   _WindowsDeviceInfo? windowsDeviceInfo;
+  _WindowsTimeZone? windowsTimeZone;
+  _WindowsLocale? windowsLocale;
 
   @override
   EntityCapabilities capabilities(EntityAddress entity, ReadContext context) {
@@ -45,6 +50,8 @@ final class _NativeCollector
             (entity.kind == EntityKind.ram ||
                 entity.kind == EntityKind.processMemory ||
                 entity.kind == EntityKind.os ||
+                entity.kind == EntityKind.timeZone ||
+                entity.kind == EntityKind.locale ||
                 entity.kind == EntityKind.deviceInfo));
     return EntityCapabilities(readable: available, watchable: available);
   }
@@ -63,6 +70,12 @@ final class _NativeCollector
     }
     if (Platform.isWindows && entity.kind == EntityKind.deviceInfo) {
       return (windowsDeviceInfo ??= _WindowsDeviceInfo()).read();
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.timeZone) {
+      return (windowsTimeZone ??= _WindowsTimeZone()).read();
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.locale) {
+      return (windowsLocale ??= _WindowsLocale()).read();
     }
     if (entity.kind != EntityKind.runtime) {
       throw const DeviceReadoutException(
@@ -106,7 +119,17 @@ final class _NativeCollector
   @override
   void dispose() {
     try {
-      windowsDeviceInfo?.dispose();
+      try {
+        try {
+          windowsLocale?.dispose();
+        } finally {
+          windowsLocale = null;
+          windowsTimeZone?.dispose();
+        }
+      } finally {
+        windowsTimeZone = null;
+        windowsDeviceInfo?.dispose();
+      }
     } finally {
       windowsDeviceInfo = null;
       try {

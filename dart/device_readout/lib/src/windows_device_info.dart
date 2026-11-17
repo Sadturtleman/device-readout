@@ -133,7 +133,10 @@ final class _WindowsDeviceInfo {
       const maximumBytes = 64 * 1024;
       for (var attempt = 0; attempt < 3; attempt++) {
         final required = count.value;
-        if (required > maximumBytes || required.isOdd) return null;
+        // A size-only REG_SZ query can reserve another UTF-16 terminator even
+        // when the stored value is already terminated. Try the bounded read
+        // before rejecting that two-byte sizing allowance.
+        if (required > maximumBytes + 2 || required.isOdd) return null;
         // Allow RegGetValue to append a missing terminator within a bounded buffer.
         final capacity = required < maximumBytes - 2
             ? required + 2
@@ -158,6 +161,7 @@ final class _WindowsDeviceInfo {
           }
           if (status != 234)
             return null; // ERROR_MORE_DATA may race the sizing read.
+          if (capacity == maximumBytes) return null;
         } finally {
           free(owner, 0, output);
         }

@@ -6,6 +6,12 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [Dart and Flutter Windows locale checkpoint](docs/verification/2026-11-18-dart-windows-locale.md) adds NLS/ICU collection for all eleven Locale fields with separate user/system/process language lists. Current fields match independent sources; Dart JIT/native suites pass 66/66 each, the actual Flutter Windows app passes 12/12 and framework tests pass 24/24. Additional settings/locale combinations, app-framework locale observations and the full platform matrix remain pending.
+
+The [Dart and Flutter Windows time-zone checkpoint](docs/verification/2026-11-18-dart-windows-time-zone.md) adds native Windows/IANA IDs, current UTC offset and DST state through isolate-owned get/watch. Final Dart JIT/native suites pass 65/65 each, actual Flutter Windows checks pass 11/11 and framework tests pass 24/24. The record preserves an earlier, unreproduced JIT compiler abort in a registry test child. Other zones/DST transitions, native failures and the full platform matrix remain pending.
+
+The [Windows registry boundary checkpoint](docs/verification/2026-11-18-dart-windows-registry.md) fixes a normal terminated 64 KiB DeviceInfo string being rejected because of an extra native sizing allowance. Six actual child-process registry scenarios cover partial fields, Unicode, malformed text, size limits and watch recovery. Dart JIT/native suites pass 64/64 each, the actual Flutter Windows app passes 10/10 and framework tests pass 24/24. Growth races, remaining collectors and the full acceptance matrix remain pending.
+
 The [Windows upload checkpoint](docs/verification/2026-11-17-windows-upload-checkpoint.md) includes Runtime, Os and DeviceInfo collectors plus child-process registry coverage for wrong-type and missing fields. Upload-time Dart JIT/native contracts pass 59/59 each, with clean analysis and the negative web boundary passing. The preceding Flutter Windows 10/10 and framework 24/24 results remain recorded below; the full implementation and acceptance matrix remains unfinished.
 
 The [Dart and Flutter Windows DeviceInfo checkpoint](docs/verification/2026-11-17-dart-windows-device-info.md) adds native manufacturer, model name, board and computer-name get/watch. Independent Win32 and CIM comparisons pass. Dart JIT/native contracts pass 58/58 each, the actual Flutter Windows release app passes 10/10 and framework tests pass 24/24. Other DeviceInfo mappings, native failure/encoding cases and the full platform matrix remain pending.

@@ -17,6 +17,8 @@ import 'native_windows.dart' as nativeWindowsTests;
 import 'native_windows_process.dart' as nativeProcessTests;
 import 'native_windows_runtime.dart' as nativeRuntimeTests;
 import 'native_windows_os.dart' as nativeOsTests;
+import 'native_windows_time_zone.dart' as nativeTimeZoneTests;
+import 'native_windows_locale.dart' as nativeLocaleTests;
 import 'native_windows_device_info.dart' as nativeDeviceInfoTests;
 import 'native_windows_registry.dart' as nativeRegistryTests;
 
@@ -589,6 +591,8 @@ Future<void> main(List<String> arguments) async {
     ...nativeRegistryTests.checks,
     ...nativeDeviceInfoTests.checks,
     ...nativeOsTests.checks,
+    ...nativeTimeZoneTests.checks,
+    ...nativeLocaleTests.checks,
     ...nativeRuntimeTests.checks,
     ...nativeProcessTests.checks,
     ...nativeWindowsTests.checks,

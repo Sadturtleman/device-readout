@@ -11,6 +11,8 @@ import 'package:device_readout_flutter/device_readout_flutter.dart' as readout;
 import 'process_memory_windows.dart' show verifyProcessMemory;
 import 'runtime_windows.dart' show verifyRuntime;
 import 'os_windows.dart' show verifyOs;
+import 'time_zone_windows.dart' show verifyTimeZone;
+import 'locale_windows.dart' show verifyLocale;
 import 'device_info_windows.dart' show verifyDeviceInfo;
 
 const channel = MethodChannel('device_readout.test/windows_viewport');
@@ -188,6 +190,8 @@ Future<void> verify(
     checks.add(await verifyProcessMemory(access, memoryProbe));
     checks.add(await verifyRuntime(access, memoryProbe));
     checks.add(await verifyOs(access, memoryProbe));
+    checks.add(await verifyTimeZone(access, memoryProbe));
+    checks.add(await verifyLocale(access, memoryProbe));
     checks.add(await verifyDeviceInfo(access, memoryProbe));
 
     // The engine starts Dart before the runner finishes parenting its child
