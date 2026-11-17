@@ -84,5 +84,6 @@ export function serveCollector(collector:Collector,port:CollectorPort):()=>void 
  return()=>{stop();for(const control of running.values())control.abort();running.clear();};
 }
 export { DeviceReadoutError, ErrorCode } from './errors.js';
+export { normalizeSnapshot } from './normalize.js';
 export type { EntityAddress } from './entity.js';
 export type { Settings } from './protocol.js';

@@ -2,6 +2,8 @@
 
 Development package, not published. Use with `@device-readout/core` 0.1.0.
 
+The `@device-readout/web/dart-worker` export supplies a module-worker asset for Dart's `DeviceAccess.web(workerUri: ...)`. It reuses these collectors and normalizes app-observed values in the worker; [Dart usage and verification](../../docs/verification/2026-11-17-dart-web-worker.md) describe asset serving and the current coverage. The ordinary TypeScript entrypoint continues to use `worker.js`.
+
 ```ts
 import {RamEntity, Duration} from '@device-readout/core';
 import {createWebDeviceAccess} from '@device-readout/web';

@@ -8,8 +8,11 @@ import 'transport_api.dart';
 
 part 'transport_native_watch.dart';
 
-const hasCollectionWorker = true;
-const supportsSensorSources = hasCollectionWorker;
+CollectionChannel createWebChannel(Uri workerUri) =>
+    throw const DeviceReadoutException(
+      ErrorCode.unsupportedEntity,
+      'Web collection requires a browser runtime.',
+    );
 
 enum _ReadOperation { snapshot, list, current, capabilities }
 
@@ -73,6 +76,8 @@ final class _NativeCollector
 }
 
 final class _IsolateChannel implements CollectionChannel {
+  @override
+  bool get available => true;
   final CollectorFactory _factory;
   final Object? _initialData;
   final Queue<_Read> _queue = Queue();

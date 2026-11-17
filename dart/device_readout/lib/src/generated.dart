@@ -447,6 +447,18 @@ final class DeviceInfoSnapshot extends DeviceSnapshot {
     this.product,
     this.board,
   });
+  DeviceInfoSnapshot._completed(DeviceInfoSnapshot snapshot)
+    : manufacturer = snapshot.manufacturer,
+      brand = snapshot.brand,
+      modelCode = snapshot.modelCode,
+      modelName = snapshot.modelName,
+      deviceName = snapshot.deviceName,
+      formFactor = snapshot.formFactor,
+      product = snapshot.product,
+      board = snapshot.board,
+      super._completed();
+  @override
+  DeviceInfoSnapshot _collected() => DeviceInfoSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.deviceInfo;
   @override
@@ -483,6 +495,16 @@ final class OsSnapshot extends DeviceSnapshot {
     this.kernelName,
     this.kernelVersion,
   });
+  OsSnapshot._completed(OsSnapshot snapshot)
+    : family = snapshot.family,
+      name = snapshot.name,
+      version = snapshot.version,
+      build = snapshot.build,
+      kernelName = snapshot.kernelName,
+      kernelVersion = snapshot.kernelVersion,
+      super._completed();
+  @override
+  OsSnapshot _collected() => OsSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.os;
   @override
@@ -511,6 +533,14 @@ final class RuntimeSnapshot extends DeviceSnapshot {
     this.processBitness,
     Set<Abi>? supportedAbis,
   }) : supportedAbis = supportedAbis == null ? null : Set.unmodifiable(supportedAbis);
+  RuntimeSnapshot._completed(RuntimeSnapshot snapshot)
+    : hostArchitecture = snapshot.hostArchitecture,
+      processArchitecture = snapshot.processArchitecture,
+      processBitness = snapshot.processBitness,
+      supportedAbis = snapshot.supportedAbis,
+      super._completed();
+  @override
+  RuntimeSnapshot _collected() => RuntimeSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.runtime;
   @override
@@ -549,6 +579,18 @@ final class CpuSnapshot extends DeviceSnapshot {
     this.physicalCoreCount,
     this.processorPackageCount,
   });
+  CpuSnapshot._completed(CpuSnapshot snapshot)
+    : model = snapshot.model,
+      manufacturer = snapshot.manufacturer,
+      socModel = snapshot.socModel,
+      socManufacturer = snapshot.socManufacturer,
+      logicalProcessorCount = snapshot.logicalProcessorCount,
+      availableLogicalProcessorCount = snapshot.availableLogicalProcessorCount,
+      physicalCoreCount = snapshot.physicalCoreCount,
+      processorPackageCount = snapshot.processorPackageCount,
+      super._completed();
+  @override
+  CpuSnapshot _collected() => CpuSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.cpu;
   @override
@@ -585,6 +627,16 @@ final class CpuCoreSnapshot extends DeviceSnapshot {
     this.currentClockHz,
     this.maximumClockHz,
   });
+  CpuCoreSnapshot._completed(CpuCoreSnapshot snapshot)
+    : logicalIndex = snapshot.logicalIndex,
+      coreIndex = snapshot.coreIndex,
+      packageIndex = snapshot.packageIndex,
+      online = snapshot.online,
+      currentClockHz = snapshot.currentClockHz,
+      maximumClockHz = snapshot.maximumClockHz,
+      super._completed();
+  @override
+  CpuCoreSnapshot _collected() => CpuCoreSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.cpuCore;
   @override
@@ -622,6 +674,17 @@ final class RamSnapshot extends DeviceSnapshot {
     this.lowMemory,
     this.lowMemoryThresholdBytes,
   });
+  RamSnapshot._completed(RamSnapshot snapshot)
+    : physicalBytes = snapshot.physicalBytes,
+      kernelAccessibleBytes = snapshot.kernelAccessibleBytes,
+      advertisedBytes = snapshot.advertisedBytes,
+      availableBytes = snapshot.availableBytes,
+      freeBytes = snapshot.freeBytes,
+      lowMemory = snapshot.lowMemory,
+      lowMemoryThresholdBytes = snapshot.lowMemoryThresholdBytes,
+      super._completed();
+  @override
+  RamSnapshot _collected() => RamSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.ram;
   @override
@@ -642,6 +705,11 @@ final class ProcessMemorySnapshot extends DeviceSnapshot {
   ProcessMemorySnapshot({super.collectedAt,
     this.allocationRemainingBytes,
   });
+  ProcessMemorySnapshot._completed(ProcessMemorySnapshot snapshot)
+    : allocationRemainingBytes = snapshot.allocationRemainingBytes,
+      super._completed();
+  @override
+  ProcessMemorySnapshot _collected() => ProcessMemorySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.processMemory;
   @override
@@ -688,6 +756,21 @@ final class LocaleSnapshot extends DeviceSnapshot {
   }) : preferredLanguageTags = preferredLanguageTags == null ? null : List.unmodifiable(preferredLanguageTags),
       systemLanguageTags = systemLanguageTags == null ? null : List.unmodifiable(systemLanguageTags),
       appLanguageTags = appLanguageTags == null ? null : List.unmodifiable(appLanguageTags);
+  LocaleSnapshot._completed(LocaleSnapshot snapshot)
+    : currentLanguageTag = snapshot.currentLanguageTag,
+      preferredLanguageTags = snapshot.preferredLanguageTags,
+      systemLanguageTags = snapshot.systemLanguageTags,
+      appLanguageTags = snapshot.appLanguageTags,
+      regionCode = snapshot.regionCode,
+      scriptCode = snapshot.scriptCode,
+      calendar = snapshot.calendar,
+      numberingSystem = snapshot.numberingSystem,
+      hourCycle = snapshot.hourCycle,
+      firstWeekday = snapshot.firstWeekday,
+      measurementSystem = snapshot.measurementSystem,
+      super._completed();
+  @override
+  LocaleSnapshot _collected() => LocaleSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.locale;
   @override
@@ -721,6 +804,14 @@ final class TimeZoneSnapshot extends DeviceSnapshot {
     this.utcOffsetSeconds,
     this.daylightSavingTime,
   });
+  TimeZoneSnapshot._completed(TimeZoneSnapshot snapshot)
+    : ianaId = snapshot.ianaId,
+      windowsId = snapshot.windowsId,
+      utcOffsetSeconds = snapshot.utcOffsetSeconds,
+      daylightSavingTime = snapshot.daylightSavingTime,
+      super._completed();
+  @override
+  TimeZoneSnapshot _collected() => TimeZoneSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.timeZone;
   @override
@@ -759,6 +850,18 @@ final class AndroidBuildSnapshot extends DeviceSnapshot {
     List<String>? buildTags,
     this.bootloaderVersion,
   }) : buildTags = buildTags == null ? null : List.unmodifiable(buildTags);
+  AndroidBuildSnapshot._completed(AndroidBuildSnapshot snapshot)
+    : apiLevel = snapshot.apiLevel,
+      securityPatch = snapshot.securityPatch,
+      buildId = snapshot.buildId,
+      buildDisplay = snapshot.buildDisplay,
+      buildFingerprint = snapshot.buildFingerprint,
+      buildType = snapshot.buildType,
+      buildTags = snapshot.buildTags,
+      bootloaderVersion = snapshot.bootloaderVersion,
+      super._completed();
+  @override
+  AndroidBuildSnapshot _collected() => AndroidBuildSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.androidBuild;
   @override
@@ -780,6 +883,11 @@ final class AndroidIdentitySnapshot extends DeviceSnapshot {
   AndroidIdentitySnapshot({super.collectedAt,
     this.androidId,
   });
+  AndroidIdentitySnapshot._completed(AndroidIdentitySnapshot snapshot)
+    : androidId = snapshot.androidId,
+      super._completed();
+  @override
+  AndroidIdentitySnapshot _collected() => AndroidIdentitySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.androidIdentity;
   @override
@@ -794,6 +902,11 @@ final class AppleVendorIdentitySnapshot extends DeviceSnapshot {
   AppleVendorIdentitySnapshot({super.collectedAt,
     this.vendorId,
   });
+  AppleVendorIdentitySnapshot._completed(AppleVendorIdentitySnapshot snapshot)
+    : vendorId = snapshot.vendorId,
+      super._completed();
+  @override
+  AppleVendorIdentitySnapshot _collected() => AppleVendorIdentitySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.appleVendorIdentity;
   @override
@@ -811,6 +924,12 @@ final class WindowsPublisherIdentitySnapshot extends DeviceSnapshot {
     this.publisherId,
     this.source,
   });
+  WindowsPublisherIdentitySnapshot._completed(WindowsPublisherIdentitySnapshot snapshot)
+    : publisherId = snapshot.publisherId,
+      source = snapshot.source,
+      super._completed();
+  @override
+  WindowsPublisherIdentitySnapshot _collected() => WindowsPublisherIdentitySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.windowsPublisherIdentity;
   @override
@@ -826,6 +945,11 @@ final class MacPlatformIdentitySnapshot extends DeviceSnapshot {
   MacPlatformIdentitySnapshot({super.collectedAt,
     this.platformUuid,
   });
+  MacPlatformIdentitySnapshot._completed(MacPlatformIdentitySnapshot snapshot)
+    : platformUuid = snapshot.platformUuid,
+      super._completed();
+  @override
+  MacPlatformIdentitySnapshot _collected() => MacPlatformIdentitySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.macPlatformIdentity;
   @override
@@ -840,6 +964,11 @@ final class HardwareSerialSnapshot extends DeviceSnapshot {
   HardwareSerialSnapshot({super.collectedAt,
     this.serial,
   });
+  HardwareSerialSnapshot._completed(HardwareSerialSnapshot snapshot)
+    : serial = snapshot.serial,
+      super._completed();
+  @override
+  HardwareSerialSnapshot _collected() => HardwareSerialSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.hardwareSerial;
   @override
@@ -857,6 +986,12 @@ final class TelephonyIdentitySnapshot extends DeviceSnapshot {
     this.imei,
     this.meid,
   });
+  TelephonyIdentitySnapshot._completed(TelephonyIdentitySnapshot snapshot)
+    : imei = snapshot.imei,
+      meid = snapshot.meid,
+      super._completed();
+  @override
+  TelephonyIdentitySnapshot _collected() => TelephonyIdentitySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.telephonyIdentity;
   @override
@@ -927,6 +1062,29 @@ final class DisplaySnapshot extends DeviceSnapshot {
     this.brightness,
   }) : supportedModes = supportedModes == null ? null : List.unmodifiable(supportedModes),
       hdrFormats = hdrFormats == null ? null : Set.unmodifiable(hdrFormats);
+  DisplaySnapshot._completed(DisplaySnapshot snapshot)
+    : label = snapshot.label,
+      primary = snapshot.primary,
+      internal = snapshot.internal,
+      state = snapshot.state,
+      logicalBounds = snapshot.logicalBounds,
+      workAreaBounds = snapshot.workAreaBounds,
+      pixelSize = snapshot.pixelSize,
+      physicalSizeMillimeters = snapshot.physicalSizeMillimeters,
+      orientation = snapshot.orientation,
+      rotationDegrees = snapshot.rotationDegrees,
+      scaleFactor = snapshot.scaleFactor,
+      densityDpi = snapshot.densityDpi,
+      currentMode = snapshot.currentMode,
+      supportedModes = snapshot.supportedModes,
+      maximumRefreshRateHz = snapshot.maximumRefreshRateHz,
+      colorDepthBits = snapshot.colorDepthBits,
+      colorGamut = snapshot.colorGamut,
+      hdrFormats = snapshot.hdrFormats,
+      brightness = snapshot.brightness,
+      super._completed();
+  @override
+  DisplaySnapshot _collected() => DisplaySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.display;
   @override
@@ -971,6 +1129,15 @@ final class ViewportSnapshot extends DeviceSnapshot {
     this.safeAreaInsets,
     this.textScaleFactor,
   });
+  ViewportSnapshot._completed(ViewportSnapshot snapshot)
+    : size = snapshot.size,
+      visualViewportSize = snapshot.visualViewportSize,
+      visualViewportScale = snapshot.visualViewportScale,
+      safeAreaInsets = snapshot.safeAreaInsets,
+      textScaleFactor = snapshot.textScaleFactor,
+      super._completed();
+  @override
+  ViewportSnapshot _collected() => ViewportSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.viewport;
   @override
@@ -995,6 +1162,13 @@ final class PowerSnapshot extends DeviceSnapshot {
     this.powerSaveMode,
     this.thermalState,
   });
+  PowerSnapshot._completed(PowerSnapshot snapshot)
+    : powerSource = snapshot.powerSource,
+      powerSaveMode = snapshot.powerSaveMode,
+      thermalState = snapshot.thermalState,
+      super._completed();
+  @override
+  PowerSnapshot _collected() => PowerSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.power;
   @override
@@ -1062,6 +1236,28 @@ final class BatterySnapshot extends DeviceSnapshot {
     this.health,
     this.cycleCount,
   });
+  BatterySnapshot._completed(BatterySnapshot snapshot)
+    : present = snapshot.present,
+      level = snapshot.level,
+      charging = snapshot.charging,
+      state = snapshot.state,
+      timeToFull = snapshot.timeToFull,
+      timeToEmpty = snapshot.timeToEmpty,
+      voltageMillivolts = snapshot.voltageMillivolts,
+      currentMicroamps = snapshot.currentMicroamps,
+      averageCurrentMicroamps = snapshot.averageCurrentMicroamps,
+      chargeRateMilliwatts = snapshot.chargeRateMilliwatts,
+      temperatureCelsius = snapshot.temperatureCelsius,
+      chargeCounterMicroampHours = snapshot.chargeCounterMicroampHours,
+      remainingEnergyMilliwattHours = snapshot.remainingEnergyMilliwattHours,
+      fullChargeEnergyMilliwattHours = snapshot.fullChargeEnergyMilliwattHours,
+      designEnergyMilliwattHours = snapshot.designEnergyMilliwattHours,
+      technology = snapshot.technology,
+      health = snapshot.health,
+      cycleCount = snapshot.cycleCount,
+      super._completed();
+  @override
+  BatterySnapshot _collected() => BatterySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.battery;
   @override
@@ -1123,6 +1319,21 @@ final class NetworkPathSnapshot extends DeviceSnapshot {
     this.internetValidated,
     this.captivePortal,
   }) : transports = transports == null ? null : Set.unmodifiable(transports);
+  NetworkPathSnapshot._completed(NetworkPathSnapshot snapshot)
+    : connectionState = snapshot.connectionState,
+      transports = snapshot.transports,
+      metered = snapshot.metered,
+      expensive = snapshot.expensive,
+      constrained = snapshot.constrained,
+      saveData = snapshot.saveData,
+      supportsIpv4 = snapshot.supportsIpv4,
+      supportsIpv6 = snapshot.supportsIpv6,
+      supportsDns = snapshot.supportsDns,
+      internetValidated = snapshot.internetValidated,
+      captivePortal = snapshot.captivePortal,
+      super._completed();
+  @override
+  NetworkPathSnapshot _collected() => NetworkPathSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.networkPath;
   @override
@@ -1159,6 +1370,15 @@ final class NetworkPerformanceSnapshot extends DeviceSnapshot {
     this.effectiveType,
     this.browserOnline,
   });
+  NetworkPerformanceSnapshot._completed(NetworkPerformanceSnapshot snapshot)
+    : downlinkBps = snapshot.downlinkBps,
+      uplinkBps = snapshot.uplinkBps,
+      roundTripTime = snapshot.roundTripTime,
+      effectiveType = snapshot.effectiveType,
+      browserOnline = snapshot.browserOnline,
+      super._completed();
+  @override
+  NetworkPerformanceSnapshot _collected() => NetworkPerformanceSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.networkPerformance;
   @override
@@ -1204,6 +1424,19 @@ final class NetworkInterfaceSnapshot extends DeviceSnapshot {
       dnsServers = dnsServers == null ? null : List.unmodifiable(dnsServers),
       gateways = gateways == null ? null : List.unmodifiable(gateways),
       routes = routes == null ? null : List.unmodifiable(routes);
+  NetworkInterfaceSnapshot._completed(NetworkInterfaceSnapshot snapshot)
+    : name = snapshot.name,
+      interfaceType = snapshot.interfaceType,
+      operationalState = snapshot.operationalState,
+      hardwareAddress = snapshot.hardwareAddress,
+      ipAddresses = snapshot.ipAddresses,
+      dnsServers = snapshot.dnsServers,
+      gateways = snapshot.gateways,
+      routes = snapshot.routes,
+      mtuBytes = snapshot.mtuBytes,
+      super._completed();
+  @override
+  NetworkInterfaceSnapshot _collected() => NetworkInterfaceSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.networkInterface;
   @override
@@ -1244,6 +1477,17 @@ final class WifiConnectionSnapshot extends DeviceSnapshot {
     this.receiveLinkSpeedBps,
     this.transmitLinkSpeedBps,
   });
+  WifiConnectionSnapshot._completed(WifiConnectionSnapshot snapshot)
+    : ssid = snapshot.ssid,
+      bssid = snapshot.bssid,
+      security = snapshot.security,
+      rssiDbm = snapshot.rssiDbm,
+      frequencyHz = snapshot.frequencyHz,
+      receiveLinkSpeedBps = snapshot.receiveLinkSpeedBps,
+      transmitLinkSpeedBps = snapshot.transmitLinkSpeedBps,
+      super._completed();
+  @override
+  WifiConnectionSnapshot _collected() => WifiConnectionSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.wifiConnection;
   @override
@@ -1282,6 +1526,17 @@ final class CellularSubscriptionSnapshot extends DeviceSnapshot {
     this.radioTechnology,
     this.roaming,
   });
+  CellularSubscriptionSnapshot._completed(CellularSubscriptionSnapshot snapshot)
+    : slotIndex = snapshot.slotIndex,
+      carrierName = snapshot.carrierName,
+      countryCode = snapshot.countryCode,
+      mobileCountryCode = snapshot.mobileCountryCode,
+      mobileNetworkCode = snapshot.mobileNetworkCode,
+      radioTechnology = snapshot.radioTechnology,
+      roaming = snapshot.roaming,
+      super._completed();
+  @override
+  CellularSubscriptionSnapshot _collected() => CellularSubscriptionSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.cellularSubscription;
   @override
@@ -1338,6 +1593,23 @@ final class StorageVolumeSnapshot extends DeviceSnapshot {
     this.availableForOpportunisticUsageBytes,
     this.allocatableBytes,
   });
+  StorageVolumeSnapshot._completed(StorageVolumeSnapshot snapshot)
+    : name = snapshot.name,
+      fileSystem = snapshot.fileSystem,
+      totalBytes = snapshot.totalBytes,
+      freeBytes = snapshot.freeBytes,
+      availableToCallerBytes = snapshot.availableToCallerBytes,
+      totalBytesForCaller = snapshot.totalBytesForCaller,
+      readOnly = snapshot.readOnly,
+      removable = snapshot.removable,
+      encrypted = snapshot.encrypted,
+      caseSensitive = snapshot.caseSensitive,
+      availableForImportantUsageBytes = snapshot.availableForImportantUsageBytes,
+      availableForOpportunisticUsageBytes = snapshot.availableForOpportunisticUsageBytes,
+      allocatableBytes = snapshot.allocatableBytes,
+      super._completed();
+  @override
+  StorageVolumeSnapshot _collected() => StorageVolumeSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.storageVolume;
   @override
@@ -1373,6 +1645,14 @@ final class OriginStorageSnapshot extends DeviceSnapshot {
     Map<StorageCategory, BigInt>? usageByCategory,
     this.persistent,
   }) : usageByCategory = usageByCategory == null ? null : Map.unmodifiable(usageByCategory);
+  OriginStorageSnapshot._completed(OriginStorageSnapshot snapshot)
+    : quotaBytes = snapshot.quotaBytes,
+      usageBytes = snapshot.usageBytes,
+      usageByCategory = snapshot.usageByCategory,
+      persistent = snapshot.persistent,
+      super._completed();
+  @override
+  OriginStorageSnapshot _collected() => OriginStorageSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.originStorage;
   @override
@@ -1390,6 +1670,11 @@ final class AccelerometerSnapshot extends DeviceSnapshot {
   AccelerometerSnapshot({super.collectedAt,
     this.value,
   });
+  AccelerometerSnapshot._completed(AccelerometerSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  AccelerometerSnapshot _collected() => AccelerometerSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.accelerometer;
   @override
@@ -1404,6 +1689,11 @@ final class LinearAccelerationSnapshot extends DeviceSnapshot {
   LinearAccelerationSnapshot({super.collectedAt,
     this.value,
   });
+  LinearAccelerationSnapshot._completed(LinearAccelerationSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  LinearAccelerationSnapshot _collected() => LinearAccelerationSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.linearAcceleration;
   @override
@@ -1418,6 +1708,11 @@ final class GravitySnapshot extends DeviceSnapshot {
   GravitySnapshot({super.collectedAt,
     this.value,
   });
+  GravitySnapshot._completed(GravitySnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  GravitySnapshot _collected() => GravitySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.gravity;
   @override
@@ -1432,6 +1727,11 @@ final class GyroscopeSnapshot extends DeviceSnapshot {
   GyroscopeSnapshot({super.collectedAt,
     this.value,
   });
+  GyroscopeSnapshot._completed(GyroscopeSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  GyroscopeSnapshot _collected() => GyroscopeSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.gyroscope;
   @override
@@ -1446,6 +1746,11 @@ final class MagnetometerSnapshot extends DeviceSnapshot {
   MagnetometerSnapshot({super.collectedAt,
     this.value,
   });
+  MagnetometerSnapshot._completed(MagnetometerSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  MagnetometerSnapshot _collected() => MagnetometerSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.magnetometer;
   @override
@@ -1460,6 +1765,11 @@ final class RelativeOrientationSnapshot extends DeviceSnapshot {
   RelativeOrientationSnapshot({super.collectedAt,
     this.value,
   });
+  RelativeOrientationSnapshot._completed(RelativeOrientationSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  RelativeOrientationSnapshot _collected() => RelativeOrientationSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.relativeOrientation;
   @override
@@ -1474,6 +1784,11 @@ final class AbsoluteOrientationSnapshot extends DeviceSnapshot {
   AbsoluteOrientationSnapshot({super.collectedAt,
     this.value,
   });
+  AbsoluteOrientationSnapshot._completed(AbsoluteOrientationSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  AbsoluteOrientationSnapshot _collected() => AbsoluteOrientationSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.absoluteOrientation;
   @override
@@ -1488,6 +1803,11 @@ final class IlluminanceSnapshot extends DeviceSnapshot {
   IlluminanceSnapshot({super.collectedAt,
     this.value,
   });
+  IlluminanceSnapshot._completed(IlluminanceSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  IlluminanceSnapshot _collected() => IlluminanceSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.illuminance;
   @override
@@ -1502,6 +1822,11 @@ final class PressureSnapshot extends DeviceSnapshot {
   PressureSnapshot({super.collectedAt,
     this.value,
   });
+  PressureSnapshot._completed(PressureSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  PressureSnapshot _collected() => PressureSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.pressure;
   @override
@@ -1516,6 +1841,11 @@ final class AmbientTemperatureSnapshot extends DeviceSnapshot {
   AmbientTemperatureSnapshot({super.collectedAt,
     this.value,
   });
+  AmbientTemperatureSnapshot._completed(AmbientTemperatureSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  AmbientTemperatureSnapshot _collected() => AmbientTemperatureSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.ambientTemperature;
   @override
@@ -1530,6 +1860,11 @@ final class RelativeHumiditySnapshot extends DeviceSnapshot {
   RelativeHumiditySnapshot({super.collectedAt,
     this.value,
   });
+  RelativeHumiditySnapshot._completed(RelativeHumiditySnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  RelativeHumiditySnapshot _collected() => RelativeHumiditySnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.relativeHumidity;
   @override
@@ -1544,6 +1879,11 @@ final class ProximityNearSnapshot extends DeviceSnapshot {
   ProximityNearSnapshot({super.collectedAt,
     this.value,
   });
+  ProximityNearSnapshot._completed(ProximityNearSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  ProximityNearSnapshot _collected() => ProximityNearSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.proximityNear;
   @override
@@ -1558,6 +1898,11 @@ final class ProximityDistanceSnapshot extends DeviceSnapshot {
   ProximityDistanceSnapshot({super.collectedAt,
     this.value,
   });
+  ProximityDistanceSnapshot._completed(ProximityDistanceSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  ProximityDistanceSnapshot _collected() => ProximityDistanceSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.proximityDistance;
   @override
@@ -1572,6 +1917,11 @@ final class RelativeAltitudeSnapshot extends DeviceSnapshot {
   RelativeAltitudeSnapshot({super.collectedAt,
     this.value,
   });
+  RelativeAltitudeSnapshot._completed(RelativeAltitudeSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  RelativeAltitudeSnapshot _collected() => RelativeAltitudeSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.relativeAltitude;
   @override
@@ -1586,6 +1936,11 @@ final class HingeAngleSnapshot extends DeviceSnapshot {
   HingeAngleSnapshot({super.collectedAt,
     this.value,
   });
+  HingeAngleSnapshot._completed(HingeAngleSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  HingeAngleSnapshot _collected() => HingeAngleSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.hingeAngle;
   @override
@@ -1600,6 +1955,11 @@ final class StepCountSinceBootSnapshot extends DeviceSnapshot {
   StepCountSinceBootSnapshot({super.collectedAt,
     this.value,
   });
+  StepCountSinceBootSnapshot._completed(StepCountSinceBootSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  StepCountSinceBootSnapshot _collected() => StepCountSinceBootSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.stepCountSinceBoot;
   @override
@@ -1614,6 +1974,11 @@ final class StepDetectedSnapshot extends DeviceSnapshot {
   StepDetectedSnapshot({super.collectedAt,
     this.value,
   });
+  StepDetectedSnapshot._completed(StepDetectedSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  StepDetectedSnapshot _collected() => StepDetectedSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.stepDetected;
   @override
@@ -1628,6 +1993,11 @@ final class SignificantMotionSnapshot extends DeviceSnapshot {
   SignificantMotionSnapshot({super.collectedAt,
     this.value,
   });
+  SignificantMotionSnapshot._completed(SignificantMotionSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  SignificantMotionSnapshot _collected() => SignificantMotionSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.significantMotion;
   @override
@@ -1642,6 +2012,11 @@ final class HumanPresenceSnapshot extends DeviceSnapshot {
   HumanPresenceSnapshot({super.collectedAt,
     this.value,
   });
+  HumanPresenceSnapshot._completed(HumanPresenceSnapshot snapshot)
+    : value = snapshot.value,
+      super._completed();
+  @override
+  HumanPresenceSnapshot _collected() => HumanPresenceSnapshot._completed(this);
   @override
   EntityKind? get entityKind => EntityKind.humanPresence;
   @override
@@ -1686,6 +2061,21 @@ final class SensorDescription extends DeviceSnapshot {
     this.powerMilliamps,
     this.fifoCapacity,
   });
+  SensorDescription._completed(SensorDescription snapshot)
+    : kind = snapshot.kind,
+      name = snapshot.name,
+      vendor = snapshot.vendor,
+      version = snapshot.version,
+      reportingMode = snapshot.reportingMode,
+      minimumInterval = snapshot.minimumInterval,
+      maximumInterval = snapshot.maximumInterval,
+      maximumRange = snapshot.maximumRange,
+      resolution = snapshot.resolution,
+      powerMilliamps = snapshot.powerMilliamps,
+      fifoCapacity = snapshot.fifoCapacity,
+      super._completed();
+  @override
+  SensorDescription _collected() => SensorDescription._completed(this);
   @override
   EntityKind? get entityKind => null;
   @override
@@ -1949,10 +2339,10 @@ abstract final class SnapshotCodec {
       value: _components(fields['value'], ['x', 'y', 'z'], (n) => Vector3(n[0], n[1], n[2])),
     ),
     EntityKind.relativeOrientation => RelativeOrientationSnapshot(collectedAt: collectedAt,
-      value: _components(fields['value'], ['x', 'y', 'z', 'w'], (n) => Quaternion(n[0], n[1], n[2], n[3])),
+      value: _rotation(fields['value']),
     ),
     EntityKind.absoluteOrientation => AbsoluteOrientationSnapshot(collectedAt: collectedAt,
-      value: _components(fields['value'], ['x', 'y', 'z', 'w'], (n) => Quaternion(n[0], n[1], n[2], n[3])),
+      value: _rotation(fields['value']),
     ),
     EntityKind.illuminance => IlluminanceSnapshot(collectedAt: collectedAt,
       value: _number(fields['value']),
@@ -2003,5 +2393,303 @@ abstract final class SnapshotCodec {
     resolution: _number(fields['resolution']),
     powerMilliamps: _number(fields['powerMilliamps']),
     fifoCapacity: _integer(fields['fifoCapacity']),
+  );
+  static DeviceSnapshot _hydrate(EntityKind kind, Map<String, Object?> fields, DateTime collectedAt) => switch(kind) {
+    EntityKind.deviceInfo => DeviceInfoSnapshot(collectedAt: collectedAt,
+      manufacturer: fields['manufacturer'] is String ? fields['manufacturer'] as String : null,
+      brand: fields['brand'] is String ? fields['brand'] as String : null,
+      modelCode: fields['modelCode'] is String ? fields['modelCode'] as String : null,
+      modelName: fields['modelName'] is String ? fields['modelName'] as String : null,
+      deviceName: fields['deviceName'] is String ? fields['deviceName'] as String : null,
+      formFactor: _enumValue(fields['formFactor'], FormFactor.values),
+      product: fields['product'] is String ? fields['product'] as String : null,
+      board: fields['board'] is String ? fields['board'] as String : null,
+    ),
+    EntityKind.os => OsSnapshot(collectedAt: collectedAt,
+      family: _enumValue(fields['family'], OsFamily.values),
+      name: fields['name'] is String ? fields['name'] as String : null,
+      version: fields['version'] is String ? fields['version'] as String : null,
+      build: fields['build'] is String ? fields['build'] as String : null,
+      kernelName: fields['kernelName'] is String ? fields['kernelName'] as String : null,
+      kernelVersion: fields['kernelVersion'] is String ? fields['kernelVersion'] as String : null,
+    ),
+    EntityKind.runtime => RuntimeSnapshot(collectedAt: collectedAt,
+      hostArchitecture: _enumValue(fields['hostArchitecture'], Architecture.values),
+      processArchitecture: _enumValue(fields['processArchitecture'], Architecture.values),
+      processBitness: _wireInteger(fields['processBitness']),
+      supportedAbis: _set(fields['supportedAbis'], (raw) => _enumValue(raw, Abi.values)),
+    ),
+    EntityKind.cpu => CpuSnapshot(collectedAt: collectedAt,
+      model: fields['model'] is String ? fields['model'] as String : null,
+      manufacturer: fields['manufacturer'] is String ? fields['manufacturer'] as String : null,
+      socModel: fields['socModel'] is String ? fields['socModel'] as String : null,
+      socManufacturer: fields['socManufacturer'] is String ? fields['socManufacturer'] as String : null,
+      logicalProcessorCount: _wireInteger(fields['logicalProcessorCount']),
+      availableLogicalProcessorCount: _wireInteger(fields['availableLogicalProcessorCount']),
+      physicalCoreCount: _wireInteger(fields['physicalCoreCount']),
+      processorPackageCount: _wireInteger(fields['processorPackageCount']),
+    ),
+    EntityKind.cpuCore => CpuCoreSnapshot(collectedAt: collectedAt,
+      logicalIndex: _wireInteger(fields['logicalIndex']),
+      coreIndex: _wireInteger(fields['coreIndex']),
+      packageIndex: _wireInteger(fields['packageIndex']),
+      online: fields['online'] is bool ? fields['online'] as bool : null,
+      currentClockHz: _wireNumber(fields['currentClockHz']),
+      maximumClockHz: _wireNumber(fields['maximumClockHz']),
+    ),
+    EntityKind.ram => RamSnapshot(collectedAt: collectedAt,
+      physicalBytes: _wireCounter(fields['physicalBytes']),
+      kernelAccessibleBytes: _wireCounter(fields['kernelAccessibleBytes']),
+      advertisedBytes: _wireCounter(fields['advertisedBytes']),
+      availableBytes: _wireCounter(fields['availableBytes']),
+      freeBytes: _wireCounter(fields['freeBytes']),
+      lowMemory: fields['lowMemory'] is bool ? fields['lowMemory'] as bool : null,
+      lowMemoryThresholdBytes: _wireCounter(fields['lowMemoryThresholdBytes']),
+    ),
+    EntityKind.processMemory => ProcessMemorySnapshot(collectedAt: collectedAt,
+      allocationRemainingBytes: _wireCounter(fields['allocationRemainingBytes']),
+    ),
+    EntityKind.locale => LocaleSnapshot(collectedAt: collectedAt,
+      currentLanguageTag: fields['currentLanguageTag'] is String ? fields['currentLanguageTag'] as String : null,
+      preferredLanguageTags: _list(fields['preferredLanguageTags'], (raw) => raw is String ? raw : null),
+      systemLanguageTags: _list(fields['systemLanguageTags'], (raw) => raw is String ? raw : null),
+      appLanguageTags: _list(fields['appLanguageTags'], (raw) => raw is String ? raw : null),
+      regionCode: fields['regionCode'] is String ? fields['regionCode'] as String : null,
+      scriptCode: fields['scriptCode'] is String ? fields['scriptCode'] as String : null,
+      calendar: fields['calendar'] is String ? fields['calendar'] as String : null,
+      numberingSystem: fields['numberingSystem'] is String ? fields['numberingSystem'] as String : null,
+      hourCycle: _enumValue(fields['hourCycle'], HourCycle.values),
+      firstWeekday: _enumValue(fields['firstWeekday'], Weekday.values),
+      measurementSystem: _enumValue(fields['measurementSystem'], MeasurementSystem.values),
+    ),
+    EntityKind.timeZone => TimeZoneSnapshot(collectedAt: collectedAt,
+      ianaId: fields['ianaId'] is String ? fields['ianaId'] as String : null,
+      windowsId: fields['windowsId'] is String ? fields['windowsId'] as String : null,
+      utcOffsetSeconds: _wireInteger(fields['utcOffsetSeconds']),
+      daylightSavingTime: fields['daylightSavingTime'] is bool ? fields['daylightSavingTime'] as bool : null,
+    ),
+    EntityKind.androidBuild => AndroidBuildSnapshot(collectedAt: collectedAt,
+      apiLevel: _wireInteger(fields['apiLevel']),
+      securityPatch: fields['securityPatch'] is String ? fields['securityPatch'] as String : null,
+      buildId: fields['buildId'] is String ? fields['buildId'] as String : null,
+      buildDisplay: fields['buildDisplay'] is String ? fields['buildDisplay'] as String : null,
+      buildFingerprint: fields['buildFingerprint'] is String ? fields['buildFingerprint'] as String : null,
+      buildType: fields['buildType'] is String ? fields['buildType'] as String : null,
+      buildTags: _list(fields['buildTags'], (raw) => raw is String ? raw : null),
+      bootloaderVersion: fields['bootloaderVersion'] is String ? fields['bootloaderVersion'] as String : null,
+    ),
+    EntityKind.androidIdentity => AndroidIdentitySnapshot(collectedAt: collectedAt,
+      androidId: fields['androidId'] is String ? fields['androidId'] as String : null,
+    ),
+    EntityKind.appleVendorIdentity => AppleVendorIdentitySnapshot(collectedAt: collectedAt,
+      vendorId: fields['vendorId'] is String ? fields['vendorId'] as String : null,
+    ),
+    EntityKind.windowsPublisherIdentity => WindowsPublisherIdentitySnapshot(collectedAt: collectedAt,
+      publisherId: fields['publisherId'] is String ? fields['publisherId'] as String : null,
+      source: _enumValue(fields['source'], WindowsIdentitySource.values),
+    ),
+    EntityKind.macPlatformIdentity => MacPlatformIdentitySnapshot(collectedAt: collectedAt,
+      platformUuid: fields['platformUuid'] is String ? fields['platformUuid'] as String : null,
+    ),
+    EntityKind.hardwareSerial => HardwareSerialSnapshot(collectedAt: collectedAt,
+      serial: fields['serial'] is String ? fields['serial'] as String : null,
+    ),
+    EntityKind.telephonyIdentity => TelephonyIdentitySnapshot(collectedAt: collectedAt,
+      imei: fields['imei'] is String ? fields['imei'] as String : null,
+      meid: fields['meid'] is String ? fields['meid'] as String : null,
+    ),
+    EntityKind.display => DisplaySnapshot(collectedAt: collectedAt,
+      label: fields['label'] is String ? fields['label'] as String : null,
+      primary: fields['primary'] is bool ? fields['primary'] as bool : null,
+      internal: fields['internal'] is bool ? fields['internal'] as bool : null,
+      state: _enumValue(fields['state'], DisplayState.values),
+      logicalBounds: _wireComponents(fields['logicalBounds'], ['x', 'y', 'width', 'height'], (n) => Rect(n[0], n[1], n[2], n[3])),
+      workAreaBounds: _wireComponents(fields['workAreaBounds'], ['x', 'y', 'width', 'height'], (n) => Rect(n[0], n[1], n[2], n[3])),
+      pixelSize: _wirePixelSize(fields['pixelSize']),
+      physicalSizeMillimeters: _wireComponents(fields['physicalSizeMillimeters'], ['width', 'height'], (n) => Size<double>(n[0], n[1])),
+      orientation: _enumValue(fields['orientation'], DisplayOrientation.values),
+      rotationDegrees: _wireNumber(fields['rotationDegrees']),
+      scaleFactor: _wireNumber(fields['scaleFactor']),
+      densityDpi: _wireNumber(fields['densityDpi']),
+      currentMode: _wireDisplayMode(fields['currentMode']),
+      supportedModes: _list(fields['supportedModes'], (raw) => _wireDisplayMode(raw)),
+      maximumRefreshRateHz: _wireNumber(fields['maximumRefreshRateHz']),
+      colorDepthBits: _wireInteger(fields['colorDepthBits']),
+      colorGamut: _enumValue(fields['colorGamut'], ColorGamut.values),
+      hdrFormats: _set(fields['hdrFormats'], (raw) => _enumValue(raw, HdrFormat.values)),
+      brightness: _wireNumber(fields['brightness']),
+    ),
+    EntityKind.viewport => ViewportSnapshot(collectedAt: collectedAt,
+      size: _wireComponents(fields['size'], ['width', 'height'], (n) => Size<double>(n[0], n[1])),
+      visualViewportSize: _wireComponents(fields['visualViewportSize'], ['width', 'height'], (n) => Size<double>(n[0], n[1])),
+      visualViewportScale: _wireNumber(fields['visualViewportScale']),
+      safeAreaInsets: _wireComponents(fields['safeAreaInsets'], ['top', 'right', 'bottom', 'left'], (n) => Insets(n[0], n[1], n[2], n[3])),
+      textScaleFactor: _wireNumber(fields['textScaleFactor']),
+    ),
+    EntityKind.power => PowerSnapshot(collectedAt: collectedAt,
+      powerSource: _enumValue(fields['powerSource'], PowerSource.values),
+      powerSaveMode: fields['powerSaveMode'] is bool ? fields['powerSaveMode'] as bool : null,
+      thermalState: _thermal(fields['thermalState']),
+    ),
+    EntityKind.battery => BatterySnapshot(collectedAt: collectedAt,
+      present: fields['present'] is bool ? fields['present'] as bool : null,
+      level: _wireNumber(fields['level']),
+      charging: fields['charging'] is bool ? fields['charging'] as bool : null,
+      state: _enumValue(fields['state'], BatteryState.values),
+      timeToFull: _wireDuration(fields['timeToFull']),
+      timeToEmpty: _wireDuration(fields['timeToEmpty']),
+      voltageMillivolts: _wireNumber(fields['voltageMillivolts']),
+      currentMicroamps: _wireNumber(fields['currentMicroamps']),
+      averageCurrentMicroamps: _wireNumber(fields['averageCurrentMicroamps']),
+      chargeRateMilliwatts: _wireNumber(fields['chargeRateMilliwatts']),
+      temperatureCelsius: _wireNumber(fields['temperatureCelsius']),
+      chargeCounterMicroampHours: _wireCounter(fields['chargeCounterMicroampHours']),
+      remainingEnergyMilliwattHours: _wireNumber(fields['remainingEnergyMilliwattHours']),
+      fullChargeEnergyMilliwattHours: _wireNumber(fields['fullChargeEnergyMilliwattHours']),
+      designEnergyMilliwattHours: _wireNumber(fields['designEnergyMilliwattHours']),
+      technology: fields['technology'] is String ? fields['technology'] as String : null,
+      health: _enumValue(fields['health'], BatteryHealth.values),
+      cycleCount: _wireCounter(fields['cycleCount']),
+    ),
+    EntityKind.networkPath => NetworkPathSnapshot(collectedAt: collectedAt,
+      connectionState: _enumValue(fields['connectionState'], ConnectionState.values),
+      transports: _set(fields['transports'], (raw) => _enumValue(raw, NetworkTransport.values)),
+      metered: fields['metered'] is bool ? fields['metered'] as bool : null,
+      expensive: fields['expensive'] is bool ? fields['expensive'] as bool : null,
+      constrained: fields['constrained'] is bool ? fields['constrained'] as bool : null,
+      saveData: fields['saveData'] is bool ? fields['saveData'] as bool : null,
+      supportsIpv4: fields['supportsIpv4'] is bool ? fields['supportsIpv4'] as bool : null,
+      supportsIpv6: fields['supportsIpv6'] is bool ? fields['supportsIpv6'] as bool : null,
+      supportsDns: fields['supportsDns'] is bool ? fields['supportsDns'] as bool : null,
+      internetValidated: fields['internetValidated'] is bool ? fields['internetValidated'] as bool : null,
+      captivePortal: fields['captivePortal'] is bool ? fields['captivePortal'] as bool : null,
+    ),
+    EntityKind.networkPerformance => NetworkPerformanceSnapshot(collectedAt: collectedAt,
+      downlinkBps: _wireNumber(fields['downlinkBps']),
+      uplinkBps: _wireNumber(fields['uplinkBps']),
+      roundTripTime: _wireDuration(fields['roundTripTime']),
+      effectiveType: _enumValue(fields['effectiveType'], EffectiveConnectionType.values),
+      browserOnline: fields['browserOnline'] is bool ? fields['browserOnline'] as bool : null,
+    ),
+    EntityKind.networkInterface => NetworkInterfaceSnapshot(collectedAt: collectedAt,
+      name: fields['name'] is String ? fields['name'] as String : null,
+      interfaceType: _enumValue(fields['interfaceType'], NetworkInterfaceType.values),
+      operationalState: _enumValue(fields['operationalState'], NetworkOperationalState.values),
+      hardwareAddress: fields['hardwareAddress'] is String ? fields['hardwareAddress'] as String : null,
+      ipAddresses: _list(fields['ipAddresses'], (raw) => _wireAddressInfo(raw)),
+      dnsServers: _list(fields['dnsServers'], (raw) => raw is String ? raw : null),
+      gateways: _list(fields['gateways'], (raw) => raw is String ? raw : null),
+      routes: _list(fields['routes'], (raw) => _wireRoute(raw)),
+      mtuBytes: _wireCounter(fields['mtuBytes']),
+    ),
+    EntityKind.wifiConnection => WifiConnectionSnapshot(collectedAt: collectedAt,
+      ssid: fields['ssid'] is String ? fields['ssid'] as String : null,
+      bssid: fields['bssid'] is String ? fields['bssid'] as String : null,
+      security: _enumValue(fields['security'], WifiSecurity.values),
+      rssiDbm: _wireNumber(fields['rssiDbm']),
+      frequencyHz: _wireNumber(fields['frequencyHz']),
+      receiveLinkSpeedBps: _wireNumber(fields['receiveLinkSpeedBps']),
+      transmitLinkSpeedBps: _wireNumber(fields['transmitLinkSpeedBps']),
+    ),
+    EntityKind.cellularSubscription => CellularSubscriptionSnapshot(collectedAt: collectedAt,
+      slotIndex: _wireInteger(fields['slotIndex']),
+      carrierName: fields['carrierName'] is String ? fields['carrierName'] as String : null,
+      countryCode: fields['countryCode'] is String ? fields['countryCode'] as String : null,
+      mobileCountryCode: fields['mobileCountryCode'] is String ? fields['mobileCountryCode'] as String : null,
+      mobileNetworkCode: fields['mobileNetworkCode'] is String ? fields['mobileNetworkCode'] as String : null,
+      radioTechnology: _enumValue(fields['radioTechnology'], RadioTechnology.values),
+      roaming: fields['roaming'] is bool ? fields['roaming'] as bool : null,
+    ),
+    EntityKind.storageVolume => StorageVolumeSnapshot(collectedAt: collectedAt,
+      name: fields['name'] is String ? fields['name'] as String : null,
+      fileSystem: fields['fileSystem'] is String ? fields['fileSystem'] as String : null,
+      totalBytes: _wireCounter(fields['totalBytes']),
+      freeBytes: _wireCounter(fields['freeBytes']),
+      availableToCallerBytes: _wireCounter(fields['availableToCallerBytes']),
+      totalBytesForCaller: _wireCounter(fields['totalBytesForCaller']),
+      readOnly: fields['readOnly'] is bool ? fields['readOnly'] as bool : null,
+      removable: fields['removable'] is bool ? fields['removable'] as bool : null,
+      encrypted: fields['encrypted'] is bool ? fields['encrypted'] as bool : null,
+      caseSensitive: fields['caseSensitive'] is bool ? fields['caseSensitive'] as bool : null,
+      availableForImportantUsageBytes: _wireCounter(fields['availableForImportantUsageBytes']),
+      availableForOpportunisticUsageBytes: _wireCounter(fields['availableForOpportunisticUsageBytes']),
+      allocatableBytes: _wireCounter(fields['allocatableBytes']),
+    ),
+    EntityKind.originStorage => OriginStorageSnapshot(collectedAt: collectedAt,
+      quotaBytes: _wireCounter(fields['quotaBytes']),
+      usageBytes: _wireCounter(fields['usageBytes']),
+      usageByCategory: _map(fields['usageByCategory'], (raw) => _enumValue(raw, StorageCategory.values), (raw) => _wireCounter(raw)),
+      persistent: fields['persistent'] is bool ? fields['persistent'] as bool : null,
+    ),
+    EntityKind.accelerometer => AccelerometerSnapshot(collectedAt: collectedAt,
+      value: _wireComponents(fields['value'], ['x', 'y', 'z'], (n) => Vector3(n[0], n[1], n[2])),
+    ),
+    EntityKind.linearAcceleration => LinearAccelerationSnapshot(collectedAt: collectedAt,
+      value: _wireComponents(fields['value'], ['x', 'y', 'z'], (n) => Vector3(n[0], n[1], n[2])),
+    ),
+    EntityKind.gravity => GravitySnapshot(collectedAt: collectedAt,
+      value: _wireComponents(fields['value'], ['x', 'y', 'z'], (n) => Vector3(n[0], n[1], n[2])),
+    ),
+    EntityKind.gyroscope => GyroscopeSnapshot(collectedAt: collectedAt,
+      value: _wireComponents(fields['value'], ['x', 'y', 'z'], (n) => Vector3(n[0], n[1], n[2])),
+    ),
+    EntityKind.magnetometer => MagnetometerSnapshot(collectedAt: collectedAt,
+      value: _wireComponents(fields['value'], ['x', 'y', 'z'], (n) => Vector3(n[0], n[1], n[2])),
+    ),
+    EntityKind.relativeOrientation => RelativeOrientationSnapshot(collectedAt: collectedAt,
+      value: _wireRotation(fields['value']),
+    ),
+    EntityKind.absoluteOrientation => AbsoluteOrientationSnapshot(collectedAt: collectedAt,
+      value: _wireRotation(fields['value']),
+    ),
+    EntityKind.illuminance => IlluminanceSnapshot(collectedAt: collectedAt,
+      value: _wireNumber(fields['value']),
+    ),
+    EntityKind.pressure => PressureSnapshot(collectedAt: collectedAt,
+      value: _wireNumber(fields['value']),
+    ),
+    EntityKind.ambientTemperature => AmbientTemperatureSnapshot(collectedAt: collectedAt,
+      value: _wireNumber(fields['value']),
+    ),
+    EntityKind.relativeHumidity => RelativeHumiditySnapshot(collectedAt: collectedAt,
+      value: _wireNumber(fields['value']),
+    ),
+    EntityKind.proximityNear => ProximityNearSnapshot(collectedAt: collectedAt,
+      value: fields['value'] is bool ? fields['value'] as bool : null,
+    ),
+    EntityKind.proximityDistance => ProximityDistanceSnapshot(collectedAt: collectedAt,
+      value: _wireNumber(fields['value']),
+    ),
+    EntityKind.relativeAltitude => RelativeAltitudeSnapshot(collectedAt: collectedAt,
+      value: _wireNumber(fields['value']),
+    ),
+    EntityKind.hingeAngle => HingeAngleSnapshot(collectedAt: collectedAt,
+      value: _wireNumber(fields['value']),
+    ),
+    EntityKind.stepCountSinceBoot => StepCountSinceBootSnapshot(collectedAt: collectedAt,
+      value: _wireCounter(fields['value']),
+    ),
+    EntityKind.stepDetected => StepDetectedSnapshot(collectedAt: collectedAt,
+      value: fields['value'] is bool ? fields['value'] as bool : null,
+    ),
+    EntityKind.significantMotion => SignificantMotionSnapshot(collectedAt: collectedAt,
+      value: fields['value'] is bool ? fields['value'] as bool : null,
+    ),
+    EntityKind.humanPresence => HumanPresenceSnapshot(collectedAt: collectedAt,
+      value: fields['value'] is bool ? fields['value'] as bool : null,
+    ),
+  };
+  static SensorDescription _hydrateDescription(Map<String, Object?> fields, DateTime collectedAt) => SensorDescription(collectedAt: collectedAt,
+    kind: _enumValue(fields['kind'], SensorKind.values),
+    name: fields['name'] is String ? fields['name'] as String : null,
+    vendor: fields['vendor'] is String ? fields['vendor'] as String : null,
+    version: fields['version'] is String ? fields['version'] as String : null,
+    reportingMode: _enumValue(fields['reportingMode'], SensorReportingMode.values),
+    minimumInterval: _wireDuration(fields['minimumInterval']),
+    maximumInterval: _wireDuration(fields['maximumInterval']),
+    maximumRange: _wireNumber(fields['maximumRange']),
+    resolution: _wireNumber(fields['resolution']),
+    powerMilliamps: _wireNumber(fields['powerMilliamps']),
+    fifoCapacity: _wireInteger(fields['fifoCapacity']),
   );
 }

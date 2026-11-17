@@ -32,6 +32,8 @@ Local logs are `.tools/upload-npm-test.log`, `.tools/upload-browser-launch-check
 
 ## Remaining work
 
+Follow-up: the [Dart normalization checkpoint](2026-11-17-dart-normalization.md) resolves the two Dart gaps below and reruns the Flutter framework and Android applications. The following paragraphs preserve the scope at upload time.
+
 Dart's generic quaternion decoder still checks only finite components, and prepareSnapshot/prepareDescription still supply a clock value before decoding. Unit normalization and completion-order corrections there remain pending. This upload does not claim five-language parity for those two details.
 
 Flutter and React Native apps were not rebuilt for this checkpoint; their earlier evidence remains historical. Apple native collectors/builds, physical sensor readings and coordinate/reference verification, remaining adapters/fields, external package consumption, minimum-version validation and the complete platform/acceptance matrix remain unfinished. Worker execution does not guarantee zero host overhead, forced interruption of stuck native calls or process-crash isolation.

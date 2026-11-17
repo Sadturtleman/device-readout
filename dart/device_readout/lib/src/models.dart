@@ -139,6 +139,8 @@ sealed class DeviceSnapshot {
     : collectedAt =
           (collectedAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true))
               .toUtc();
+  DeviceSnapshot._completed() : collectedAt = DateTime.now().toUtc();
+  DeviceSnapshot _collected();
   EntityKind? get entityKind;
   Map<String, Object?> _fields();
   Map<String, Object?> toJson() => {
@@ -319,6 +321,24 @@ Size<int>? _pixelSize(Object? v) {
   final o = _object(v);
   final w = _integer(o?['width']), h = _integer(o?['height']);
   return w == null || h == null ? null : Size(w, h);
+}
+
+Quaternion? _rotation(Object? value) {
+  final q = _components(value, [
+    'x',
+    'y',
+    'z',
+    'w',
+  ], (n) => Quaternion(n[0], n[1], n[2], n[3]));
+  if (q == null) return null;
+  final scale = math.max(
+    math.max(q.x.abs(), q.y.abs()),
+    math.max(q.z.abs(), q.w.abs()),
+  );
+  if (scale == 0) return null;
+  final x = q.x / scale, y = q.y / scale, z = q.z / scale, w = q.w / scale;
+  final length = math.sqrt(x * x + y * y + z * z + w * w);
+  return Quaternion(x / length, y / length, z / length, w / length);
 }
 
 DisplayMode? _displayMode(Object? v) {

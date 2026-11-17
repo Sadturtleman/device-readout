@@ -1,8 +1,7 @@
 import 'core.dart';
 import 'transport_api.dart';
 
-const hasCollectionWorker = false;
-const supportsSensorSources = hasCollectionWorker;
+CollectionChannel createWebChannel(Uri workerUri) => _UnsupportedChannel();
 
 CollectionChannel createChannel(
   CollectorFactory factory,
@@ -12,10 +11,12 @@ CollectionChannel createChannel(
 DeviceCollector createNativeCollector(Object? _) =>
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
-      'The Dart Web Worker bridge is not implemented.',
+      'No collection worker is connected. Browser callers must use DeviceAccess.web with a worker asset.',
     );
 
 final class _UnsupportedChannel implements CollectionChannel {
+  @override
+  bool get available => false;
   @override
   Future<EntityCapabilities> capabilities(
     EntityAddress entity,
@@ -35,7 +36,7 @@ final class _UnsupportedChannel implements CollectionChannel {
     cancellation.throwIfCancelled();
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
-      'The Dart Web Worker bridge is not implemented.',
+      'No collection worker is connected. Browser callers must use DeviceAccess.web with a worker asset.',
     );
   }
 
@@ -48,7 +49,7 @@ final class _UnsupportedChannel implements CollectionChannel {
     cancellation.throwIfCancelled();
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
-      'The Dart Web Worker bridge is not implemented.',
+      'No collection worker is connected. Browser callers must use DeviceAccess.web with a worker asset.',
     );
   }
 
@@ -62,7 +63,7 @@ final class _UnsupportedChannel implements CollectionChannel {
     cancellation.throwIfCancelled();
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
-      'The Dart Web Worker bridge is not implemented.',
+      'No collection worker is connected. Browser callers must use DeviceAccess.web with a worker asset.',
     );
   }
 
@@ -78,7 +79,7 @@ final class _UnsupportedChannel implements CollectionChannel {
     cancellation?.throwIfCancelled();
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
-      'The Dart Web Worker bridge is not implemented.',
+      'No collection worker is connected. Browser callers must use DeviceAccess.web with a worker asset.',
     );
   }
 

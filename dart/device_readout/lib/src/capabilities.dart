@@ -66,7 +66,7 @@ final class CapabilityAccess {
     EntityAddress address,
   ) {
     final context = _access._context, key = _key(address);
-    if (!platform.hasCollectionWorker || context.removed.contains(key)) {
+    if (!context.channel.available || context.removed.contains(key)) {
       return _unavailableCapabilities;
     }
     bool registered(EntityAddress target) =>

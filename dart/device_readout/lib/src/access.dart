@@ -90,6 +90,15 @@ final class DeviceAccess {
   factory DeviceAccess.native() =>
       DeviceAccess.isolated(platform.createNativeCollector);
 
+  /// The module worker asset must be served by the application. Construction
+  /// is inert; the first collection operation creates the owned worker.
+  factory DeviceAccess.web({required Uri workerUri}) => DeviceAccess._(
+    _AccessContext(platform.createWebChannel(workerUri)),
+    const Duration(seconds: 1),
+    const Duration(seconds: 5),
+    SensorSamplingRate.platformDefault,
+  );
+
   factory DeviceAccess.isolated(
     CollectorFactory factory, {
     Object? initialData,

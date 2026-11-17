@@ -1,6 +1,7 @@
 import 'core.dart';
 
 abstract interface class CollectionChannel {
+  bool get available;
   Future<EntityCapabilities> capabilities(
     EntityAddress entity,
     Duration timeout,

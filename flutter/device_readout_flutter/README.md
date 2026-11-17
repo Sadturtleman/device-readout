@@ -2,6 +2,8 @@
 
 The Flutter adapters explicitly observe application viewports, engine-exposed displays and app lifecycle state for sensor activity. An Android plugin connects twenty Kotlin state collectors, including seven multi-target kinds, and seventeen sensor mappings. Native support queries and app-source registration are available through `capabilities.get(entity)`. Flutter 3.47.9 / Dart 3.13.7 passes twenty-two engine checks, twelve native bridge contracts and thirty-three Android state/sensor scenarios on each API 26/36. Five Windows screen scenarios remain prior-checkpoint evidence. Native connection callbacks now refresh sensor inventories and metadata; see [inventory verification](../../docs/verification/2026-11-11-flutter-android-inventory.md). Real Activity background/resume has framework and native sensor-registration evidence. Physical measurements, native permission integration, other lifecycle transitions and the complete platform matrix remain pending.
 
+The [Dart normalization checkpoint](../../docs/verification/2026-11-17-dart-normalization.md) reruns all 22 framework checks and rebuilds the Android APK, which passes 33/33 scenarios on each API 26/36. The native bridge unit suite and Windows screen scenarios retain their earlier evidence.
+
 Import `package:device_readout_flutter/device_readout_flutter.dart`; it also exports the common Dart SDK. Attach from the widget/view lifecycle after the binding exists:
 
 ```dart

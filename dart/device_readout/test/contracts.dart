@@ -11,6 +11,8 @@ import 'native_state_streams.dart' as nativeStateTests;
 import 'discovery.dart' as discoveryTests;
 import 'capabilities.dart' as capabilityTests;
 import 'sensor_metadata.dart' as sensorMetadataTests;
+import 'rotations.dart' as rotationTests;
+import 'completion.dart' as completionTests;
 
 void check(bool condition, String message) {
   if (!condition) throw StateError(message);
@@ -584,6 +586,8 @@ Future<void> main() async {
     ...capabilityTests.checks,
     ...sensorMetadataTests.checks,
     ...sensorTests.checks,
+    ...rotationTests.checks,
+    ...completionTests.checks,
     'typed RAM read is lazy, precise and isolate-owned': isolatedTypedRead,
     'state watch is cold, retains duplicates and captures immutable settings':
         coldStateWatch,

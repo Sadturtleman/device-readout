@@ -11,26 +11,28 @@ function type(s) {
   return ({String:'String', Integer:'int', Number:'double', Ratio:'double', Boolean:'bool',
     ByteCount:'BigInt', Int64:'BigInt', CalendarId:'String', NumberingSystemId:'String', IpAddress:'String'})[s] ?? s;
 }
-function decode(t, v) {
+function decode(t, v, hydrated = false) {
   t = t.replace(/\?$/, '');
   if (enums[t]) return `_enumValue(${v}, ${t}.values)`;
   const simple = {Integer:'_integer', Number:'_number', Ratio:'_ratio', ByteCount:'_counter',
-    Duration:'_duration', ThermalState:'_thermal', DisplayMode:'_displayMode', IpAddressInfo:'_addressInfo', NetworkRoute:'_route'};
+    Duration:'_duration', Quaternion:'_rotation', ThermalState:'_thermal', DisplayMode:'_displayMode', IpAddressInfo:'_addressInfo', NetworkRoute:'_route'};
+  if (hydrated) Object.assign(simple, {Integer:'_wireInteger', Number:'_wireNumber', Ratio:'_wireNumber', ByteCount:'_wireCounter',
+    Duration:'_wireDuration', Quaternion:'_wireRotation', DisplayMode:'_wireDisplayMode', IpAddressInfo:'_wireAddressInfo', NetworkRoute:'_wireRoute'});
   if (simple[t]) return `${simple[t]}(${v})`;
-  if (t === 'Int64') return `_counter(${v}, signed: true)`;
+  if (t === 'Int64') return hydrated ? `_wireCounter(${v})` : `_counter(${v}, signed: true)`;
   if (['String', 'CalendarId', 'NumberingSystemId', 'IpAddress'].includes(t)) return `${v} is String ? ${v}${v === 'raw' ? '' : ' as String'} : null`;
   if (t === 'Boolean') return `${v} is bool ? ${v}${v === 'raw' ? '' : ' as bool'} : null`;
-  if (t === 'Size<Integer>') return `_pixelSize(${v})`;
+  if (t === 'Size<Integer>') return `${hydrated?'_wirePixelSize':'_pixelSize'}(${v})`;
   const composites = {Rect:[['x','y','width','height'],'Rect'], Insets:[['top','right','bottom','left'],'Insets'],
-    Vector3:[['x','y','z'],'Vector3'], Quaternion:[['x','y','z','w'],'Quaternion'], 'Size<Number>':[['width','height'],'Size<double>']};
+    Vector3:[['x','y','z'],'Vector3'], 'Size<Number>':[['width','height'],'Size<double>']};
   if (composites[t]) {
     const [keys, ctor] = composites[t];
-    return `_components(${v}, [${keys.map(k=>`'${k}'`).join(', ')}], (n) => ${ctor}(${keys.map((_,i)=>`n[${i}]`).join(', ')}))`;
+    return `${hydrated?'_wireComponents':'_components'}(${v}, [${keys.map(k=>`'${k}'`).join(', ')}], (n) => ${ctor}(${keys.map((_,i)=>`n[${i}]`).join(', ')}))`;
   }
   const list = /^(List|Set)<(.+)>$/.exec(t);
-  if (list) return `_${list[1].toLowerCase()}(${v}, (raw) => ${decode(list[2], 'raw')})`;
+  if (list) return `_${list[1].toLowerCase()}(${v}, (raw) => ${decode(list[2], 'raw', hydrated)})`;
   const map = /^Map<(.+), (.+)>$/.exec(t);
-  if (map) return `_map(${v}, (raw) => ${decode(map[1], 'raw')}, (raw) => ${decode(map[2], 'raw')})`;
+  if (map) return `_map(${v}, (raw) => ${decode(map[1], 'raw', hydrated)}, (raw) => ${decode(map[2], 'raw', hydrated)})`;
   throw Error(`Unhandled Dart field type: ${t}`);
 }
 let code = "// Generated from schema/device-readout.json and schema/enums.json.\npart of 'core.dart';\n\n";
@@ -58,7 +60,14 @@ for (const e of models) {
   for (const f of e.fields) code += `    ${collections.includes(f) ? type(f.type)+' '+f.name : 'this.'+f.name},\n`;
   code += '  })';
   if (collections.length) code += ' : '+collections.map(f=>`${f.name} = ${f.name} == null ? null : ${f.type.split('<')[0]}.unmodifiable(${f.name})`).join(',\n      ');
-  code += ';\n  @override\n  EntityKind? get entityKind => '+(e.name==='SensorDescription'?'null':`EntityKind.${lower(e.name)}`)+';\n';
+  code += ';\n';
+  // Only the worker calls this after decoding. Reuse normalized immutable fields
+  // so collection copying and validation finish before the completion clock.
+  code += `  ${model}._completed(${model} snapshot)\n    : `;
+  code += e.fields.map(f=>`${f.name} = snapshot.${f.name}`).join(',\n      ');
+  code += ',\n      super._completed();\n';
+  code += `  @override\n  ${model} _collected() => ${model}._completed(this);\n`;
+  code += '  @override\n  EntityKind? get entityKind => '+(e.name==='SensorDescription'?'null':`EntityKind.${lower(e.name)}`)+';\n';
   code += "  @override\n  Map<String, Object?> _fields() => {\n";
   for (const f of e.fields) code += `    '${f.name}': ${f.name},\n`;
   code += '  };\n}\n';
@@ -73,6 +82,16 @@ for (const e of schema.entities) {
 code += '  };\n';
 code += '  static SensorDescription describe(Map<String, Object?> fields, {DateTime? collectedAt}) => SensorDescription(collectedAt: collectedAt,\n';
 for (const f of schema.sensorDescription) code += `    ${f.name}: ${decode(f.type,`fields['${f.name}']`)},\n`;
+code += '  );\n';
+code += '  static DeviceSnapshot _hydrate(EntityKind kind, Map<String, Object?> fields, DateTime collectedAt) => switch(kind) {\n';
+for (const e of schema.entities) {
+  code += `    EntityKind.${lower(e.name)} => ${e.name}Snapshot(collectedAt: collectedAt,\n`;
+  for (const f of e.fields) code += `      ${f.name}: ${decode(f.type,`fields['${f.name}']`,true)},\n`;
+  code += '    ),\n';
+}
+code += '  };\n';
+code += '  static SensorDescription _hydrateDescription(Map<String, Object?> fields, DateTime collectedAt) => SensorDescription(collectedAt: collectedAt,\n';
+for (const f of schema.sensorDescription) code += `    ${f.name}: ${decode(f.type,`fields['${f.name}']`,true)},\n`;
 code += '  );\n}\n';
 const destination = new URL('dart/device_readout/lib/src/', root);
 await mkdir(destination, {recursive:true});

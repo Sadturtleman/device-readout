@@ -3,13 +3,16 @@ library;
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'transport_api.dart';
 import 'transport_stub.dart'
     if (dart.library.io) 'transport_native.dart'
+    if (dart.library.js_interop) 'transport_web.dart'
     as platform;
 
 part 'models.dart';
+part 'wire.dart';
 part 'generated.dart';
 part 'access.dart';
 part 'discovery.dart';
@@ -89,11 +92,7 @@ DeviceSnapshot prepareSnapshot(EntityKind kind, DeviceSnapshot snapshot) {
       'An occurrence sensor must publish an actual true event.',
     );
   }
-  return SnapshotCodec.decode(
-    kind,
-    snapshot._fields(),
-    collectedAt: DateTime.now().toUtc(),
-  );
+  return SnapshotCodec.decode(kind, snapshot._fields())._collected();
 }
 
 SensorDescription prepareDescription(
@@ -107,8 +106,6 @@ SensorDescription prepareDescription(
       'Metadata is available only for sensor entities.',
     );
   }
-  return SnapshotCodec.describe({
-    ...description._fields(),
-    'kind': sensor,
-  }, collectedAt: DateTime.now().toUtc());
+  return SnapshotCodec.describe({...description._fields(), 'kind': sensor})
+      ._collected();
 }

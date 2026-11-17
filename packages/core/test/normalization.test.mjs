@@ -1,7 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RelativeOrientationEntity, AbsoluteOrientationEntity, NetworkPerformanceEntity } from '../dist/index.js';
+import { RelativeOrientationEntity, AbsoluteOrientationEntity, NetworkPerformanceEntity, DisplayEntity } from '../dist/index.js';
 import { fixture } from './fixture.mjs';
+
+test('pixel dimensions reject fractional components without losing logical geometry or mode rates', async t => {
+  const access=fixture(t), display=access.observers.target(DisplayEntity,'pixel-screen');
+  access.observers.publish(display,{
+    pixelSize:{width:1920.5,height:1080},
+    logicalBounds:{x:0.25,y:0.5,width:960.25,height:540.5},
+    supportedModes:[{pixelSize:{width:1920,height:1080.5},refreshRateHz:60}],
+  });
+  const snapshot=await access.get(display);
+  assert.equal(snapshot.pixelSize,null);
+  assert.deepEqual(snapshot.logicalBounds,{x:0.25,y:0.5,width:960.25,height:540.5});
+  assert.equal(snapshot.supportedModes[0].pixelSize,null);
+  assert.equal(snapshot.supportedModes[0].refreshRateHz,60);
+});
 
 test('collectedAt follows lazy native field preparation on the collection worker', async t => {
   const access=fixture(t,{completionBoundary:true});

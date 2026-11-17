@@ -144,7 +144,7 @@ final class _SensorStream<S extends DeviceSnapshot> {
       caller?.throwIfCancelled();
       final address = entity._address(sdk._context);
       sdk._context.assertAvailable(address);
-      if (!platform.supportsSensorSources) {
+      if (!sdk._context.channel.available) {
         throw const DeviceReadoutException(
           ErrorCode.unsupportedEntity,
           'Sensor observation requires the Dart Web Worker bridge.',

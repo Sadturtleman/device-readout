@@ -1,3 +1,3 @@
 library;
 
-export 'src/core.dart' hide prepareSnapshot, prepareDescription;
+export 'src/core.dart' hide prepareSnapshot, prepareDescription, hydrateWorkerSnapshot;

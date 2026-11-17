@@ -2,6 +2,8 @@
 
 Implementation foundation, verified with Dart 3.13.7 from Flutter 3.47.9 on Windows x64. This is not yet a complete Flutter plugin or a claim of support for the complete platform matrix.
 
+Orientation snapshots return unit quaternions while preserving axes and signs; zero-length or nonfinite rotations are null. get/watch/describe normalize values on the collection isolate and stamp collectedAt afterward. Direct snapshot constructors and SnapshotCodec retain explicitly supplied timestamps, or the epoch default when omitted. The [normalization checkpoint](../../docs/verification/2026-11-17-dart-normalization.md) passes 50/50 JIT and native contracts, Flutter framework checks and rebuilt Android applications.
+
 ```dart
 import 'package:device_readout/device_readout.dart';
 
@@ -60,7 +62,7 @@ final support = await sdk.capabilities.get(Entities.runtime);
 
 True means a connected operation, false means unavailable, and null means the adapter cannot determine support. This is separate from `permissions.check(entity)` and does not guarantee every field or a successful read. Collection kinds and selected handles are accepted; multi-target get/watch still need a selected handle. Removed handles return false/false and foreign handles fail. Queries use the configured readTimeout and accept CancellationToken.
 
-App-owned state/sensor support comes from registration without reading UI, subscribing or requesting permission. Sensors require an explicit source. Native adapters can optionally implement `DeviceCapabilityCollector`; the probe runs in the worker through the shared bounded request queue. Older collectors return null/null without a fallback read. Standalone native Dart reports only Runtime support, and the absent web worker reports false/false. See [capability verification](../../docs/verification/2026-11-11-flutter-android-capabilities.md).
+App-owned state/sensor support comes from registration without reading UI, subscribing or requesting permission. Sensors require an explicit source. Native adapters can optionally implement `DeviceCapabilityCollector`; the probe runs in the worker through the shared bounded request queue. Older collectors return null/null without a fallback read. Standalone native Dart reports only Runtime support. Explicit web access queries the connected browser collector; a missing Worker API or unsupported closure-based browser channel reports false/false. See [capability verification](../../docs/verification/2026-11-11-flutter-android-capabilities.md).
 
 ## Native discovery
 
@@ -99,14 +101,33 @@ Feed lifecycle policy with `observers.sensorActivity(false/true)`. Inactivity re
 
 `describe(sensor)` reads the source's optional `SensorDescription` without subscribing, including while inactive. Its kind comes from the typed target, unknown metadata stays null, and normalization plus UTC completion stamping run in the isolate. It observes readTimeout, cancellation, target removal and blocking observer failures. `observers.sensorDescription(sensor, description)` updates registered metadata without restarting measurement sessions; null clears it. Existing snapshots stay immutable. Removed, foreign and unregistered targets are rejected. Native metadata is supplied by an explicit adapter, including Flutter Android.
 
-Remaining platform collectors are pending. The [Flutter adapters](../../flutter/device_readout_flutter/README.md) supply screen/lifecycle observations, twenty Android state readers including native multi-target discovery/current, capabilities and events/polling, and an Android sensor source bridge with automatic connection-driven inventory refresh, metadata updates and explicit refresh. See [inventory verification](../../docs/verification/2026-11-11-flutter-android-inventory.md). Generic native sensor discovery/metadata still uses that explicit sensor adapter. Other native sensor/permission plugin connections remain pending. No Dart read performs screen access or permission UI. The web branch reports unavailable capabilities and fails collection with `UnsupportedEntity`, including native discovery, observed normalization and sensor get/watch/describe; it starts no host source. A Web Worker bridge to the existing web implementation is still required.
+Remaining platform collectors are pending. The [Flutter adapters](../../flutter/device_readout_flutter/README.md) supply screen/lifecycle observations, twenty Android state readers including native multi-target discovery/current, capabilities and events/polling, and an Android sensor source bridge with automatic connection-driven inventory refresh, metadata updates and explicit refresh. See [inventory verification](../../docs/verification/2026-11-11-flutter-android-inventory.md). Generic native sensor discovery/metadata still uses that explicit sensor adapter. Other native sensor/permission plugin connections remain pending. No Dart read performs screen access or permission UI. Explicit web access connects browser collection and observed normalization through the module worker described below. The closure-based browser isolate path and a runtime without Worker remain unsupported and start no host source.
+
+## Browser use
+
+Serve the built `packages/web/dist/dart-worker.js` module with your application. The web package also exposes this asset as `@device-readout/web/dart-worker`; package publication and automated Flutter asset packaging remain pending. Then pass its served URL explicitly:
+
+```dart
+final sdk = DeviceAccess.web(
+  workerUri: Uri.base.resolve('/device-readout-dart-worker.js'),
+);
+final cpu = await sdk.get(Entities.cpu);
+final stream = sdk.withPollInterval(const Duration(seconds: 2)).watch(Entities.cpu);
+// Dispose the shared context when the owning application scope ends.
+sdk.dispose();
+```
+
+Construction and creating a stream are inert. A context starts one module worker on its first collection operation. Reads use the existing browser collectors; screen, permission, lifecycle and sensor inputs remain explicit app observers. Their values are normalized in the worker before typed Dart snapshots are returned. Whole unsupported APIs fail explicitly, while individual unavailable fields remain null. Native discovery is only available where the underlying collector implements it; app-owned collections use the same typed handles as native Dart.
+
+`DeviceAccess.isolated` cannot transfer a Dart closure into a browser worker and remains unsupported there. If the browser has no Worker API, web access reports unavailable support and collection fails without host-side fallback. Worker loading/protocol failures are typed and do not silently restart the context. See the [web checkpoint](../../docs/verification/2026-11-17-dart-web-worker.md) for verification and the remaining browser/Flutter-web matrix.
 
 Run from the repository root:
 
 ```powershell
 ./tools/test-dart.ps1
+./tools/test-dart-browser.ps1
 # Or supply a Dart executable from the required Flutter release:
 ./tools/test-dart.ps1 -DartPath 'C:/path/to/flutter/bin/cache/dart-sdk/bin/dart.exe'
 ```
 
-The script generates models, resolves the dependency-free package offline, analyzes it, runs forty-three contract checks in JIT and compiled executables, and compiles/runs the web branch's negative host-collection check. The native runtime assertion is currently specific to the Windows x64 validation environment. See the [native discovery](../../docs/verification/2026-11-11-flutter-android-discovery.md), [native state streams](../../docs/verification/2026-11-11-flutter-android-state.md), [foundation](../../docs/verification/2026-11-11-dart-foundation.md), [state/permission observers](../../docs/verification/2026-11-11-dart-observers.md), [sensor/lifecycle](../../docs/verification/2026-11-11-dart-sensors.md) and [failure ownership](../../docs/verification/2026-11-11-flutter-android-lifetimes.md) records.
+The script generates models, resolves the dependency-free package offline, analyzes it, runs fifty contract checks in JIT and compiled executables, and compiles/runs the web branch's negative host-collection check. The native runtime assertion is currently specific to the Windows x64 validation environment. See the [native discovery](../../docs/verification/2026-11-11-flutter-android-discovery.md), [native state streams](../../docs/verification/2026-11-11-flutter-android-state.md), [foundation](../../docs/verification/2026-11-11-dart-foundation.md), [state/permission observers](../../docs/verification/2026-11-11-dart-observers.md), [sensor/lifecycle](../../docs/verification/2026-11-11-dart-sensors.md) and [failure ownership](../../docs/verification/2026-11-11-flutter-android-lifetimes.md) records.

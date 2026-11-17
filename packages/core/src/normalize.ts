@@ -40,7 +40,7 @@ function normalize(type:string,value:unknown):unknown {
  const components:Record<string,readonly string[]>={Vector3:['x','y','z'],Quaternion:['x','y','z','w'],Rect:['x','y','width','height'],Insets:['top','right','bottom','left']};
  if(type.startsWith('Size<'))components[type]=['width','height'];
  if(components[type]) {
-   if(!record(value))return null;const result:RecordValue={};for(const key of components[type]!){const v=normalize('Number',value[key]);if(v===null)return null;result[key]=v;}
+   if(!record(value))return null;const result:RecordValue={};for(const key of components[type]!){const v=normalize(type==='Size<Integer>'?'Integer':'Number',value[key]);if(v===null)return null;result[key]=v;}
    if(type==='Quaternion') {
      const q=result as {x:number;y:number;z:number;w:number};
      const scale=Math.max(Math.abs(q.x),Math.abs(q.y),Math.abs(q.z),Math.abs(q.w));

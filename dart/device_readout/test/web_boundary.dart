@@ -4,6 +4,24 @@ DeviceCollector mustNotRunOnHost(Object? _) =>
     throw StateError('A native collector must not run on the web host.');
 
 Future<void> main() async {
+  final web = DeviceAccess.web(
+    workerUri: Uri.parse('https://example.invalid/worker.js'),
+  );
+  try {
+    if ((await web.capabilities.get(Entities.cpu)).readable != false) {
+      throw StateError(
+        'An absent browser Worker cannot claim collection support.',
+      );
+    }
+    try {
+      await web.get(Entities.cpu);
+      throw StateError('A missing browser Worker must fail explicitly.');
+    } on DeviceReadoutException catch (error) {
+      if (error.code != ErrorCode.unsupportedEntity) rethrow;
+    }
+  } finally {
+    web.dispose();
+  }
   final sdk = DeviceAccess.isolated(mustNotRunOnHost);
   try {
     final nativeSupport = await sdk.capabilities.get(Entities.runtime);
