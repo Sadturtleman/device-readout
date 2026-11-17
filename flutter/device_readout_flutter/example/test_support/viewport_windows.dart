@@ -8,6 +8,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:device_readout_flutter/device_readout_flutter.dart' as readout;
 
+import 'process_memory_windows.dart' show verifyProcessMemory;
+import 'runtime_windows.dart' show verifyRuntime;
+import 'os_windows.dart' show verifyOs;
+import 'device_info_windows.dart' show verifyDeviceInfo;
+
 const channel = MethodChannel('device_readout.test/windows_viewport');
 const deadline = Duration(seconds: 10);
 
@@ -90,7 +95,10 @@ final class MetricsProbe with WidgetsBindingObserver {
   }
 }
 
-Future<void> verify(List<Map<String, Object?>> checks) async {
+Future<void> verify(
+  List<Map<String, Object?>> checks,
+  String memoryProbe,
+) async {
   final binding = WidgetsBinding.instance;
   final view = ui.PlatformDispatcher.instance.implicitView!;
   final access = readout.DeviceAccess.native().withPollInterval(
@@ -176,6 +184,11 @@ Future<void> verify(List<Map<String, Object?>> checks) async {
       'polls': memoryValues.length,
       'heartbeatTicks': memoryTicks,
     });
+
+    checks.add(await verifyProcessMemory(access, memoryProbe));
+    checks.add(await verifyRuntime(access, memoryProbe));
+    checks.add(await verifyOs(access, memoryProbe));
+    checks.add(await verifyDeviceInfo(access, memoryProbe));
 
     // The engine starts Dart before the runner finishes parenting its child
     // view. Establish a fresh native metrics notification after that startup.
@@ -413,15 +426,18 @@ Future<void> main(List<String> arguments) async {
   final checks = <Map<String, Object?>>[];
   final report = <String, Object?>{'passed': false, 'checks': checks};
   try {
-    require(arguments.length == 1, 'Pass the test-owned report path.');
-    await verify(checks).timeout(const Duration(seconds: 40));
+    require(
+      arguments.length == 2,
+      'Pass the test-owned report and native probe paths.',
+    );
+    await verify(checks, arguments[1]).timeout(const Duration(seconds: 40));
     report['passed'] = true;
   } catch (error, stack) {
     report['error'] = '$error';
     report['stack'] = '$stack';
   } finally {
-    if (arguments.length == 1) {
-      await File(arguments.single).writeAsString(
+    if (arguments.isNotEmpty) {
+      await File(arguments.first).writeAsString(
         const JsonEncoder.withIndent('  ').convert(report),
         flush: true,
       );

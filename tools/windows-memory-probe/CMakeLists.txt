@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(DeviceReadoutMemoryProbe LANGUAGES C)
-add_library(device_readout_memory_probe SHARED process_memory.c)
+add_library(device_readout_memory_probe SHARED process_memory.c runtime.c os.c device_info.c)
+target_link_libraries(device_readout_memory_probe PRIVATE advapi32)
 target_compile_definitions(device_readout_memory_probe PRIVATE WIN32_LEAN_AND_MEAN)
+
+add_library(device_readout_registry_fixture SHARED registry_fixture.c)
+target_link_libraries(device_readout_registry_fixture PRIVATE advapi32)
+target_compile_definitions(device_readout_registry_fixture PRIVATE WIN32_LEAN_AND_MEAN)

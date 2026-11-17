@@ -15,6 +15,10 @@ import 'rotations.dart' as rotationTests;
 import 'completion.dart' as completionTests;
 import 'native_windows.dart' as nativeWindowsTests;
 import 'native_windows_process.dart' as nativeProcessTests;
+import 'native_windows_runtime.dart' as nativeRuntimeTests;
+import 'native_windows_os.dart' as nativeOsTests;
+import 'native_windows_device_info.dart' as nativeDeviceInfoTests;
+import 'native_windows_registry.dart' as nativeRegistryTests;
 
 void check(bool condition, String message) {
   if (!condition) throw StateError(message);
@@ -398,8 +402,8 @@ Future<void> nativeRuntime() async {
       'The Windows x64 process must report X64/64.',
     );
     check(
-      runtime.hostArchitecture == null && runtime.supportedAbis == null,
-      'A process ABI cannot establish the host architecture or all supported ABIs.',
+      runtime.supportedAbis == null,
+      'A process ABI cannot establish all supported ABIs.',
     );
     final values = await sdk
         .withPollInterval(const Duration(milliseconds: 20))
@@ -579,8 +583,13 @@ Future<void> configurationAndStartupErrors() async {
   }
 }
 
-Future<void> main() async {
+Future<void> main(List<String> arguments) async {
+  if (await nativeRegistryTests.runChildIfRequested(arguments)) return;
   final tests = <String, Future<void> Function()>{
+    ...nativeRegistryTests.checks,
+    ...nativeDeviceInfoTests.checks,
+    ...nativeOsTests.checks,
+    ...nativeRuntimeTests.checks,
     ...nativeProcessTests.checks,
     ...nativeWindowsTests.checks,
     ...observerTests.checks,

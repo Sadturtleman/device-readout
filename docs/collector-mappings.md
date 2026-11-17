@@ -48,6 +48,20 @@ Display references: [Window Management](https://www.w3.org/TR/window-management/
 
 `FlutterDisplayObserver.attach(access)` owns the Flutter-exposed Display inventory; `selectView` explicitly chooses the registered view whose display becomes current. PixelSize and scaleFactor come from valid Display.size/devicePixelRatio. Windows currentMode uses the pinned engine's EnumDisplaySettings current-settings rate; unspecified 0/1 and unknown values remain null. Other engines' mode mappings remain pending. No physical DPI, monitor origin, maximum rate or primary status is inferred. Independent getter failures are nullable; inventory failure invalidates the collection. Framework Display object replacement retains live IDs, while observed disappearance permanently retires handles. The actual Windows fixture corroborates two monitors and a 5120×2160, 1.5-scale, 144Hz selected monitor after a fresh post-parenting metrics notification. Initial hidden-window association timing is a documented Flutter source limitation.
 
+## Windows Dart and Flutter
+
+The standalone `DeviceAccess.native()` collector currently implements five entity kinds on Windows, inherited by Flutter Windows without another platform plugin. These mappings do not establish support for every field or the full Windows version/architecture matrix. The [latest verification](verification/2026-11-17-dart-windows-device-info.md) passes 58 Dart JIT/native contracts per mode, ten actual Flutter Windows scenarios and 24 framework tests.
+
+| Entity | Native mapping |
+|---|---|
+| DeviceInfo | Read-only BIOS REG_SZ manufacturer/modelName/board, plus GetComputerNameW for the current NetBIOS name. Brand/modelCode/product/formFactor remain null. |
+| Os | RtlGetVersion running NT major.minor.build and build number; Windows/Windows NT identity labels. |
+| Runtime | Dart ABI and pointer size for process fields; IsWow64Process2 native-machine result for host architecture. Supported ABIs remain null. |
+| Ram | Installed bytes from firmware-backed API, OS-accessible/available bytes from GlobalMemoryStatusEx, current native low-memory state. Advertised/free/threshold fields remain null. |
+| ProcessMemory | GlobalMemoryStatusEx.ullAvailPageFile for the process's available commit budget. |
+
+Binding, collection, normalization and cleanup run on the collection isolate. Capability probes do not load bindings or collect values. Reads are lazy and state watch uses serial polling with fresh timestamps and equal-value delivery. App-owned screen/permission/lifecycle observers remain separate from these native sources.
+
 ## Windows .NET 10
 
 Thirty-two entity collectors are implemented with the fields listed below. This includes fourteen initial sensor entities; it does not establish the complete Windows support matrix.

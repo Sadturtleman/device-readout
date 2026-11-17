@@ -13,6 +13,9 @@ if (-not $buildRoot.StartsWith($exampleRoot + [IO.Path]::DirectorySeparatorChar,
 $oldFlutterRoot = $env:FLUTTER_ROOT
 $oldPubCache = $env:PUB_CACHE
 $oldTestHost = $env:DEVICE_READOUT_WINDOWS_TEST
+& (Join-Path $PSScriptRoot 'build-windows-memory-probe.ps1')
+$memoryProbe = Join-Path $projectRoot '.tools/windows-memory-probe/Release/device_readout_memory_probe.dll'
+if (-not (Test-Path -LiteralPath $memoryProbe -PathType Leaf)) { throw 'Independent process-memory probe missing.' }
 function Invoke-LocalFlutter {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$FlutterArguments)
     & $dartExecutable $toolSnapshot --suppress-analytics --no-version-check @FlutterArguments
@@ -31,7 +34,7 @@ try {
     if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Windows test host binary missing.' }
     $reportPath = Join-Path $projectRoot ('.tools/flutter-windows-viewport-' + [Guid]::NewGuid().ToString('N') + '.json')
     $testProcess = Start-Process -FilePath $executable -WorkingDirectory (Split-Path $executable -Parent) `
-        -ArgumentList ('"' + $reportPath + '"') -WindowStyle Hidden -PassThru
+        -ArgumentList ('"' + $reportPath + '" "' + $memoryProbe + '"') -WindowStyle Hidden -PassThru
     try {
         if (-not $testProcess.WaitForExit(55000)) {
             # This is a fixture-owned process with a retained handle, never a name-based kill.
@@ -47,12 +50,12 @@ try {
     if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { throw 'Windows test host produced no report.' }
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
     Write-Output (Get-Content -LiteralPath $reportPath -Raw)
-    if (-not $report.passed -or $report.checks.Count -ne 6) { throw "Windows verification failed; see $reportPath" }
+    if (-not $report.passed -or $report.checks.Count -ne 10) { throw "Windows verification failed; see $reportPath" }
     # Leave a regular example executable after verification. It has no test channel
     # and uses the original application entrypoint.
     $env:DEVICE_READOUT_WINDOWS_TEST = $null
     Invoke-LocalFlutter build windows --release --no-pub --target=lib/main.dart
-    Write-Output "6/6 native Windows screen and RAM scenarios passed. Report: $reportPath"
+    Write-Output "10/10 native Windows screen, memory, runtime, OS and device scenarios passed. Report: $reportPath"
 } finally {
     $env:FLUTTER_ROOT = $oldFlutterRoot
     $env:PUB_CACHE = $oldPubCache

@@ -6,7 +6,15 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The [Dart Windows process-memory checkpoint](docs/verification/2026-11-17-dart-windows-process-memory.md) adds `ProcessMemory.allocationRemainingBytes` from the current process's Windows commit budget. An independent native query runs in the same consumer process; Dart analysis is clean and JIT/native contracts pass 55/55 each. This extends the RAM checkpoint below. Dedicated Flutter release-app coverage of ProcessMemory, native fault injection and the full support matrix remain pending.
+The [Windows upload checkpoint](docs/verification/2026-11-17-windows-upload-checkpoint.md) includes Runtime, Os and DeviceInfo collectors plus child-process registry coverage for wrong-type and missing fields. Upload-time Dart JIT/native contracts pass 59/59 each, with clean analysis and the negative web boundary passing. The preceding Flutter Windows 10/10 and framework 24/24 results remain recorded below; the full implementation and acceptance matrix remains unfinished.
+
+The [Dart and Flutter Windows DeviceInfo checkpoint](docs/verification/2026-11-17-dart-windows-device-info.md) adds native manufacturer, model name, board and computer-name get/watch. Independent Win32 and CIM comparisons pass. Dart JIT/native contracts pass 58/58 each, the actual Flutter Windows release app passes 10/10 and framework tests pass 24/24. Other DeviceInfo mappings, native failure/encoding cases and the full platform matrix remain pending.
+
+The [Dart and Flutter Windows OS checkpoint](docs/verification/2026-11-17-dart-windows-os.md) adds OS get/watch and capability reporting. Version/build agree with independent native and CIM sources. Dart JIT/native contracts pass 57/57 each, the actual Flutter Windows release app passes 9/9 and framework tests pass 24/24. Collection remains isolate-owned; native faults, ARM64/emulation, other versions and the complete platform matrix remain pending.
+
+The [Dart and Flutter Windows runtime checkpoint](docs/verification/2026-11-17-dart-windows-runtime.md) adds native host architecture without inferring it from the process ABI. Dart JIT/native contracts pass 56/56 each. The actual Flutter Windows release app passes 8/8, including independent native comparisons for ProcessMemory and Runtime; framework tests pass 24/24. ARM64/emulation, native faults and the complete platform matrix remain pending.
+
+The preceding [Dart Windows process-memory checkpoint](docs/verification/2026-11-17-dart-windows-process-memory.md) adds `ProcessMemory.allocationRemainingBytes` from the current process's Windows commit budget. Its standalone JIT/native contracts passed 55/55 each. Dedicated Flutter release-app coverage is recorded in the subsequent runtime checkpoint above.
 
 The [Dart Windows RAM checkpoint](docs/verification/2026-11-17-dart-windows-ram.md) adds isolate-owned Win32 RAM get/watch with distinct installed, OS-accessible and available byte counts. Dart JIT/native contracts pass 54/54 each, the real Flutter Windows release app passes 6/6, framework tests pass 24/24, Dart browsers pass sixteen scenarios each, and rebuilt Android apps pass 33/33 on each API 26/36. Native faults, ARM64, remaining collectors and the full acceptance matrix still require work.
 

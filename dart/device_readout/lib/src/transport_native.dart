@@ -9,6 +9,9 @@ import 'transport_api.dart';
 
 part 'transport_native_watch.dart';
 part 'windows_memory.dart';
+part 'windows_runtime.dart';
+part 'windows_os.dart';
+part 'windows_device_info.dart';
 
 CollectionChannel createWebChannel(Uri workerUri) =>
     throw const DeviceReadoutException(
@@ -29,6 +32,9 @@ final class _NativeCollector
     implements DeviceCollector, DeviceCapabilityCollector {
   // The factory and this lazy binding are accessed only by the collection isolate.
   _WindowsMemory? windowsMemory;
+  _WindowsRuntime? windowsRuntime;
+  _WindowsOs? windowsOs;
+  _WindowsDeviceInfo? windowsDeviceInfo;
 
   @override
   EntityCapabilities capabilities(EntityAddress entity, ReadContext context) {
@@ -37,7 +43,9 @@ final class _NativeCollector
         entity.kind == EntityKind.runtime ||
         (Platform.isWindows &&
             (entity.kind == EntityKind.ram ||
-                entity.kind == EntityKind.processMemory));
+                entity.kind == EntityKind.processMemory ||
+                entity.kind == EntityKind.os ||
+                entity.kind == EntityKind.deviceInfo));
     return EntityCapabilities(readable: available, watchable: available);
   }
 
@@ -49,6 +57,12 @@ final class _NativeCollector
     }
     if (Platform.isWindows && entity.kind == EntityKind.processMemory) {
       return (windowsMemory ??= _WindowsMemory()).readProcess();
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.os) {
+      return (windowsOs ??= _WindowsOs()).read();
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.deviceInfo) {
+      return (windowsDeviceInfo ??= _WindowsDeviceInfo()).read();
     }
     if (entity.kind != EntityKind.runtime) {
       throw const DeviceReadoutException(
@@ -81,6 +95,9 @@ final class _NativeCollector
       ffi.Abi.windowsX64: Architecture.x64,
     };
     return RuntimeSnapshot(
+      hostArchitecture: Platform.isWindows
+          ? (windowsRuntime ??= _WindowsRuntime()).hostArchitecture()
+          : null,
       processArchitecture: architectures[ffi.Abi.current()],
       processBitness: ffi.sizeOf<ffi.IntPtr>() * 8,
     );
@@ -88,8 +105,23 @@ final class _NativeCollector
 
   @override
   void dispose() {
-    windowsMemory?.dispose();
-    windowsMemory = null;
+    try {
+      windowsDeviceInfo?.dispose();
+    } finally {
+      windowsDeviceInfo = null;
+      try {
+        windowsOs?.dispose();
+      } finally {
+        windowsOs = null;
+        try {
+          windowsRuntime?.dispose();
+        } finally {
+          windowsRuntime = null;
+          windowsMemory?.dispose();
+          windowsMemory = null;
+        }
+      }
+    }
   }
 }
 
