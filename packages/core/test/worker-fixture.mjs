@@ -3,6 +3,14 @@ import { serveCollector } from '../dist/collector.js';
 let sensorSubscriptions=0;
 const collector={
   read: async entity => {
+    if(workerData.completionBoundary) return {
+      get downlinkBps() {
+        const end=Date.now()+25;
+        while(Date.now()<end) { /* Lazy collector field work belongs to the worker. */ }
+        return Date.now();
+      },
+      browserOnline:false
+    };
     if (workerData.blockMs) {
       const end = Date.now() + workerData.blockMs;
       while (Date.now() < end) { /* Deliberately hostile OS collector fixture. */ }

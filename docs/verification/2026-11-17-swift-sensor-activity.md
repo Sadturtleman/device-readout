@@ -2,6 +2,8 @@
 
 Scope: app-supplied sensor activity, session suspension/resumption and original one-shot deadlines. The full 46-entity, binding and acceptance scope remains incomplete.
 
+This historical checkpoint precedes the [capability checkpoint](2026-11-17-swift-capabilities.md), which adds inactive termination and independent-consumer evidence and raises the full suite to 75 tests. The original counts and limits below describe this earlier checkpoint.
+
 ## Results
 
 Swift 5.9.2 on Ubuntu 22.04 x86_64 under WSL passes **66/66 public-API tests in both Debug and Release**, with warnings treated as errors. Five [sensor-activity tests](../../swift/Tests/DeviceReadoutTests/SensorActivityTests.swift) extend the preceding 61 cases. These use controlled sources and worker boundaries, without an Apple SDK or physical sensor.

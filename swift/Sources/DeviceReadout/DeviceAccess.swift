@@ -12,6 +12,7 @@ public final class DeviceAccess: @unchecked Sendable {
     private let sensorSources: ObservedSensorSources
     public var observers: ObserverInputs { ObserverInputs(targets: targets, values: observed, lifetime: lifetime, failures: failures, permissions: permissionState, sensorSources: sensorSources) }
     public var permissions: PermissionAccess { PermissionAccess(targets: targets, lifetime: lifetime, state: permissionState) }
+    public var capabilities: CapabilityAccess { CapabilityAccess(access: self) }
     public let readTimeout: Duration
     public let pollInterval: Duration
     public let sensorSamplingRate: SensorSamplingRate
@@ -251,7 +252,7 @@ public final class DeviceAccess: @unchecked Sendable {
             guard active() else { throw CancellationError() }
             _ = try targets.validate(entity)
             guard let snapshot = (observed.value(entity) ?? raw) as? any CollectibleSnapshot,
-                  let value = snapshot.collected(at: Date()) as? Snapshot else {
+                  let value = snapshot.collected() as? Snapshot else {
                 throw DeviceReadoutError(.readFailed, "Collector returned the wrong snapshot type.")
             }
             return PreparedRead(value: value)
@@ -310,6 +311,45 @@ public final class DeviceAccess: @unchecked Sendable {
         } onCancel: { operation.resolve(.failure(CancellationError())) }
     }
 
+    func getCapabilities<Snapshot>(_ entity: Entity<Snapshot>) async throws -> EntityCapabilities {
+        try Task.checkCancellation()
+        if let known = try lifetime.withOpen({ try knownCapabilities(entity) }) { return known }
+        let isKind = entity.requiresTarget && entity.binding == nil
+        do {
+            let native = try await perform(target: isKind ? nil : (entity.kind, entity.binding), observesFailures: false) { [self] active, _ in
+                let request = isKind ? EntityRequest(kind: entity.kind, targetId: nil) : try targets.validate(entity)
+                let value = try collector.capabilities(request)
+                guard active() else { throw CancellationError() }
+                return PreparedRead(value: value)
+            }
+            try Task.checkCancellation()
+            // App ownership or target removal may have changed while the native query was held.
+            return try lifetime.withOpen { try knownCapabilities(entity) ?? native }
+        } catch let error as DeviceReadoutError where error.code != .readTimeout && error.code != .invalidConfiguration {
+            try Task.checkCancellation()
+            // Fresh app support supersedes a stale native provider failure, but never a deadline.
+            // A removed target is unavailable; a closed context still throws from withOpen.
+            if let known = try lifetime.withOpen({ try knownCapabilities(entity) }) { return known }
+            throw error
+        }
+    }
+
+    // Called under the context gate; all lookups are SDK-owned and do not invoke app callbacks.
+    private func knownCapabilities<Snapshot>(_ entity: Entity<Snapshot>) throws -> EntityCapabilities? {
+        let isKind = entity.requiresTarget && entity.binding == nil
+        if !isKind {
+            do { _ = try targets.validate(entity) }
+            catch let error as DeviceReadoutError where error.code == .entityRemoved { return .unavailable }
+        }
+        if entity.mode != .state {
+            // Native sensor execution is not connected in this runtime yet.
+            return sensorSources.supports(entity) ? .available : .unavailable
+        }
+        if isKind, let count = targets.observedCount(entity.kind) { return count > 0 ? .available : .unavailable }
+        if entity.binding?.observed == true || observed.owns(entity) { return .available }
+        return nil
+    }
+
     public func describe<Snapshot>(_ sensor: Entity<Snapshot>) async throws -> SensorDescription {
         guard sensor.mode != .state else { throw DeviceReadoutError(.unsupportedEntity, "Expected a sensor.") }
         let revision = failures.version
@@ -323,7 +363,7 @@ public final class DeviceAccess: @unchecked Sendable {
                 reportingMode: raw.reportingMode, minimumInterval: raw.minimumInterval, maximumInterval: raw.maximumInterval,
                 maximumRange: raw.maximumRange, resolution: raw.resolution, powerMilliamps: raw.powerMilliamps, fifoCapacity: raw.fifoCapacity
             )
-            guard let value = description.collected(at: Date()) as? SensorDescription else {
+            guard let value = description.collected() as? SensorDescription else {
                 throw DeviceReadoutError(.readFailed, "Invalid sensor description.")
             }
             return PreparedRead(value: value)
@@ -384,7 +424,7 @@ public final class DeviceAccess: @unchecked Sendable {
             guard occurred == true else { throw DeviceReadoutError(.readFailed, "An event sensor must report an actual occurrence with value true.") }
         }
         guard let snapshot = raw as? any CollectibleSnapshot,
-              let value = snapshot.collected(at: Date()) as? Snapshot else {
+              let value = snapshot.collected() as? Snapshot else {
             throw DeviceReadoutError(.readFailed, "Observed state has the wrong snapshot type.")
         }
         return PreparedRead(value: value)
@@ -395,6 +435,7 @@ public final class DeviceAccess: @unchecked Sendable {
         target: (EntityKind, TargetBinding?)? = nil,
         failureScope: (EntityKind, TargetBinding?)? = nil,
         startingAt revision: UInt64? = nil,
+        observesFailures: Bool = true,
         _ collect: @escaping @Sendable (@Sendable () -> Bool, (any DeviceSnapshot)?) throws -> PreparedRead<Value>
     ) async throws -> Value {
         try Task.checkCancellation()
@@ -409,7 +450,8 @@ public final class DeviceAccess: @unchecked Sendable {
             }
         }
         defer { removal?.cancel() }
-        let failure = try (failureScope ?? target).map { kind, binding in
+        let observedFailureScope = observesFailures ? (failureScope ?? target) : nil
+        let failure = try observedFailureScope.map { kind, binding in
             try failures.observe(ObservedAddress(kind: kind, binding: binding), startingAt: revision) { error in operation.resolve(.failure(error)) }
         }
         defer { failure?.cancel() }
@@ -438,6 +480,8 @@ public final class DeviceAccess: @unchecked Sendable {
                                 finish()
                                 if committed { prepared.didCommit() }
                             }
+                        } catch let error as CancellationError {
+                            lifetime.accept { operation.claim(.failure(failure?.errorSinceStart() ?? error)) }?()
                         } catch let error as DeviceReadoutError {
                             lifetime.accept { operation.claim(.failure(failure?.errorSinceStart() ?? error)) }?()
                         } catch {

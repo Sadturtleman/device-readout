@@ -345,8 +345,8 @@ public struct DeviceInfoSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot
         self.`board` = `board`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(manufacturer: `manufacturer`, brand: `brand`, modelCode: `modelCode`, modelName: `modelName`, deviceName: `deviceName`, formFactor: `formFactor`, product: `product`, board: `board`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(manufacturer: self.`manufacturer`, brand: self.`brand`, modelCode: self.`modelCode`, modelName: self.`modelName`, deviceName: self.`deviceName`, formFactor: self.`formFactor`, product: self.`product`, board: self.`board`, collectedAt: Date())
     }
 }
 
@@ -375,8 +375,8 @@ public struct OsSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`kernelVersion` = `kernelVersion`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(family: `family`, name: `name`, version: `version`, build: `build`, kernelName: `kernelName`, kernelVersion: `kernelVersion`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(family: self.`family`, name: self.`name`, version: self.`version`, build: self.`build`, kernelName: self.`kernelName`, kernelVersion: self.`kernelVersion`, collectedAt: Date())
     }
 }
 
@@ -399,8 +399,8 @@ public struct RuntimeSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`supportedAbis` = `supportedAbis`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(hostArchitecture: `hostArchitecture`, processArchitecture: `processArchitecture`, processBitness: `processBitness`, supportedAbis: `supportedAbis`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(hostArchitecture: self.`hostArchitecture`, processArchitecture: self.`processArchitecture`, processBitness: self.`processBitness`, supportedAbis: self.`supportedAbis`, collectedAt: Date())
     }
 }
 
@@ -435,8 +435,8 @@ public struct CpuSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`processorPackageCount` = `processorPackageCount`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(model: `model`, manufacturer: `manufacturer`, socModel: `socModel`, socManufacturer: `socManufacturer`, logicalProcessorCount: `logicalProcessorCount`, availableLogicalProcessorCount: `availableLogicalProcessorCount`, physicalCoreCount: `physicalCoreCount`, processorPackageCount: `processorPackageCount`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(model: self.`model`, manufacturer: self.`manufacturer`, socModel: self.`socModel`, socManufacturer: self.`socManufacturer`, logicalProcessorCount: self.`logicalProcessorCount`, availableLogicalProcessorCount: self.`availableLogicalProcessorCount`, physicalCoreCount: self.`physicalCoreCount`, processorPackageCount: self.`processorPackageCount`, collectedAt: Date())
     }
 }
 
@@ -465,8 +465,10 @@ public struct CpuCoreSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`maximumClockHz` = `maximumClockHz`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(logicalIndex: `logicalIndex`, coreIndex: `coreIndex`, packageIndex: `packageIndex`, online: `online`, currentClockHz: SnapshotRules.finite(`currentClockHz`), maximumClockHz: SnapshotRules.finite(`maximumClockHz`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField4 = SnapshotRules.finite(self.`currentClockHz`)
+        let normalizedField5 = SnapshotRules.finite(self.`maximumClockHz`)
+        return Self(logicalIndex: self.`logicalIndex`, coreIndex: self.`coreIndex`, packageIndex: self.`packageIndex`, online: self.`online`, currentClockHz: normalizedField4, maximumClockHz: normalizedField5, collectedAt: Date())
     }
 }
 
@@ -498,8 +500,8 @@ public struct RamSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`lowMemoryThresholdBytes` = `lowMemoryThresholdBytes`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(physicalBytes: `physicalBytes`, kernelAccessibleBytes: `kernelAccessibleBytes`, advertisedBytes: `advertisedBytes`, availableBytes: `availableBytes`, freeBytes: `freeBytes`, lowMemory: `lowMemory`, lowMemoryThresholdBytes: `lowMemoryThresholdBytes`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(physicalBytes: self.`physicalBytes`, kernelAccessibleBytes: self.`kernelAccessibleBytes`, advertisedBytes: self.`advertisedBytes`, availableBytes: self.`availableBytes`, freeBytes: self.`freeBytes`, lowMemory: self.`lowMemory`, lowMemoryThresholdBytes: self.`lowMemoryThresholdBytes`, collectedAt: Date())
     }
 }
 
@@ -513,8 +515,8 @@ public struct ProcessMemorySnapshot: DeviceSnapshot, Equatable, CollectibleSnaps
         self.`allocationRemainingBytes` = `allocationRemainingBytes`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(allocationRemainingBytes: `allocationRemainingBytes`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(allocationRemainingBytes: self.`allocationRemainingBytes`, collectedAt: Date())
     }
 }
 
@@ -558,8 +560,8 @@ public struct LocaleSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`measurementSystem` = `measurementSystem`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(currentLanguageTag: `currentLanguageTag`, preferredLanguageTags: `preferredLanguageTags`, systemLanguageTags: `systemLanguageTags`, appLanguageTags: `appLanguageTags`, regionCode: `regionCode`, scriptCode: `scriptCode`, calendar: `calendar`, numberingSystem: `numberingSystem`, hourCycle: `hourCycle`, firstWeekday: `firstWeekday`, measurementSystem: `measurementSystem`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(currentLanguageTag: self.`currentLanguageTag`, preferredLanguageTags: self.`preferredLanguageTags`, systemLanguageTags: self.`systemLanguageTags`, appLanguageTags: self.`appLanguageTags`, regionCode: self.`regionCode`, scriptCode: self.`scriptCode`, calendar: self.`calendar`, numberingSystem: self.`numberingSystem`, hourCycle: self.`hourCycle`, firstWeekday: self.`firstWeekday`, measurementSystem: self.`measurementSystem`, collectedAt: Date())
     }
 }
 
@@ -582,8 +584,8 @@ public struct TimeZoneSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`daylightSavingTime` = `daylightSavingTime`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(ianaId: `ianaId`, windowsId: `windowsId`, utcOffsetSeconds: `utcOffsetSeconds`, daylightSavingTime: `daylightSavingTime`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(ianaId: self.`ianaId`, windowsId: self.`windowsId`, utcOffsetSeconds: self.`utcOffsetSeconds`, daylightSavingTime: self.`daylightSavingTime`, collectedAt: Date())
     }
 }
 
@@ -618,8 +620,8 @@ public struct AndroidBuildSnapshot: DeviceSnapshot, Equatable, CollectibleSnapsh
         self.`bootloaderVersion` = `bootloaderVersion`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(apiLevel: `apiLevel`, securityPatch: `securityPatch`, buildId: `buildId`, buildDisplay: `buildDisplay`, buildFingerprint: `buildFingerprint`, buildType: `buildType`, buildTags: `buildTags`, bootloaderVersion: `bootloaderVersion`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(apiLevel: self.`apiLevel`, securityPatch: self.`securityPatch`, buildId: self.`buildId`, buildDisplay: self.`buildDisplay`, buildFingerprint: self.`buildFingerprint`, buildType: self.`buildType`, buildTags: self.`buildTags`, bootloaderVersion: self.`bootloaderVersion`, collectedAt: Date())
     }
 }
 
@@ -633,8 +635,8 @@ public struct AndroidIdentitySnapshot: DeviceSnapshot, Equatable, CollectibleSna
         self.`androidId` = `androidId`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(androidId: `androidId`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(androidId: self.`androidId`, collectedAt: Date())
     }
 }
 
@@ -648,8 +650,8 @@ public struct AppleVendorIdentitySnapshot: DeviceSnapshot, Equatable, Collectibl
         self.`vendorId` = `vendorId`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(vendorId: `vendorId`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(vendorId: self.`vendorId`, collectedAt: Date())
     }
 }
 
@@ -666,8 +668,8 @@ public struct WindowsPublisherIdentitySnapshot: DeviceSnapshot, Equatable, Colle
         self.`source` = `source`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(publisherId: `publisherId`, source: `source`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(publisherId: self.`publisherId`, source: self.`source`, collectedAt: Date())
     }
 }
 
@@ -681,8 +683,8 @@ public struct MacPlatformIdentitySnapshot: DeviceSnapshot, Equatable, Collectibl
         self.`platformUuid` = `platformUuid`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(platformUuid: `platformUuid`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(platformUuid: self.`platformUuid`, collectedAt: Date())
     }
 }
 
@@ -696,8 +698,8 @@ public struct HardwareSerialSnapshot: DeviceSnapshot, Equatable, CollectibleSnap
         self.`serial` = `serial`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(serial: `serial`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(serial: self.`serial`, collectedAt: Date())
     }
 }
 
@@ -714,8 +716,8 @@ public struct TelephonyIdentitySnapshot: DeviceSnapshot, Equatable, CollectibleS
         self.`meid` = `meid`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(imei: `imei`, meid: `meid`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(imei: self.`imei`, meid: self.`meid`, collectedAt: Date())
     }
 }
 
@@ -783,8 +785,18 @@ public struct DisplaySnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`brightness` = `brightness`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(label: `label`, primary: `primary`, internal: `internal`, state: `state`, logicalBounds: `logicalBounds`, workAreaBounds: `workAreaBounds`, pixelSize: `pixelSize`, physicalSizeMillimeters: `physicalSizeMillimeters`, orientation: `orientation`, rotationDegrees: SnapshotRules.finite(`rotationDegrees`), scaleFactor: SnapshotRules.finite(`scaleFactor`), densityDpi: SnapshotRules.finite(`densityDpi`), currentMode: `currentMode`, supportedModes: `supportedModes`, maximumRefreshRateHz: SnapshotRules.finite(`maximumRefreshRateHz`), colorDepthBits: `colorDepthBits`, colorGamut: `colorGamut`, hdrFormats: `hdrFormats`, brightness: `brightness`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField4 = SnapshotRules.rectangle(self.`logicalBounds`)
+        let normalizedField5 = SnapshotRules.rectangle(self.`workAreaBounds`)
+        let normalizedField7 = SnapshotRules.size(self.`physicalSizeMillimeters`)
+        let normalizedField9 = SnapshotRules.finite(self.`rotationDegrees`)
+        let normalizedField10 = SnapshotRules.finite(self.`scaleFactor`)
+        let normalizedField11 = SnapshotRules.finite(self.`densityDpi`)
+        let normalizedField12 = SnapshotRules.displayMode(self.`currentMode`)
+        let normalizedField13 = SnapshotRules.displayModes(self.`supportedModes`)
+        let normalizedField14 = SnapshotRules.finite(self.`maximumRefreshRateHz`)
+        let normalizedField18 = SnapshotRules.ratio(self.`brightness`)
+        return Self(label: self.`label`, primary: self.`primary`, internal: self.`internal`, state: self.`state`, logicalBounds: normalizedField4, workAreaBounds: normalizedField5, pixelSize: self.`pixelSize`, physicalSizeMillimeters: normalizedField7, orientation: self.`orientation`, rotationDegrees: normalizedField9, scaleFactor: normalizedField10, densityDpi: normalizedField11, currentMode: normalizedField12, supportedModes: normalizedField13, maximumRefreshRateHz: normalizedField14, colorDepthBits: self.`colorDepthBits`, colorGamut: self.`colorGamut`, hdrFormats: self.`hdrFormats`, brightness: normalizedField18, collectedAt: Date())
     }
 }
 
@@ -810,8 +822,13 @@ public struct ViewportSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`textScaleFactor` = `textScaleFactor`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(size: `size`, visualViewportSize: `visualViewportSize`, visualViewportScale: SnapshotRules.finite(`visualViewportScale`), safeAreaInsets: `safeAreaInsets`, textScaleFactor: SnapshotRules.finite(`textScaleFactor`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.size(self.`size`)
+        let normalizedField1 = SnapshotRules.size(self.`visualViewportSize`)
+        let normalizedField2 = SnapshotRules.finite(self.`visualViewportScale`)
+        let normalizedField3 = SnapshotRules.insets(self.`safeAreaInsets`)
+        let normalizedField4 = SnapshotRules.finite(self.`textScaleFactor`)
+        return Self(size: normalizedField0, visualViewportSize: normalizedField1, visualViewportScale: normalizedField2, safeAreaInsets: normalizedField3, textScaleFactor: normalizedField4, collectedAt: Date())
     }
 }
 
@@ -831,8 +848,8 @@ public struct PowerSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`thermalState` = `thermalState`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(powerSource: `powerSource`, powerSaveMode: `powerSaveMode`, thermalState: `thermalState`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(powerSource: self.`powerSource`, powerSaveMode: self.`powerSaveMode`, thermalState: self.`thermalState`, collectedAt: Date())
     }
 }
 
@@ -897,8 +914,19 @@ public struct BatterySnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`cycleCount` = `cycleCount`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(present: `present`, level: `level`, charging: `charging`, state: `state`, timeToFull: SnapshotRules.duration(`timeToFull`), timeToEmpty: SnapshotRules.duration(`timeToEmpty`), voltageMillivolts: SnapshotRules.finite(`voltageMillivolts`), currentMicroamps: SnapshotRules.finite(`currentMicroamps`), averageCurrentMicroamps: SnapshotRules.finite(`averageCurrentMicroamps`), chargeRateMilliwatts: SnapshotRules.finite(`chargeRateMilliwatts`), temperatureCelsius: SnapshotRules.finite(`temperatureCelsius`), chargeCounterMicroampHours: `chargeCounterMicroampHours`, remainingEnergyMilliwattHours: SnapshotRules.finite(`remainingEnergyMilliwattHours`), fullChargeEnergyMilliwattHours: SnapshotRules.finite(`fullChargeEnergyMilliwattHours`), designEnergyMilliwattHours: SnapshotRules.finite(`designEnergyMilliwattHours`), technology: `technology`, health: `health`, cycleCount: `cycleCount`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField1 = SnapshotRules.ratio(self.`level`)
+        let normalizedField4 = SnapshotRules.duration(self.`timeToFull`)
+        let normalizedField5 = SnapshotRules.duration(self.`timeToEmpty`)
+        let normalizedField6 = SnapshotRules.finite(self.`voltageMillivolts`)
+        let normalizedField7 = SnapshotRules.finite(self.`currentMicroamps`)
+        let normalizedField8 = SnapshotRules.finite(self.`averageCurrentMicroamps`)
+        let normalizedField9 = SnapshotRules.finite(self.`chargeRateMilliwatts`)
+        let normalizedField10 = SnapshotRules.finite(self.`temperatureCelsius`)
+        let normalizedField12 = SnapshotRules.finite(self.`remainingEnergyMilliwattHours`)
+        let normalizedField13 = SnapshotRules.finite(self.`fullChargeEnergyMilliwattHours`)
+        let normalizedField14 = SnapshotRules.finite(self.`designEnergyMilliwattHours`)
+        return Self(present: self.`present`, level: normalizedField1, charging: self.`charging`, state: self.`state`, timeToFull: normalizedField4, timeToEmpty: normalizedField5, voltageMillivolts: normalizedField6, currentMicroamps: normalizedField7, averageCurrentMicroamps: normalizedField8, chargeRateMilliwatts: normalizedField9, temperatureCelsius: normalizedField10, chargeCounterMicroampHours: self.`chargeCounterMicroampHours`, remainingEnergyMilliwattHours: normalizedField12, fullChargeEnergyMilliwattHours: normalizedField13, designEnergyMilliwattHours: normalizedField14, technology: self.`technology`, health: self.`health`, cycleCount: self.`cycleCount`, collectedAt: Date())
     }
 }
 
@@ -942,8 +970,8 @@ public struct NetworkPathSnapshot: DeviceSnapshot, Equatable, CollectibleSnapsho
         self.`captivePortal` = `captivePortal`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(connectionState: `connectionState`, transports: `transports`, metered: `metered`, expensive: `expensive`, constrained: `constrained`, saveData: `saveData`, supportsIpv4: `supportsIpv4`, supportsIpv6: `supportsIpv6`, supportsDns: `supportsDns`, internetValidated: `internetValidated`, captivePortal: `captivePortal`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(connectionState: self.`connectionState`, transports: self.`transports`, metered: self.`metered`, expensive: self.`expensive`, constrained: self.`constrained`, saveData: self.`saveData`, supportsIpv4: self.`supportsIpv4`, supportsIpv6: self.`supportsIpv6`, supportsDns: self.`supportsDns`, internetValidated: self.`internetValidated`, captivePortal: self.`captivePortal`, collectedAt: Date())
     }
 }
 
@@ -969,8 +997,11 @@ public struct NetworkPerformanceSnapshot: DeviceSnapshot, Equatable, Collectible
         self.`browserOnline` = `browserOnline`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(downlinkBps: SnapshotRules.finite(`downlinkBps`), uplinkBps: SnapshotRules.finite(`uplinkBps`), roundTripTime: SnapshotRules.duration(`roundTripTime`), effectiveType: `effectiveType`, browserOnline: `browserOnline`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.finite(self.`downlinkBps`)
+        let normalizedField1 = SnapshotRules.finite(self.`uplinkBps`)
+        let normalizedField2 = SnapshotRules.duration(self.`roundTripTime`)
+        return Self(downlinkBps: normalizedField0, uplinkBps: normalizedField1, roundTripTime: normalizedField2, effectiveType: self.`effectiveType`, browserOnline: self.`browserOnline`, collectedAt: Date())
     }
 }
 
@@ -1008,8 +1039,8 @@ public struct NetworkInterfaceSnapshot: DeviceSnapshot, Equatable, CollectibleSn
         self.`mtuBytes` = `mtuBytes`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(name: `name`, interfaceType: `interfaceType`, operationalState: `operationalState`, hardwareAddress: `hardwareAddress`, ipAddresses: `ipAddresses`, dnsServers: `dnsServers`, gateways: `gateways`, routes: `routes`, mtuBytes: `mtuBytes`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(name: self.`name`, interfaceType: self.`interfaceType`, operationalState: self.`operationalState`, hardwareAddress: self.`hardwareAddress`, ipAddresses: self.`ipAddresses`, dnsServers: self.`dnsServers`, gateways: self.`gateways`, routes: self.`routes`, mtuBytes: self.`mtuBytes`, collectedAt: Date())
     }
 }
 
@@ -1041,8 +1072,12 @@ public struct WifiConnectionSnapshot: DeviceSnapshot, Equatable, CollectibleSnap
         self.`transmitLinkSpeedBps` = `transmitLinkSpeedBps`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(ssid: `ssid`, bssid: `bssid`, security: `security`, rssiDbm: SnapshotRules.finite(`rssiDbm`), frequencyHz: SnapshotRules.finite(`frequencyHz`), receiveLinkSpeedBps: SnapshotRules.finite(`receiveLinkSpeedBps`), transmitLinkSpeedBps: SnapshotRules.finite(`transmitLinkSpeedBps`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField3 = SnapshotRules.finite(self.`rssiDbm`)
+        let normalizedField4 = SnapshotRules.finite(self.`frequencyHz`)
+        let normalizedField5 = SnapshotRules.finite(self.`receiveLinkSpeedBps`)
+        let normalizedField6 = SnapshotRules.finite(self.`transmitLinkSpeedBps`)
+        return Self(ssid: self.`ssid`, bssid: self.`bssid`, security: self.`security`, rssiDbm: normalizedField3, frequencyHz: normalizedField4, receiveLinkSpeedBps: normalizedField5, transmitLinkSpeedBps: normalizedField6, collectedAt: Date())
     }
 }
 
@@ -1074,8 +1109,8 @@ public struct CellularSubscriptionSnapshot: DeviceSnapshot, Equatable, Collectib
         self.`roaming` = `roaming`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(slotIndex: `slotIndex`, carrierName: `carrierName`, countryCode: `countryCode`, mobileCountryCode: `mobileCountryCode`, mobileNetworkCode: `mobileNetworkCode`, radioTechnology: `radioTechnology`, roaming: `roaming`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(slotIndex: self.`slotIndex`, carrierName: self.`carrierName`, countryCode: self.`countryCode`, mobileCountryCode: self.`mobileCountryCode`, mobileNetworkCode: self.`mobileNetworkCode`, radioTechnology: self.`radioTechnology`, roaming: self.`roaming`, collectedAt: Date())
     }
 }
 
@@ -1125,8 +1160,8 @@ public struct StorageVolumeSnapshot: DeviceSnapshot, Equatable, CollectibleSnaps
         self.`allocatableBytes` = `allocatableBytes`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(name: `name`, fileSystem: `fileSystem`, totalBytes: `totalBytes`, freeBytes: `freeBytes`, availableToCallerBytes: `availableToCallerBytes`, totalBytesForCaller: `totalBytesForCaller`, readOnly: `readOnly`, removable: `removable`, encrypted: `encrypted`, caseSensitive: `caseSensitive`, availableForImportantUsageBytes: `availableForImportantUsageBytes`, availableForOpportunisticUsageBytes: `availableForOpportunisticUsageBytes`, allocatableBytes: `allocatableBytes`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(name: self.`name`, fileSystem: self.`fileSystem`, totalBytes: self.`totalBytes`, freeBytes: self.`freeBytes`, availableToCallerBytes: self.`availableToCallerBytes`, totalBytesForCaller: self.`totalBytesForCaller`, readOnly: self.`readOnly`, removable: self.`removable`, encrypted: self.`encrypted`, caseSensitive: self.`caseSensitive`, availableForImportantUsageBytes: self.`availableForImportantUsageBytes`, availableForOpportunisticUsageBytes: self.`availableForOpportunisticUsageBytes`, allocatableBytes: self.`allocatableBytes`, collectedAt: Date())
     }
 }
 
@@ -1149,8 +1184,8 @@ public struct OriginStorageSnapshot: DeviceSnapshot, Equatable, CollectibleSnaps
         self.`persistent` = `persistent`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(quotaBytes: `quotaBytes`, usageBytes: `usageBytes`, usageByCategory: `usageByCategory`, persistent: `persistent`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(quotaBytes: self.`quotaBytes`, usageBytes: self.`usageBytes`, usageByCategory: self.`usageByCategory`, persistent: self.`persistent`, collectedAt: Date())
     }
 }
 
@@ -1164,8 +1199,9 @@ public struct AccelerometerSnapshot: DeviceSnapshot, Equatable, CollectibleSnaps
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.vector(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1179,8 +1215,9 @@ public struct LinearAccelerationSnapshot: DeviceSnapshot, Equatable, Collectible
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.vector(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1194,8 +1231,9 @@ public struct GravitySnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.vector(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1209,8 +1247,9 @@ public struct GyroscopeSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot 
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.vector(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1224,8 +1263,9 @@ public struct MagnetometerSnapshot: DeviceSnapshot, Equatable, CollectibleSnapsh
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.vector(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1239,8 +1279,9 @@ public struct RelativeOrientationSnapshot: DeviceSnapshot, Equatable, Collectibl
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.rotation(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1254,8 +1295,9 @@ public struct AbsoluteOrientationSnapshot: DeviceSnapshot, Equatable, Collectibl
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.rotation(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1269,8 +1311,9 @@ public struct IlluminanceSnapshot: DeviceSnapshot, Equatable, CollectibleSnapsho
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: SnapshotRules.finite(`value`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.finite(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1284,8 +1327,9 @@ public struct PressureSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot {
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: SnapshotRules.finite(`value`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.finite(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1299,8 +1343,9 @@ public struct AmbientTemperatureSnapshot: DeviceSnapshot, Equatable, Collectible
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: SnapshotRules.finite(`value`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.finite(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1314,8 +1359,9 @@ public struct RelativeHumiditySnapshot: DeviceSnapshot, Equatable, CollectibleSn
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.ratio(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1329,8 +1375,8 @@ public struct ProximityNearSnapshot: DeviceSnapshot, Equatable, CollectibleSnaps
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(value: self.`value`, collectedAt: Date())
     }
 }
 
@@ -1344,8 +1390,9 @@ public struct ProximityDistanceSnapshot: DeviceSnapshot, Equatable, CollectibleS
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: SnapshotRules.finite(`value`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.finite(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1359,8 +1406,9 @@ public struct RelativeAltitudeSnapshot: DeviceSnapshot, Equatable, CollectibleSn
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: SnapshotRules.finite(`value`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.finite(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1374,8 +1422,9 @@ public struct HingeAngleSnapshot: DeviceSnapshot, Equatable, CollectibleSnapshot
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: SnapshotRules.finite(`value`), collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField0 = SnapshotRules.finite(self.`value`)
+        return Self(value: normalizedField0, collectedAt: Date())
     }
 }
 
@@ -1389,8 +1438,8 @@ public struct StepCountSinceBootSnapshot: DeviceSnapshot, Equatable, Collectible
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(value: self.`value`, collectedAt: Date())
     }
 }
 
@@ -1404,8 +1453,8 @@ public struct StepDetectedSnapshot: DeviceSnapshot, Equatable, CollectibleSnapsh
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(value: self.`value`, collectedAt: Date())
     }
 }
 
@@ -1419,8 +1468,8 @@ public struct SignificantMotionSnapshot: DeviceSnapshot, Equatable, CollectibleS
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(value: self.`value`, collectedAt: Date())
     }
 }
 
@@ -1434,8 +1483,8 @@ public struct HumanPresenceSnapshot: DeviceSnapshot, Equatable, CollectibleSnaps
         self.`value` = `value`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(value: `value`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        return Self(value: self.`value`, collectedAt: Date())
     }
 }
 
@@ -1479,8 +1528,13 @@ public struct SensorDescription: DeviceSnapshot, Equatable, CollectibleSnapshot 
         self.`fifoCapacity` = `fifoCapacity`
     }
 
-    func collected(at date: Date) -> any DeviceSnapshot {
-        Self(kind: `kind`, name: `name`, vendor: `vendor`, version: `version`, reportingMode: `reportingMode`, minimumInterval: SnapshotRules.duration(`minimumInterval`), maximumInterval: SnapshotRules.duration(`maximumInterval`), maximumRange: SnapshotRules.finite(`maximumRange`), resolution: SnapshotRules.finite(`resolution`), powerMilliamps: SnapshotRules.finite(`powerMilliamps`), fifoCapacity: `fifoCapacity`, collectedAt: date)
+    func collected() -> any DeviceSnapshot {
+        let normalizedField5 = SnapshotRules.duration(self.`minimumInterval`)
+        let normalizedField6 = SnapshotRules.duration(self.`maximumInterval`)
+        let normalizedField7 = SnapshotRules.finite(self.`maximumRange`)
+        let normalizedField8 = SnapshotRules.finite(self.`resolution`)
+        let normalizedField9 = SnapshotRules.finite(self.`powerMilliamps`)
+        return Self(kind: self.`kind`, name: self.`name`, vendor: self.`vendor`, version: self.`version`, reportingMode: self.`reportingMode`, minimumInterval: normalizedField5, maximumInterval: normalizedField6, maximumRange: normalizedField7, resolution: normalizedField8, powerMilliamps: normalizedField9, fifoCapacity: self.`fifoCapacity`, collectedAt: Date())
     }
 }
 

@@ -97,6 +97,10 @@ final class TargetRegistry: @unchecked Sendable {
         return inventory?.values.map { Entity(kind: kind.kind, requiresTarget: true, mode: kind.mode, binding: $0) }
     }
 
+    func observedCount(_ kind: EntityKind) -> Int? {
+        lock.lock(); defer { lock.unlock() }; return observedInventories[kind]?.count
+    }
+
     func setObservedCurrent<Snapshot>(_ kind: Entity<Snapshot>, target: Entity<Snapshot>?) throws {
         guard kind.requiresTarget, kind.binding == nil else {
             throw DeviceReadoutError(.invalidConfiguration, "Expected an unbound multi-target entity kind.")

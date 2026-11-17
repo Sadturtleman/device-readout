@@ -291,9 +291,14 @@ for (const [name, executablePath] of [
         options:Object.fromEntries(Object.entries(instances).map(([kind,sensor])=>[kind,sensor.options])),
         recent:Object.values(snapshots).every(snapshot=>snapshot.collectedAt.epochMilliseconds>Date.now()-10000),nullValues};
     });
-    assert.deepEqual(result.values,{Accelerometer:{x:0.25,y:-0.5,z:3},LinearAcceleration:{x:0.25,y:-0.5,z:3},Gravity:{x:0.25,y:-0.5,z:3},
-      Gyroscope:{x:0.25,y:-0.5,z:3},Magnetometer:{x:0.25,y:-0.5,z:3},RelativeOrientation:{x:0,y:0,z:0.6,w:0.8},
-      AbsoluteOrientation:{x:0,y:0,z:0.6,w:0.8},Illuminance:0});
+    const {RelativeOrientation,AbsoluteOrientation,...otherValues}=result.values;
+    assert.deepEqual(otherValues,{Accelerometer:{x:0.25,y:-0.5,z:3},LinearAcceleration:{x:0.25,y:-0.5,z:3},Gravity:{x:0.25,y:-0.5,z:3},
+      Gyroscope:{x:0.25,y:-0.5,z:3},Magnetometer:{x:0.25,y:-0.5,z:3},Illuminance:0});
+    for(const rotation of [RelativeOrientation,AbsoluteOrientation]) {
+      assert.deepEqual(Object.keys(rotation).sort(),['w','x','y','z']);
+      for(const [axis,value]of Object.entries({x:0,y:0,z:0.6,w:0.8}))assert.ok(Math.abs(rotation[axis]-value)<=1e-15,axis);
+      assert.ok(Math.abs(Math.hypot(rotation.x,rotation.y,rotation.z,rotation.w)-1)<=1e-15);
+    }
     for(const [kind,options]of Object.entries(result.options))assert.deepEqual(options,kind==='Illuminance'?{}:{referenceFrame:'device'});
     assert.deepEqual(result.nullValues,Array(8).fill(null));assert.equal(result.recent,true);
   });

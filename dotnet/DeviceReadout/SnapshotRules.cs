@@ -18,7 +18,15 @@ internal static partial class SnapshotRules
     };
     private static bool AllFinite(params double[] values) => values.All(double.IsFinite);
     internal static Vector3? Vector(Vector3? value) => value is {} v && AllFinite(v.X, v.Y, v.Z) ? value : null;
-    internal static Quaternion? Rotation(Quaternion? value) => value is {} v && AllFinite(v.X, v.Y, v.Z, v.W) ? value : null;
+    internal static Quaternion? Rotation(Quaternion? value)
+    {
+        if (value is not {} v || !AllFinite(v.X, v.Y, v.Z, v.W)) return null;
+        var scale = Math.Max(Math.Max(Math.Abs(v.X), Math.Abs(v.Y)), Math.Max(Math.Abs(v.Z), Math.Abs(v.W)));
+        if (scale == 0) return null;
+        var x = v.X / scale;var y = v.Y / scale;var z = v.Z / scale;var w = v.W / scale;
+        var length = Math.Sqrt(x * x + y * y + z * z + w * w);
+        return new Quaternion(x / length, y / length, z / length, w / length);
+    }
     internal static Rect? Rectangle(Rect? value) => value is {} v && AllFinite(v.X, v.Y, v.Width, v.Height) ? value : null;
     internal static Insets? Edges(Insets? value) => value is {} v && AllFinite(v.Top, v.Right, v.Bottom, v.Left) ? value : null;
     internal static Size<double>? Size(Size<double>? value) => value is {} v && AllFinite(v.Width, v.Height) ? value : null;

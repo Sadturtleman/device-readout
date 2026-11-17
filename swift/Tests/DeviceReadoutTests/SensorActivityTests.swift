@@ -4,6 +4,142 @@ import XCTest
 
 final class SensorActivityTests: XCTestCase {
     @MainActor
+    func testConfiguredConsumersKeepIndependentSessionsAndRatesAcrossSharedActivity() async throws {
+        let access = DeviceAccess(collector: ActivityCollector())
+        defer { access.close() }
+        let ten = access.withSensorSamplingRate(try .hertz(10))
+        let twenty = access.withSensorSamplingRate(try .hertz(20))
+        let sensor = try access.observers.target(Entities.pressure, id: "shared")
+        let sessions = ActivitySessions<PressureSnapshot>()
+        let initial = expectation(description: "both consumers received first values")
+        initial.expectedFulfillmentCount = 2
+        let canceled = expectation(description: "only the ten hertz session canceled")
+        let released = expectation(description: "three owned sessions released")
+        released.expectedFulfillmentCount = 3
+        let source = try access.observers.sensorSource(sensor) { session in
+            _ = sessions.append(session)
+            session.publish(PressureSnapshot(value: session.samplingRate.requestedHertz))
+            return {
+                if session.samplingRate.requestedHertz == 10 { canceled.fulfill() }
+                released.fulfill()
+            }
+        }
+        defer { source.close() }
+        let first = Task {
+            for try await value in ten.watch(sensor) {
+                XCTAssertEqual(value.value, 10)
+                initial.fulfill()
+            }
+        }
+        let second = Task { () throws -> [Double?] in
+            var values: [Double?] = []
+            for try await value in twenty.watch(sensor) {
+                values.append(value.value)
+                if values.count == 1 { initial.fulfill() }
+                if values.count == 2 { break }
+            }
+            return values
+        }
+        defer { first.cancel(); second.cancel() }
+        let failSafe = Task.detached {
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled { first.cancel(); second.cancel() }
+        }
+        defer { failSafe.cancel() }
+        await fulfillment(of: [initial], timeout: 1)
+        _ = twenty.withSensorSamplingRate(try .hertz(40))
+        try access.observers.sensorActivity(true)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(sessions.count, 2, "Repeated active input must not restart existing sources")
+        first.cancel()
+        do { try await first.value; XCTFail("Cancellation must propagate") }
+        catch is CancellationError { }
+        await fulfillment(of: [canceled], timeout: 1)
+        XCTAssertTrue(sessions.all.first { $0.samplingRate.requestedHertz == 10 }!.isStopped)
+        XCTAssertFalse(sessions.all.first { $0.samplingRate.requestedHertz == 20 }!.isStopped)
+        try ten.observers.sensorActivity(false)
+        try twenty.observers.sensorActivity(false)
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertTrue(sessions.all.allSatisfy(\.isStopped))
+        XCTAssertEqual(sessions.count, 2)
+        try access.observers.sensorActivity(true)
+        try twenty.observers.sensorActivity(true)
+        let values = try await second.value
+        XCTAssertEqual(values, [20, 20], "The surviving consumer keeps its own rate and duplicate samples")
+        XCTAssertEqual(sessions.count, 3)
+        XCTAssertEqual(access.sensorSamplingRate, .platformDefault)
+        await fulfillment(of: [released], timeout: 1)
+    }
+
+    @MainActor
+    func testInactiveGetAndWatchEndOnCancellationFailureRemovalAndContextCloseWithoutResuming() async throws {
+        for watching in [false, true] {
+            for ending in ActivityEnding.allCases {
+                let access = try DeviceAccess(collector: ActivityCollector()).withReadTimeout(.seconds(2))
+                defer { access.close() }
+                let sensor = try access.observers.target(Entities.pressure, id: ending.rawValue)
+                let sessions = ActivitySessions<PressureSnapshot>()
+                let started = expectation(description: "source started before suspension")
+                let released = expectation(description: "suspended source released once")
+                let source = try access.observers.sensorSource(sensor) { session in
+                    _ = sessions.append(session)
+                    started.fulfill()
+                    return { released.fulfill() }
+                }
+                defer { source.close() }
+                let failure = try access.observers.failureSource(sensor)
+                defer { failure.close() }
+                let coordinator = try access.observers.onPermissionRequest { _ in
+                    XCTFail("Observing lifecycle and failures must not request permission")
+                }
+                defer { coordinator.close() }
+                let pending = Task {
+                    if watching {
+                        for try await _ in access.watch(sensor) { XCTFail("No sample was supplied") }
+                    } else { _ = try await access.get(sensor) }
+                    XCTFail("Expected termination to propagate as an error")
+                }
+                defer { pending.cancel() }
+                await fulfillment(of: [started], timeout: 1)
+                try access.observers.sensorActivity(false)
+                await fulfillment(of: [released], timeout: 1)
+                XCTAssertEqual(sessions.first?.isStopped, true)
+                let failSafe = Task.detached {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if !Task.isCancelled { pending.cancel() }
+                }
+                defer { failSafe.cancel() }
+                let start = ContinuousClock.now
+                switch ending {
+                case .cancel: pending.cancel()
+                case .failure:
+                    try access.observers.permission(sensor, status: .denied)
+                    try failure.publish(DeviceReadoutError(.permissionDenied, "Authorization lost while inactive"))
+                    try failure.publish(nil) // Recovery cannot erase an already-observed terminal error.
+                case .remove: source.close()
+                case .close: access.close()
+                }
+                do { try await pending.value }
+                catch is CancellationError { XCTAssertEqual(ending, .cancel) }
+                catch let error as DeviceReadoutError {
+                    XCTAssertEqual(error.code, ending == .failure ? .permissionDenied : .entityRemoved)
+                    XCTAssertNotEqual(ending, .cancel)
+                }
+                XCTAssertLessThan(start.duration(to: .now), .milliseconds(200))
+                if ending == .close {
+                    XCTAssertThrowsError(try access.observers.sensorActivity(true)) { error in
+                        XCTAssertEqual((error as? DeviceReadoutError)?.code, .entityRemoved)
+                    }
+                } else {
+                    try access.observers.sensorActivity(true)
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                XCTAssertEqual(sessions.count, 1, "An ended demand must not restart on activity")
+            }
+        }
+    }
+
+    @MainActor
     func testOldSampleWaitingBehindNativeWorkCannotFollowResumedSession() async throws {
         let nativeEntered = expectation(description: "collection worker held by native read")
         let nativeReturned = expectation(description: "native read returned")
@@ -224,6 +360,8 @@ private struct ActivityCollector: DeviceCollector {
     }
 }
 
+private enum ActivityEnding: String, CaseIterable { case cancel, failure, remove, close }
+
 private final class HeldActivityCollector: DeviceCollector, @unchecked Sendable {
     let release = DispatchSemaphore(value: 0)
     private let entered: XCTestExpectation
@@ -242,6 +380,7 @@ private final class ActivitySessions<Snapshot: DeviceSnapshot>: @unchecked Senda
     private var values: [SensorObserverSession<Snapshot>] = []
     var count: Int { lock.lock(); defer { lock.unlock() }; return values.count }
     var first: SensorObserverSession<Snapshot>? { lock.lock(); defer { lock.unlock() }; return values.first }
+    var all: [SensorObserverSession<Snapshot>] { lock.lock(); defer { lock.unlock() }; return values }
     func append(_ session: SensorObserverSession<Snapshot>) -> Int {
         lock.lock(); defer { lock.unlock() }; values.append(session); return values.count
     }

@@ -39,6 +39,7 @@ final class ObservedSensorSources: @unchecked Sendable {
     let activity = SensorActivity()
     private let lock = NSLock()
     private var sources: [ObservedAddress: ObservedSensorSource] = [:]
+    private var counts: [EntityKind: Int] = [:]
 
     func register<Snapshot>(_ entity: Entity<Snapshot>, description: SensorDescription, subscribe: @escaping @Sendable (SensorObserverSession<Snapshot>) throws -> SensorCleanup?) throws -> UUID {
         guard entity.mode != .state, entity.binding?.observed == true else {
@@ -49,7 +50,14 @@ final class ObservedSensorSources: @unchecked Sendable {
         guard sources[address] == nil else { throw DeviceReadoutError(.invalidConfiguration, "A sensor source is already registered for this target.") }
         let id = UUID()
         sources[address] = ObservedSensorSource(id: id, description: description, subscribe: { core in try subscribe(SensorObserverSession(core: core)) })
+        counts[entity.kind, default: 0] += 1
         return id
+    }
+
+    func supports<Snapshot>(_ entity: Entity<Snapshot>) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if entity.binding == nil { return counts[entity.kind, default: 0] > 0 }
+        return sources[ObservedAddress(kind: entity.kind, binding: entity.binding)] != nil
     }
 
     func source<Snapshot>(_ entity: Entity<Snapshot>) throws -> ObservedSensorSource {
@@ -64,11 +72,12 @@ final class ObservedSensorSources: @unchecked Sendable {
         let address = ObservedAddress(kind: entity.kind, binding: entity.binding)
         lock.lock(); defer { lock.unlock() }
         guard let source = sources[address], expected == nil || source.id == expected else { return nil }
+        counts[entity.kind, default: 0] -= 1
         return sources.removeValue(forKey: address)
     }
 
     func close() {
-        lock.lock(); let previous = sources; sources.removeAll(); lock.unlock()
+        lock.lock(); let previous = sources; sources.removeAll(); counts.removeAll(); lock.unlock()
         withExtendedLifetime(previous) { }
     }
 }

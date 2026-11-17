@@ -5,7 +5,7 @@ public protocol DeviceSnapshot: Sendable {
 }
 
 protocol CollectibleSnapshot: DeviceSnapshot {
-    func collected(at date: Date) -> any DeviceSnapshot
+    func collected() -> any DeviceSnapshot
 }
 
 public struct Size<Value: Equatable & Sendable>: Equatable, Sendable {
@@ -81,6 +81,8 @@ public struct EntityRequest: Sendable {
     public let targetId: String?
 }
 public protocol DeviceCollector: Sendable {
+    /// Passive operation support. Runs on the worker without reads, subscriptions or prompts.
+    func capabilities(_ request: EntityRequest) throws -> EntityCapabilities
     /// Runs on the collection worker. Implementations must not invoke UI getters or permission prompts.
     func read(_ request: EntityRequest) throws -> any DeviceSnapshot
     /// Complete native inventory. Runs on the collection worker without UI getters or prompts.
@@ -92,6 +94,9 @@ public protocol DeviceCollector: Sendable {
 }
 
 public extension DeviceCollector {
+    func capabilities(_ request: EntityRequest) throws -> EntityCapabilities {
+        EntityCapabilities(readable: nil, watchable: nil)
+    }
     func list(_ kind: EntityKind) throws -> [String] {
         throw DeviceReadoutError(.unsupportedEntity, "This collector does not support target discovery.")
     }

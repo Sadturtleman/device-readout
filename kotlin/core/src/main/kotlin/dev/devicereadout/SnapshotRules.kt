@@ -8,7 +8,14 @@ internal object SnapshotRules {
     fun ratio(value: Double?): Double? = value?.takeIf {it.isFinite() && it in 0.0..1.0}
     fun duration(value: Duration?): Duration? = value?.takeIf {it.isFinite() && it >= Duration.ZERO}
     fun vector(value: Vector3?): Vector3? = value?.takeIf {listOf(it.x, it.y, it.z).all(Double::isFinite)}
-    fun rotation(value: Quaternion?): Quaternion? = value?.takeIf {listOf(it.x, it.y, it.z, it.w).all(Double::isFinite)}
+    fun rotation(value: Quaternion?): Quaternion? {
+        val q = value?.takeIf {it.x.isFinite() && it.y.isFinite() && it.z.isFinite() && it.w.isFinite()} ?: return null
+        val scale = maxOf(kotlin.math.abs(q.x), kotlin.math.abs(q.y), kotlin.math.abs(q.z), kotlin.math.abs(q.w))
+        if (scale == 0.0) return null
+        val x = q.x / scale;val y = q.y / scale;val z = q.z / scale;val w = q.w / scale
+        val length = kotlin.math.sqrt(x * x + y * y + z * z + w * w)
+        return Quaternion(x / length, y / length, z / length, w / length)
+    }
     fun rectangle(value: Rect?): Rect? = value?.takeIf {listOf(it.x, it.y, it.width, it.height).all(Double::isFinite)}
     fun insets(value: Insets?): Insets? = value?.takeIf {listOf(it.top, it.right, it.bottom, it.left).all(Double::isFinite)}
     fun size(value: Size<Double>?): Size<Double>? = value?.takeIf {it.width.isFinite() && it.height.isFinite()}

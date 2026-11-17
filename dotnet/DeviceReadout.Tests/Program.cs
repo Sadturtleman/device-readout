@@ -319,6 +319,7 @@ tests.AddRange(StateChangeTests.Cases());
 tests.AddRange(StateLifetimeTests.Cases());
 tests.AddRange(ObserverFailureTests.Cases());
 tests.AddRange(SensorSourceTests.Cases());
+tests.AddRange(RotationContractTests.Cases());
 tests.AddRange(TargetIdentityTests.Cases());
 if (args is ["--filter", var filter]) {
     tests = tests.Where(test => test.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToList();

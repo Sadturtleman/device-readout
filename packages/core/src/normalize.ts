@@ -40,7 +40,16 @@ function normalize(type:string,value:unknown):unknown {
  const components:Record<string,readonly string[]>={Vector3:['x','y','z'],Quaternion:['x','y','z','w'],Rect:['x','y','width','height'],Insets:['top','right','bottom','left']};
  if(type.startsWith('Size<'))components[type]=['width','height'];
  if(components[type]) {
-   if(!record(value))return null;const result:RecordValue={};for(const key of components[type]!){const v=normalize('Number',value[key]);if(v===null)return null;result[key]=v;}return result;
+   if(!record(value))return null;const result:RecordValue={};for(const key of components[type]!){const v=normalize('Number',value[key]);if(v===null)return null;result[key]=v;}
+   if(type==='Quaternion') {
+     const q=result as {x:number;y:number;z:number;w:number};
+     const scale=Math.max(Math.abs(q.x),Math.abs(q.y),Math.abs(q.z),Math.abs(q.w));
+     if(scale===0)return null;
+     const x=q.x/scale,y=q.y/scale,z=q.z/scale,w=q.w/scale;
+     const length=Math.sqrt(x*x+y*y+z*z+w*w);
+     return {x:x/length,y:y/length,z:z/length,w:w/length};
+   }
+   return result;
  }
  if(!record(value))return null;
  if(type==='DisplayMode')return {pixelSize:normalize('Size<Integer>',value.pixelSize),refreshRateHz:normalize('Number',value.refreshRateHz)};
@@ -50,8 +59,9 @@ function normalize(type:string,value:unknown):unknown {
 }
 export function normalizeSnapshot(kind:string,raw:unknown):RecordValue {
  if(!record(raw))throw new DeviceReadoutError(ErrorCode.ReadFailed,'Collector returned an invalid snapshot.');
- const result:RecordValue={collectedAt:new Date().toISOString()};
+ const result:RecordValue={};
  for(const field of fieldsFor(kind)) result[field.name]=normalize(field.type,raw[field.name]);
+ result.collectedAt=new Date().toISOString();
  return result;
 }
 function freeze(value:unknown):unknown {
