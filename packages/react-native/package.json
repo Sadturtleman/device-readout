@@ -9,7 +9,8 @@
   "browser": "./dist/index.web.js",
   "types": "./dist/index.d.ts",
   "react-native": "./src/index.ts",
-  "files": ["src", "dist", "android/src", "android/build.gradle", "android/settings.gradle", "android/gradle.properties", "README.md"],
+  "files": ["src", "dist", "scripts", "android/src", "android/shared", "android/build.gradle", "android/resolve-package.cjs", "android/settings.gradle", "android/gradle.properties", "README.md"],
+  "scripts": {"prepack": "node scripts/prepare-package.mjs"},
   "exports": {
     ".": {
       "browser": {"types": "./dist/index.web.d.ts", "default": "./dist/index.web.js"},

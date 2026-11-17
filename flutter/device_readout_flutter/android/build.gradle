@@ -12,11 +12,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    // Development checkout: compile the shared implementations, never copies.
-    // Publishing requires packaging these sources or published native artifacts.
+    // Packaged from the canonical Kotlin sources by the repository's preparation tool.
     sourceSets.main.java.srcDirs += [
-        '../../../kotlin/core/src/main/kotlin',
-        '../../../kotlin/android/src/main/kotlin'
+        'shared/core',
+        'shared/android'
     ]
 }
 

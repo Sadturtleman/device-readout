@@ -13,3 +13,6 @@ test-results/
 *.log
 swift/.build/
 swift/.swiftpm/
+packages/react-native/android/shared/
+flutter/device_readout_flutter/android/shared/
+flutter/device_readout_flutter/assets/device-readout-dart-worker.js

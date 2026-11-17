@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "$env:LOCALAPPDATA/Android/Sdk", [string]$Serial = 'emulator-5584', [int]$ServerPort = 5047)
+param([string]$SdkRoot = "$env:LOCALAPPDATA/Android/Sdk", [string]$Serial = 'emulator-5584', [int]$ServerPort = 5047, [switch]$InstalledPackage)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskAdb = Join-Path (Resolve-Path -LiteralPath $SdkRoot).Path 'platform-tools/adb.exe'
@@ -17,6 +17,10 @@ if ($taskAvd -notmatch '^DeviceReadout_API(26|36)$' -or -not (Test-Path -Literal
 if (((Invoke-IsolationAdb @('shell','getprop','sys.boot_completed')) -join '').Trim() -ne '1') {throw 'AVD has not booted.'}
 $taskPrefix = Join-Path $taskRoot ".tools/rn-isolation-$taskAvd"
 $taskApk = Join-Path $taskRoot 'packages/react-native/example/android/app/build/outputs/apk/isolation/app-isolation.apk'
+if ($InstalledPackage) {
+    $taskPrefix = Join-Path $taskRoot ".tools/rn-installed-isolation-$taskAvd"
+    $taskApk = Join-Path $taskRoot '.tools/rn-installed/android/app/build/outputs/apk/isolation/app-isolation.apk'
+}
 $script:isolationLog = ''
 $script:isolationCase = ''
 function Read-IsolationLog {
@@ -92,6 +96,7 @@ try {
     [ordered]@{
         avd = $taskAvd; api = ((Invoke-IsolationAdb @('shell','getprop','ro.build.version.sdk')) -join '').Trim()
         apkSha256 = (Get-FileHash -LiteralPath $taskApk -Algorithm SHA256).Hash.ToLowerInvariant()
+        installedConsumer = [bool]$InstalledPackage
         scenarios = $taskResults
     } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath "$taskPrefix.json" -Encoding utf8
 } finally {

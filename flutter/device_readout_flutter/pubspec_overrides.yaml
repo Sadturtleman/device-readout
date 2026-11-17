@@ -1,0 +1,4 @@
+# Checkout-only dependency resolution; excluded from packaged artifacts.
+dependency_overrides:
+  device_readout:
+    path: ../../dart/device_readout

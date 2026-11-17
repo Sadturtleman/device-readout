@@ -8,12 +8,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  device_readout:
-    path: ../../dart/device_readout
+  device_readout: ^0.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
 flutter:
+  assets:
+    - path: assets/device-readout-dart-worker.js
+      platforms: [web]
   plugin:
     platforms:
       android:

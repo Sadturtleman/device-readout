@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "$env:LOCALAPPDATA/Android/Sdk", [string]$Serial = 'emulator-5584', [int]$ServerPort = 5047)
+param([string]$SdkRoot = "$env:LOCALAPPDATA/Android/Sdk", [string]$Serial = 'emulator-5584', [int]$ServerPort = 5047, [switch]$InstalledPackage)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskAdb = Join-Path (Resolve-Path -LiteralPath $SdkRoot).Path 'platform-tools/adb.exe'
@@ -15,6 +15,10 @@ if ($taskAvd -notmatch '^DeviceReadout_API(26|28|36)(_Hinge)?$' -or -not (Test-P
 if (((Invoke-RnAdb @('shell','getprop','sys.boot_completed')) -join '').Trim() -ne '1') {throw 'AVD has not booted.'}
 $taskPrefix = Join-Path $taskRoot ".tools/rn-android-$taskAvd"
 $taskApk = Join-Path $taskRoot 'packages/react-native/example/android/app/build/outputs/apk/debug/app-debug.apk'
+if ($InstalledPackage) {
+    $taskPrefix = Join-Path $taskRoot ".tools/rn-installed-android-$taskAvd"
+    $taskApk = Join-Path $taskRoot '.tools/rn-installed/android/app/build/outputs/apk/debug/app-debug.apk'
+}
 $taskWindow = (Invoke-RnAdb @('shell','wm','size')) -join "`n"
 if ($taskWindow -match 'Override size:') {throw 'Fixture has an existing window size override; restore it before running.'}
 $script:rnLog = ''
@@ -98,6 +102,8 @@ try {
     $report = [ordered]@{
         avd = $taskAvd; api = ((Invoke-RnAdb @('shell','getprop','ro.build.version.sdk')) -join '').Trim()
         installedPackageUid = $script:rnUid
+        installedConsumer = [bool]$InstalledPackage
+        apkSha256 = (Get-FileHash -LiteralPath $taskApk -Algorithm SHA256).Hash.ToLowerInvariant()
         baseline = $baseline; kernelMemoryAgreement = $true; actualWindowChange = $changed
         nativeSensorReleasedInBackground = $true; nativeSensorRestoredOnResume = $true
         nativeSensorRetainedDuringFocusLoss = $true

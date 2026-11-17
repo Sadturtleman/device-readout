@@ -8,7 +8,7 @@ android {
     defaultConfig { minSdk = 26 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets.main.java.srcDirs += [
-        '../../../kotlin/core/src/main/kotlin', '../../../kotlin/android/src/main/kotlin',
+        'shared/core', 'shared/android',
         'build/generated/source/codegen/java'
     ]
 }
@@ -18,15 +18,25 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
 }
 
-// Development checkout: generate from the actual installed RN version. Publishing is a separate gate.
-def reactNativeDir = file(providers.environmentVariable('DEVICE_READOUT_REACT_NATIVE_ROOT')
-    .getOrElse('../../../.tools/react-native-0.88/node_modules/react-native'))
+// Resolve Codegen from the consuming application's actual React Native installation.
+def resolveNodePackage = { String name, File from ->
+    def resolution = providers.exec {
+        workingDir rootProject.projectDir
+        commandLine 'node', file('resolve-package.cjs'), name, from.absolutePath
+        ignoreExitValue = true
+    }
+    if (resolution.result.get().exitValue != 0) throw new GradleException('Cannot resolve ' + name + ': ' + resolution.standardError.asText.get())
+    file(resolution.standardOutput.asText.get().trim()).parentFile
+}
+def reactNativeOverride = providers.environmentVariable('DEVICE_READOUT_REACT_NATIVE_ROOT').orNull
+def reactNativeDir = reactNativeOverride ? file(reactNativeOverride) : resolveNodePackage('react-native', rootProject.projectDir)
+def codegenDir = resolveNodePackage('@react-native/codegen', reactNativeDir)
 def spec = file('../src/specs/NativeDeviceReadout.ts')
 def schema = layout.buildDirectory.file('generated/schema.json')
 tasks.register('generateDeviceReadoutSchema', Exec) {
     inputs.file(spec); outputs.file(schema)
     doFirst {schema.get().asFile.parentFile.mkdirs()}
-    commandLine 'node', new File(reactNativeDir.parentFile, '@react-native/codegen/lib/cli/combine/combine-js-to-schema-cli.js'), schema.get().asFile, spec
+    commandLine 'node', new File(codegenDir, 'lib/cli/combine/combine-js-to-schema-cli.js'), schema.get().asFile, spec
 }
 tasks.register('generateDeviceReadoutNative', Exec) {
     dependsOn 'generateDeviceReadoutSchema'

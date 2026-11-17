@@ -12,8 +12,11 @@ async function until(read,predicate){
   assert.fail(`Consumer state did not settle: ${JSON.stringify(last)}`);
 }
 
-const buildRoot=resolve('flutter/device_readout_flutter/example/build/web');
-const contractRoot=resolve('flutter/device_readout_flutter/example/build/web-contracts');
+const installed=process.env.DEVICE_READOUT_FLUTTER_INSTALLED==='1';
+const appRoot=installed?'.tools/flutter-web-installed':'flutter/device_readout_flutter/example';
+const evidencePrefix=installed?'flutter-installed-browser':'flutter-browser';
+const buildRoot=resolve(appRoot,'build/web');
+const contractRoot=resolve(appRoot,'build/web-contracts');
 const temp=resolve('.tools/flutter-browser-temp');
 await mkdir(temp,{recursive:true});process.env.TEMP=temp;process.env.TMP=temp;
 const heldWorker=`onmessage=e=>{const r=e.data;if(r.operation==='cancel')return;
@@ -52,7 +55,7 @@ for(const [name,executablePath] of [
   await page.waitForFunction(()=>/화면 크기:|조회 오류:/.test(document.body.innerText));
   const text=await page.locator('body').innerText();
   await mkdir('.tools/evidence',{recursive:true});
-  await writeFile(`.tools/evidence/flutter-browser-demo-${name.toLowerCase()}.json`,JSON.stringify({browser:browser.version(),text,errors},null,2));
+  await writeFile(`.tools/evidence/${evidencePrefix}-demo-${name.toLowerCase()}.json`,JSON.stringify({installed,browser:browser.version(),text,errors},null,2));
   assert.deepEqual(errors,[]);
   assert.match(text,/화면 크기: 1024(?:\.0)? × 768(?:\.0)?/);
   assert.doesNotMatch(text,/조회 오류:/);
@@ -145,7 +148,7 @@ for(const [name,executablePath] of [
   const inactive=await command('state');
   const suspended=await command('inactiveRead');
   const focusState=await page.evaluate(()=>({focus:document.hasFocus(),visibility:document.visibilityState}));
-  await writeFile(`.tools/evidence/flutter-browser-lifecycle-${name.toLowerCase()}.json`,JSON.stringify({active,inactive,suspended,focusState},null,2));
+  await writeFile(`.tools/evidence/${evidencePrefix}-lifecycle-${name.toLowerCase()}.json`,JSON.stringify({installed,active,inactive,suspended,focusState},null,2));
   assert.equal(suspended.error,'readTimeout',JSON.stringify({inactive,suspended,focusState}));assert.equal(suspended.samples,inactive.samples);
   assert.equal(suspended.sensorStarts,inactive.sensorStarts);
   await page.bringToFront();await page.mouse.click(300,300);
@@ -167,6 +170,6 @@ for(const [name,executablePath] of [
   const lifetime=await page.evaluate(()=>({created:globalThis.sdkWorkersCreated,closed:globalThis.sdkWorkersClosed}));
   assert.deepEqual(lifetime,{created:2,closed:2});checks.push('widget unmount releases its owned SDK worker');
   assert.deepEqual(errors,[]);
-  await writeFile(`.tools/evidence/flutter-browser-contracts-${name.toLowerCase()}.json`,JSON.stringify({browser:browser.version(),expected,initial,active,inactive,resumed,permission,held,lifetime,checks,passed:true},null,2));
+  await writeFile(`.tools/evidence/${evidencePrefix}-contracts-${name.toLowerCase()}.json`,JSON.stringify({installed,browser:browser.version(),expected,initial,active,inactive,resumed,permission,held,lifetime,checks,passed:true},null,2));
   t.diagnostic(`${checks.length} Flutter application scenarios passed.`);
 });

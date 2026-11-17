@@ -7,6 +7,8 @@ $taskNames = @('GRADLE_USER_HOME','ANDROID_HOME','ANDROID_SDK_ROOT','ANDROID_USE
 $taskPrevious = @{}
 foreach ($taskName in $taskNames) {$taskPrevious[$taskName] = [Environment]::GetEnvironmentVariable($taskName,'Process')}
 try {
+    & node (Join-Path $taskRoot 'packages/react-native/scripts/prepare-package.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Shared source preparation failed.' }
     $env:GRADLE_USER_HOME = [System.IO.Path]::GetFullPath($GradleHome)
     $env:ANDROID_HOME = (Resolve-Path -LiteralPath $SdkRoot).Path
     $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME

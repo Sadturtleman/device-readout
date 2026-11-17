@@ -14,9 +14,7 @@ class ViewportReadout extends StatefulWidget {
 
 class _ViewportReadoutState extends State<ViewportReadout> {
   final access = kIsWeb
-      ? readout.DeviceAccess.web(
-          workerUri: Uri.base.resolve('device-readout-dart-worker.js'),
-        )
+      ? readout.FlutterWebDeviceAccess.create()
       : readout.DeviceAccess.native();
   ui.FlutterView? view;
   readout.FlutterViewportObserver? observer;

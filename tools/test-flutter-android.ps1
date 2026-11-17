@@ -1,7 +1,8 @@
 param(
     [string]$SdkRoot = "$env:LOCALAPPDATA/Android/Sdk",
     [string]$Serial = 'emulator-5584',
-    [int]$ServerPort = 5047
+    [int]$ServerPort = 5047,
+    [switch]$InstalledPackage
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -21,8 +22,13 @@ if ($avd -notmatch '^DeviceReadout_API(26|28|36)(_Hinge)?$' -or
 }
 if (((Invoke-TestAdb -AdbArguments @('shell', 'getprop', 'sys.boot_completed')) -join '').Trim() -ne '1') { throw 'The test AVD has not booted.' }
 $apk = Join-Path $projectRoot 'flutter/device_readout_flutter/example/build/app/outputs/flutter-apk/app-debug.apk'
+$artifactPrefix = "flutter-android-$avd"
+if ($InstalledPackage) {
+    $apk = Join-Path $projectRoot '.tools/flutter-installed/build/app/outputs/flutter-apk/app-debug.apk'
+    $artifactPrefix = "flutter-installed-android-$avd"
+}
 if (-not (Test-Path -LiteralPath $apk -PathType Leaf)) { throw 'Build the Android sensor test APK first.' }
-$reportPath = Join-Path $projectRoot ".tools/flutter-android-$avd-sensors.json"
+$reportPath = Join-Path $projectRoot ".tools/$artifactPrefix-sensors.json"
 $report = $null
 $batteryOverridden = $false
 try {
@@ -53,7 +59,7 @@ try {
             $power = $powerLine.Substring($powerLine.IndexOf('DEVICE_READOUT_ANDROID_STATE_POWER_READY:') + 'DEVICE_READOUT_ANDROID_STATE_POWER_READY:'.Length) | ConvertFrom-Json
             $battery = (Invoke-TestAdb -AdbArguments @('shell', 'dumpsys', 'battery')) -join "`n"
             if ($battery -match 'UPDATES STOPPED') { throw 'An existing battery override is present; leaving it unchanged.' }
-            $battery | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/flutter-android-$avd-power-before.txt")
+            $battery | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/$artifactPrefix-power-before.txt")
             Start-Sleep -Milliseconds 700
             if ($power.source -notin @('external', 'battery')) { throw 'Unexpected initial native power source.' }
             $batteryOverridden = $true
@@ -67,7 +73,7 @@ try {
         if (-not $sentHome -and ($lines | Where-Object { $_.Contains('DEVICE_READOUT_ANDROID_LIFECYCLE_READY') })) {
             $native = Read-ActiveSensors
             if ($native -notmatch 'dev\.devicereadout\.') { throw 'The lifecycle fixture has no active native sensor.' }
-            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/flutter-android-$avd-lifecycle-before.txt")
+            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/$artifactPrefix-lifecycle-before.txt")
             Invoke-TestAdb -AdbArguments @('shell', 'input', 'keyevent', 'KEYCODE_HOME') | Out-Null
             $sentHome = $true
         }
@@ -78,7 +84,7 @@ try {
                 if ($native -notmatch 'dev\.devicereadout\.') { break }
                 Start-Sleep -Milliseconds 100
             } while ([DateTime]::UtcNow -lt $releaseDeadline)
-            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/flutter-android-$avd-lifecycle-paused.txt")
+            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/$artifactPrefix-lifecycle-paused.txt")
             if ($native -match 'dev\.devicereadout\.') { throw 'Sensors remained registered after the real Activity paused.' }
             Start-Sleep -Milliseconds 500
             Invoke-TestAdb -AdbArguments @('shell', 'am', 'start', '-W', '-n', "$package/.MainActivity", '-f', '0x10020000') | Out-Null
@@ -87,14 +93,14 @@ try {
         if ($requestedResume -and -not $resumedSeen -and ($lines | Where-Object { $_.Contains('DEVICE_READOUT_ANDROID_LIFECYCLE_RESUMED') })) {
             $native = Read-ActiveSensors
             if ($native -notmatch 'dev\.devicereadout\.') { throw 'Sensor registration did not resume with the Activity.' }
-            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/flutter-android-$avd-lifecycle-resumed.txt")
+            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/$artifactPrefix-lifecycle-resumed.txt")
             $resumedSeen = $true
         }
         if (-not $activeSeen -and ($lines | Where-Object { $_.Contains('DEVICE_READOUT_ANDROID_ACTIVE') })) {
             $native = Read-ActiveSensors
             if ($native -match 'dev\.devicereadout\.') {
                 $activeSeen = $true
-                $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/flutter-android-$avd-active-sensors.txt")
+                $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/$artifactPrefix-active-sensors.txt")
             }
         }
         foreach ($line in $lines) {
@@ -157,7 +163,7 @@ try {
                 if ($native -notmatch 'dev\.devicereadout\.') { break }
                 Start-Sleep -Milliseconds 100
             } while ([DateTime]::UtcNow -lt $cleanupDeadline)
-            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/flutter-android-$avd-released-sensors.txt")
+            $native | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/$artifactPrefix-released-sensors.txt")
             if ($native -match 'dev\.devicereadout\.') { throw 'A native sensor listener remains after adapter disposal.' }
             $report.checks = @($report.checks) + 'native SensorManager registration and release'
             # The result can precede late platform replies. A dead Dart reply
@@ -170,6 +176,8 @@ try {
             $report.checks = @($report.checks) + 'test process survives late native replies'
             Invoke-TestAdb -AdbArguments @('shell', 'dumpsys', 'battery', 'reset') | Out-Null
             $batteryOverridden = $false
+            $report | Add-Member -NotePropertyName installedConsumer -NotePropertyValue ([bool]$InstalledPackage) -Force
+            $report | Add-Member -NotePropertyName apkSha256 -NotePropertyValue ((Get-FileHash -LiteralPath $apk -Algorithm SHA256).Hash.ToLowerInvariant()) -Force
             $json = $report | ConvertTo-Json -Depth 6 -Compress
             Set-Content -LiteralPath $reportPath -Value $json -Encoding utf8
             Write-Output $json
@@ -178,7 +186,7 @@ try {
         }
         Start-Sleep -Milliseconds 500
     } while ([DateTime]::UtcNow -lt $deadline)
-    $lines | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/flutter-android-$avd-timeout.log")
+    $lines | Set-Content -LiteralPath (Join-Path $projectRoot ".tools/$artifactPrefix-timeout.log")
     throw 'The owned Android test process did not publish a result within 45 seconds.'
 } catch {
     if ($null -eq $report) { $report = [pscustomobject]@{ passed = $false; checks = @() } }

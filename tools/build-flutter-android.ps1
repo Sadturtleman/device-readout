@@ -21,6 +21,8 @@ function Invoke-LocalFlutter {
 }
 Push-Location (Join-Path $projectRoot 'flutter/device_readout_flutter/example')
 try {
+    & node (Join-Path $PSScriptRoot 'prepare-flutter-native.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Flutter shared native source preparation failed.' }
     $env:FLUTTER_ROOT = $FlutterRoot
     $env:PUB_CACHE = Join-Path $projectRoot '.tools/dart-pub-cache'
     $env:GRADLE_USER_HOME = Join-Path $projectRoot '.tools/gradle-home'

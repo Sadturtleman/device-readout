@@ -24,13 +24,14 @@ try {
     $env:PUB_CACHE = Join-Path $projectRoot '.tools/dart-pub-cache'
     npm run build
     if ($LASTEXITCODE -ne 0) { throw 'Browser worker build failed.' }
+    node tools/prepare-flutter-web.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'Flutter worker asset preparation failed.' }
     Set-Location -LiteralPath $exampleRoot
     Invoke-LocalFlutter pub get --offline
     & $dartExecutable analyze .
     if ($LASTEXITCODE -ne 0) { throw 'Flutter example analysis failed.' }
     Invoke-LocalFlutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run "--target=$Target" "--output=build/$OutputName" "--base-href=$BaseHref"
     $outputPath = Join-Path $exampleRoot "build/$OutputName"
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'packages/web/dist/dart-worker.js') -Destination (Join-Path $outputPath 'device-readout-dart-worker.js')
     Write-Output "Flutter web application and DeviceReadout worker: $outputPath"
 } finally {
     $env:FLUTTER_ROOT = $oldFlutterRoot

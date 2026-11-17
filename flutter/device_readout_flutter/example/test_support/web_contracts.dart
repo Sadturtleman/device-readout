@@ -17,9 +17,7 @@ class BrowserContracts extends StatefulWidget {
 
 class _BrowserContractsState extends State<BrowserContracts>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  final access = readout.DeviceAccess.web(
-    workerUri: Uri.base.resolve('device-readout-dart-worker.js'),
-  );
+  final access = readout.FlutterWebDeviceAccess.create();
   late final readout.FlutterDisplayObserver displays;
   late final readout.FlutterSensorActivityObserver activity;
   readout.FlutterViewportObserver? viewport;
@@ -184,7 +182,7 @@ class _BrowserContractsState extends State<BrowserContracts>
           failure.dispose();
         }
       case 'heldWorker':
-        final held = readout.DeviceAccess.web(
+        final held = readout.FlutterWebDeviceAccess.create(
           workerUri: Uri.base.resolve('/held-worker.js'),
         );
         Timer? heartbeat;

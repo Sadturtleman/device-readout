@@ -5,6 +5,8 @@ $consumer = Join-Path $projectRoot '.tools/react-native-web-installed'
 Push-Location $projectRoot
 try {
     & (Join-Path $PSScriptRoot 'build-react-native-web.ps1')
+    node packages/react-native/scripts/prepare-package.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'Shared source preparation failed.' }
     New-Item -ItemType Directory -Force -Path $tarballs, (Join-Path $consumer 'app') | Out-Null
     $dependencies = [ordered]@{'react' = '19.3.0'; 'react-dom' = '19.3.0'; 'react-native-web' = '0.21.4'}
     $records = [System.Collections.Generic.List[object]]::new()

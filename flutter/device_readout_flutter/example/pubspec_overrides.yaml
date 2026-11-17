@@ -1,0 +1,4 @@
+# Overrides in a dependency are not inherited by the app's Pub resolution.
+dependency_overrides:
+  device_readout:
+    path: ../../../dart/device_readout
