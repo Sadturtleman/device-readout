@@ -2,6 +2,8 @@
 
 Scope: typed application errors, target/kind scope, independent provider ownership and invalidation of work crossing a failure. The complete objective remains all entities, fields, bindings and platform/acceptance matrices.
 
+This is a historical checkpoint. The subsequent [Swift permissions checkpoint](2026-11-17-swift-permissions.md) adds app-observed permission checks and explicit requests, raising the Debug/Release suite to 51 tests.
+
 ## Environment and results
 
 Swift 5.9.2 on Ubuntu 22.04 x86_64 under WSL. Debug and Release each pass **44/44 public-API tests**, with compiler warnings treated as errors and no compiler diagnostics. Six observer-failure tests extend the preceding 38 cases. Native boundaries are controlled collectors; no Apple SDK or physical device is used.

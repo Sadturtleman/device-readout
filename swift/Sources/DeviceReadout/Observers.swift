@@ -6,8 +6,47 @@ public struct ObserverInputs: Sendable {
     private let values: ObservedValues
     private let lifetime: ContextLifetime
     private let failures: ObservedFailures
-    init(targets: TargetRegistry, values: ObservedValues, lifetime: ContextLifetime, failures: ObservedFailures) {
+    private let permissions: ObservedPermissions
+    private let sensorSources: ObservedSensorSources
+    init(targets: TargetRegistry, values: ObservedValues, lifetime: ContextLifetime, failures: ObservedFailures, permissions: ObservedPermissions, sensorSources: ObservedSensorSources) {
         self.targets = targets; self.values = values; self.lifetime = lifetime; self.failures = failures
+        self.permissions = permissions
+        self.sensorSources = sensorSources
+    }
+
+    public func sensorSource<Snapshot>(_ entity: Entity<Snapshot>, description: SensorDescription = SensorDescription(), subscribe: @escaping @Sendable (SensorObserverSession<Snapshot>) throws -> SensorCleanup?) throws -> SensorSourceRegistration {
+        let id = try lifetime.withOpen {
+            _ = try targets.validate(entity)
+            return try sensorSources.register(entity, description: description, subscribe: subscribe)
+        }
+        return SensorSourceRegistration { [self] in
+            do {
+                let notify = try lifetime.withOpen { () -> () -> Void in
+                    guard let previous = sensorSources.remove(entity, expected: id) else { return {} }
+                    let removed = try targets.remove(entity)
+                    return { withExtendedLifetime(previous) { }; removed() }
+                }
+                notify()
+            } catch { /* Context/target removal already ended this registration. */ }
+        }
+    }
+
+    public func permission<Snapshot>(_ entity: Entity<Snapshot>, status: PermissionStatus?) throws {
+        let notify = try lifetime.withOpen {
+            if !entity.requiresTarget || entity.binding != nil { _ = try targets.validate(entity) }
+            return permissions.publish(ObservedAddress(kind: entity.kind, binding: entity.binding), status: status)
+        }
+        notify()
+    }
+
+    public func onPermissionRequest(_ coordinator: @escaping PermissionCoordinator) throws -> PermissionCoordinatorRegistration {
+        try lifetime.withOpen { try permissions.coordinate(coordinator) }
+    }
+
+    /// Supplies foreground/visibility policy. Desktop focus loss alone need not deactivate sensors.
+    public func sensorActivity(_ active: Bool) throws {
+        let notify = try lifetime.withOpen { sensorSources.activity.change(active) }
+        notify()
     }
 
     public func target<Snapshot>(_ kind: Entity<Snapshot>, id: String) throws -> Entity<Snapshot> {
@@ -22,7 +61,8 @@ public struct ObserverInputs: Sendable {
         let notify = try lifetime.withOpen {
             let removed = try targets.remove(entity)
             let ended = values.remove(entity)
-            return { removed(); ended() }
+            let sensor = sensorSources.remove(entity)
+            return { withExtendedLifetime(sensor) { }; removed(); ended() }
         }
         notify()
     }

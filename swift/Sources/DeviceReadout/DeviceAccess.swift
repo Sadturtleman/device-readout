@@ -8,9 +8,13 @@ public final class DeviceAccess: @unchecked Sendable {
     private let lifetime: ContextLifetime
     private let observed: ObservedValues
     private let failures: ObservedFailures
-    public var observers: ObserverInputs { ObserverInputs(targets: targets, values: observed, lifetime: lifetime, failures: failures) }
+    private let permissionState: ObservedPermissions
+    private let sensorSources: ObservedSensorSources
+    public var observers: ObserverInputs { ObserverInputs(targets: targets, values: observed, lifetime: lifetime, failures: failures, permissions: permissionState, sensorSources: sensorSources) }
+    public var permissions: PermissionAccess { PermissionAccess(targets: targets, lifetime: lifetime, state: permissionState) }
     public let readTimeout: Duration
     public let pollInterval: Duration
+    public let sensorSamplingRate: SensorSamplingRate
 
     public init(collector: any DeviceCollector) {
         self.collector = collector
@@ -19,38 +23,51 @@ public final class DeviceAccess: @unchecked Sendable {
         lifetime = ContextLifetime()
         observed = ObservedValues()
         failures = ObservedFailures()
+        permissionState = ObservedPermissions()
+        sensorSources = ObservedSensorSources()
         readTimeout = .seconds(5)
         pollInterval = .seconds(1)
+        sensorSamplingRate = .platformDefault
     }
 
-    private init(collector: any DeviceCollector, worker: CollectionWorker, targets: TargetRegistry, lifetime: ContextLifetime, observed: ObservedValues, failures: ObservedFailures, readTimeout: Duration, pollInterval: Duration) {
+    private init(collector: any DeviceCollector, worker: CollectionWorker, targets: TargetRegistry, lifetime: ContextLifetime, observed: ObservedValues, failures: ObservedFailures, permissionState: ObservedPermissions, sensorSources: ObservedSensorSources, readTimeout: Duration, pollInterval: Duration, sensorSamplingRate: SensorSamplingRate) {
         self.collector = collector; self.worker = worker; self.readTimeout = readTimeout
         self.targets = targets
         self.lifetime = lifetime
         self.observed = observed
         self.failures = failures
+        self.permissionState = permissionState
+        self.sensorSources = sensorSources
         self.pollInterval = pollInterval
+        self.sensorSamplingRate = sensorSamplingRate
     }
 
     public func withReadTimeout(_ duration: Duration) throws -> DeviceAccess {
         guard duration > .zero else {
             throw DeviceReadoutError(.invalidConfiguration, "Read timeout must be positive.")
         }
-        return DeviceAccess(collector: collector, worker: worker, targets: targets, lifetime: lifetime, observed: observed, failures: failures, readTimeout: duration, pollInterval: pollInterval)
+        return DeviceAccess(collector: collector, worker: worker, targets: targets, lifetime: lifetime, observed: observed, failures: failures, permissionState: permissionState, sensorSources: sensorSources, readTimeout: duration, pollInterval: pollInterval, sensorSamplingRate: sensorSamplingRate)
     }
 
     public func withPollInterval(_ duration: Duration) throws -> DeviceAccess {
         guard duration > .zero else {
             throw DeviceReadoutError(.invalidConfiguration, "Poll interval must be positive.")
         }
-        return DeviceAccess(collector: collector, worker: worker, targets: targets, lifetime: lifetime, observed: observed, failures: failures, readTimeout: readTimeout, pollInterval: duration)
+        return DeviceAccess(collector: collector, worker: worker, targets: targets, lifetime: lifetime, observed: observed, failures: failures, permissionState: permissionState, sensorSources: sensorSources, readTimeout: readTimeout, pollInterval: duration, sensorSamplingRate: sensorSamplingRate)
+    }
+
+    public func withSensorSamplingRate(_ rate: SensorSamplingRate) -> DeviceAccess {
+        DeviceAccess(collector: collector, worker: worker, targets: targets, lifetime: lifetime, observed: observed, failures: failures, permissionState: permissionState, sensorSources: sensorSources, readTimeout: readTimeout, pollInterval: pollInterval, sensorSamplingRate: rate)
     }
 
     /// Ends the shared context without waiting for native work or cleanup to finish.
     public func close() {
         guard lifetime.close() else { return }
-        worker.cleanup { [collector, observed] in
+        // Release app coordinator captures away from the caller and independently of held native work.
+        DispatchQueue.global(qos: .utility).async { [permissionState] in permissionState.close() }
+        worker.cleanup { [collector, observed, sensorSources] in
             observed.close()
+            sensorSources.close()
             do { try collector.close() }
             catch { /* Native cleanup failure must not escape the worker into the host. */ }
         }
@@ -62,9 +79,6 @@ public final class DeviceAccess: @unchecked Sendable {
                 continuation.finish(throwing: DeviceReadoutError(.entityRemoved, "DeviceAccess is closed."))
             }
             defer { closure.cancel() }
-            guard entity.mode == .state else {
-                throw DeviceReadoutError(.unsupportedEntity, "Sensor streaming requires a native or app-owned source.")
-            }
             let removal = try targets.observeRemoval(entity) {
                 continuation.finish(throwing: DeviceReadoutError(.entityRemoved, "The selected target was removed."))
             }
@@ -73,6 +87,10 @@ public final class DeviceAccess: @unchecked Sendable {
                 continuation.finish(throwing: error)
             }
             defer { failure.cancel() }
+            if entity.mode != .state {
+                try await sensorWatch(entity, to: continuation)
+                return
+            }
             let firstDeadline = ContinuousClock.now.advanced(by: readTimeout)
             // Open the app input before starting native work so a later publication cannot
             // be missed between source selection and the first native read.
@@ -145,9 +163,73 @@ public final class DeviceAccess: @unchecked Sendable {
         }
     }
 
+    private func sensorWatch<Snapshot>(_ entity: Entity<Snapshot>, to continuation: AsyncThrowingStream<Snapshot, Error>.Continuation) async throws {
+        let source = try lifetime.withOpen {
+            _ = try targets.validate(entity)
+            return try sensorSources.source(entity)
+        }
+        let activity = sensorSources.activity
+        let observation = activity.observe()
+        defer { observation.cancel() }
+        try await withTaskCancellationHandler {
+            for try await state in observation.control.stream {
+                try Task.checkCancellation()
+                guard state.active, activity.isCurrent(state) else { continue }
+                let session = SensorSession(worker: worker, samplingRate: entity.mode == .sample ? sensorSamplingRate : .platformDefault,
+                    current: { activity.isCurrent(state) })
+                guard observation.control.install(session, for: state) else { continue }
+                let task = Task.detached(priority: .utility) { [self] in
+                    do { try await sensorSessionWatch(entity, source: source, session: session, state: state, to: continuation) }
+                    catch { if !Task.isCancelled && activity.isCurrent(state) { throw error } }
+                }
+                observation.control.install(task, for: state)
+                try await task.value
+                try Task.checkCancellation()
+            }
+        } onCancel: { observation.cancel() }
+        try Task.checkCancellation()
+    }
+
+    private func sensorSessionWatch<Snapshot>(_ entity: Entity<Snapshot>, source: ObservedSensorSource, session: SensorSession,
+        state: SensorActivityState, to continuation: AsyncThrowingStream<Snapshot, Error>.Continuation) async throws {
+        defer { session.stop() }
+        let activity = sensorSources.activity
+        guard activity.isCurrent(state) else { return }
+        let revision = failures.version
+        let reader = ObservedReader(session.stream)
+        var value: Snapshot
+        if entity.mode == .event {
+            // Registration is bounded; waiting for an actual occurrence is not a read.
+            try await perform(source: {
+                session.start(source)
+                try await session.waitUntilReady()
+                return nil
+            }, target: (entity.kind, entity.binding), startingAt: revision) { active, _ in
+                guard active() else { throw CancellationError() }
+                return PreparedRead(value: ())
+            }
+            let raw = try await reader.requireNext()
+            value = try await readObserved(entity, source: { raw })
+        } else {
+            value = try await readObserved(entity, startingAt: revision, source: {
+                session.start(source)
+                return try await reader.requireNext()
+            })
+        }
+        while true {
+            try Task.checkCancellation()
+            guard try activity.accept(state, { try deliver(value, to: continuation) }) == true else { return }
+            guard let raw = try await reader.next() else { return }
+            value = try await readObserved(entity, source: { raw })
+        }
+    }
+
     public func get<Snapshot>(_ entity: Entity<Snapshot>) async throws -> Snapshot {
         let revision = failures.version
         _ = try targets.validate(entity)
+        if entity.mode != .state {
+            return try await sensorGet(entity, startingAt: revision)
+        }
         if entity.binding?.observed == true || observed.owns(entity) {
             let subscription = observed.subscribe(entity)
             defer { subscription.cancel() }
@@ -171,6 +253,78 @@ public final class DeviceAccess: @unchecked Sendable {
             guard let snapshot = (observed.value(entity) ?? raw) as? any CollectibleSnapshot,
                   let value = snapshot.collected(at: Date()) as? Snapshot else {
                 throw DeviceReadoutError(.readFailed, "Collector returned the wrong snapshot type.")
+            }
+            return PreparedRead(value: value)
+        }
+    }
+
+    // The stream already normalizes on the worker. Claim its first result directly so cleanup
+    // cannot queue ahead of a second normalization hop and delay an already-collected sample.
+    private func sensorGet<Snapshot>(_ entity: Entity<Snapshot>, startingAt revision: UInt64) async throws -> Snapshot {
+        try Task.checkCancellation()
+        let operation = ReadOperation<Snapshot>()
+        let closure = try lifetime.register {
+            operation.resolve(.failure(DeviceReadoutError(.entityRemoved, "DeviceAccess is closed.")))
+        }
+        defer { closure.cancel() }
+        let removal = try targets.observeRemoval(entity) {
+            operation.resolve(.failure(DeviceReadoutError(.entityRemoved, "The selected target was removed.")))
+        }
+        defer { removal?.cancel() }
+        let failure = try failures.observe(ObservedAddress(kind: entity.kind, binding: entity.binding), startingAt: revision) {
+            operation.resolve(.failure($0))
+        }
+        defer { failure.cancel() }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                operation.bind(continuation)
+                guard !operation.isFinished else { return }
+                let timeout = Task.detached(priority: .utility) { [readTimeout] in
+                    do {
+                        try await Task.sleep(for: readTimeout)
+                        operation.resolve(.failure(DeviceReadoutError(.readTimeout, "Read deadline exceeded.")))
+                    } catch { }
+                }
+                operation.installTimer(timeout)
+                let finish: @Sendable (Result<Snapshot, Error>) -> Void = { [self] result in
+                    lifetime.accept {
+                        if let error = failure.errorSinceStart() { return operation.claim(.failure(error)) }
+                        do { _ = try targets.validate(entity) }
+                        catch { return operation.claim(.failure(error)) }
+                        return operation.claim(result)
+                    }?()
+                }
+                let task = Task.detached(priority: .utility) { [self] in
+                    do {
+                        try Task.checkCancellation()
+                        var iterator = withSensorSamplingRate(.platformDefault).watch(entity).makeAsyncIterator()
+                        guard let value = try await iterator.next() else {
+                            try Task.checkCancellation()
+                            throw DeviceReadoutError(.readFailed, "Sensor ended before its first sample.")
+                        }
+                        finish(.success(value))
+                    } catch { finish(.failure(error)) }
+                }
+                operation.installPreparation(task)
+            }
+        } onCancel: { operation.resolve(.failure(CancellationError())) }
+    }
+
+    public func describe<Snapshot>(_ sensor: Entity<Snapshot>) async throws -> SensorDescription {
+        guard sensor.mode != .state else { throw DeviceReadoutError(.unsupportedEntity, "Expected a sensor.") }
+        let revision = failures.version
+        _ = try targets.validate(sensor)
+        return try await perform(target: (sensor.kind, sensor.binding), startingAt: revision) { [self] active, _ in
+            _ = try targets.validate(sensor)
+            let raw = try sensorSources.source(sensor).description
+            guard active() else { throw CancellationError() }
+            let description = SensorDescription(
+                kind: SensorKind(rawValue: sensor.kind.rawValue), name: raw.name, vendor: raw.vendor, version: raw.version,
+                reportingMode: raw.reportingMode, minimumInterval: raw.minimumInterval, maximumInterval: raw.maximumInterval,
+                maximumRange: raw.maximumRange, resolution: raw.resolution, powerMilliamps: raw.powerMilliamps, fifoCapacity: raw.fifoCapacity
+            )
+            guard let value = description.collected(at: Date()) as? SensorDescription else {
+                throw DeviceReadoutError(.readFailed, "Invalid sensor description.")
             }
             return PreparedRead(value: value)
         }
@@ -220,6 +374,15 @@ public final class DeviceAccess: @unchecked Sendable {
 
     private func prepareObserved<Snapshot>(_ entity: Entity<Snapshot>, raw: any DeviceSnapshot) throws -> PreparedRead<Snapshot> {
         _ = try targets.validate(entity)
+        if entity.mode == .event {
+            let occurred: Bool?
+            switch entity.kind {
+            case .stepDetected: occurred = (raw as? StepDetectedSnapshot)?.value
+            case .significantMotion: occurred = (raw as? SignificantMotionSnapshot)?.value
+            default: occurred = nil
+            }
+            guard occurred == true else { throw DeviceReadoutError(.readFailed, "An event sensor must report an actual occurrence with value true.") }
+        }
         guard let snapshot = raw as? any CollectibleSnapshot,
               let value = snapshot.collected(at: Date()) as? Snapshot else {
             throw DeviceReadoutError(.readFailed, "Observed state has the wrong snapshot type.")
@@ -228,7 +391,7 @@ public final class DeviceAccess: @unchecked Sendable {
     }
 
     private func perform<Value: Sendable>(
-        source: (@Sendable () async throws -> any DeviceSnapshot)? = nil,
+        source: (@Sendable () async throws -> (any DeviceSnapshot)?)? = nil,
         target: (EntityKind, TargetBinding?)? = nil,
         failureScope: (EntityKind, TargetBinding?)? = nil,
         startingAt revision: UInt64? = nil,
