@@ -2,6 +2,8 @@
 
 This record describes the source uploaded at the user's request, including the unfinished observer regression. It is not a release-readiness claim.
 
+Historical checkpoint: commit `0b078395d30d10bac51edc5b3a0533944a79b091`. The subsequent [state-observer checkpoint](2026-11-17-swift-state-observers.md) fixes the first-value regression and passes 32 Debug/Release tests. The results below describe the upload-time source.
+
 ## Implemented and exercised
 
 - `DeviceAccess.observers.target(Entity, id:)` registers typed app-owned state targets in a separate identity namespace from native discovery.

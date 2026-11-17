@@ -6,7 +6,11 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The current [Swift observer work-in-progress checkpoint](docs/verification/2026-11-17-swift-observers-wip.md) adds app-published state, separate app/native target identities and event-driven delivery. The upload-time Debug run passes 24 of 25 tests; one regression test has three failing assertions around the first observed value and its deadline. This unfinished behavior is preserved in the source and tests. The earlier passing checkpoints below describe their own scopes, not an all-green result for the current tree.
+The current [Swift observer-failure checkpoint](docs/verification/2026-11-17-swift-observer-failures.md) adds typed target/kind errors and independently owned failure sources. Errors end reads, discovery and idle streams independently of native return; immediate recovery cannot accept work crossing the failure. App policy and other providers survive one source being cleared or closed, and stale app values remain invalid. All forty-four Swift 5.9.2 Linux tests pass in Debug and Release with warnings treated as errors. Apple collectors, native event observation, permission/lifecycle integration, sensors and the full platform matrix remain required.
+
+The preceding [Swift watch handoff checkpoint](docs/verification/2026-11-17-swift-watch-handoff.md) added ordered handoff from native polling to app state, original first-value deadlines and context-scoped singleton removal. Its thirty-eight Debug/Release tests remain in the current suite.
+
+The preceding [Swift state-observer checkpoint](docs/verification/2026-11-17-swift-state-observers.md) fixed the first observed-value deadline and added explicit current selection, target removal and generation-safe rediscovery. Its thirty-two Debug/Release tests remain in the current suite. The [upload-time work-in-progress record](docs/verification/2026-11-17-swift-observers-wip.md) preserves the earlier failing checkpoint.
 
 The [Swift context checkpoint](docs/verification/2026-11-17-swift-context-lifetime.md) adds shared-context `close()`, independent completion of held reads/discovery and idle watches, and worker-owned native cleanup. Native read admission is bounded to 128 waiting operations, with explicit overload errors and a separate cleanup path. All twenty-two Swift 5.9.2 Linux tests pass in Debug and Release with warnings treated as errors. Apple collectors, app observers, sensors and the full platform matrix remain required.
 

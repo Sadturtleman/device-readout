@@ -49,10 +49,23 @@ final class TargetRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private var inventories: [EntityKind: [String: TargetBinding]] = [:]
     private var observedInventories: [EntityKind: [String: TargetBinding]] = [:]
+    private struct Selection { let binding: TargetBinding? }
+    private var currentSelections: [EntityKind: Selection] = [:]
     private var removalListeners: [TargetBinding: [UUID: @Sendable () -> Void]] = [:]
+    private var singletonRemovalListeners: [EntityKind: [UUID: @Sendable () -> Void]] = [:]
+    private var removedSingletons: Set<EntityKind> = []
+    private var retired: Set<TargetBinding> = []
+    private var removalSerial: UInt64 = 0
+    private var nativeRemovalSerials: [EntityKind: [String: UInt64]] = [:]
+
+    func nativeRemovalVersion() -> UInt64 { lock.lock(); defer { lock.unlock() }; return removalSerial }
 
     func validate<Snapshot>(_ entity: Entity<Snapshot>) throws -> EntityRequest {
-        if !entity.requiresTarget { return EntityRequest(kind: entity.kind, targetId: nil) }
+        if !entity.requiresTarget {
+            lock.lock(); let removed = removedSingletons.contains(entity.kind); lock.unlock()
+            guard !removed else { throw DeviceReadoutError(.entityRemoved, "The entity was removed from this context.") }
+            return EntityRequest(kind: entity.kind, targetId: nil)
+        }
         guard let binding = entity.binding else {
             throw DeviceReadoutError(.invalidConfiguration, "Discover or observe a target before reading this entity.")
         }
@@ -61,8 +74,9 @@ final class TargetRegistry: @unchecked Sendable {
         }
         lock.lock()
         let current = binding.observed ? observedInventories[entity.kind]?[binding.id] : inventories[entity.kind]?[binding.id]
+        let removed = retired.contains(binding)
         lock.unlock()
-        guard current == binding else {
+        guard current == binding, !removed else {
             throw DeviceReadoutError(.entityRemoved, "The selected target is no longer available.")
         }
         return EntityRequest(kind: entity.kind, targetId: binding.id)
@@ -83,13 +97,71 @@ final class TargetRegistry: @unchecked Sendable {
         return inventory?.values.map { Entity(kind: kind.kind, requiresTarget: true, mode: kind.mode, binding: $0) }
     }
 
-    func prepare<Snapshot>(_ kind: Entity<Snapshot>, ids: [String]) throws -> PreparedRead<[Entity<Snapshot>]> {
+    func setObservedCurrent<Snapshot>(_ kind: Entity<Snapshot>, target: Entity<Snapshot>?) throws {
+        guard kind.requiresTarget, kind.binding == nil else {
+            throw DeviceReadoutError(.invalidConfiguration, "Expected an unbound multi-target entity kind.")
+        }
+        if let target = target {
+            guard target.kind == kind.kind else {
+                throw DeviceReadoutError(.invalidConfiguration, "Expected a target of the same kind.")
+            }
+            _ = try validate(target)
+        }
+        lock.lock(); defer { lock.unlock() }
+        currentSelections[kind.kind] = Selection(binding: target?.binding)
+        if target == nil, observedInventories[kind.kind] == nil { observedInventories[kind.kind] = [:] }
+    }
+
+    func observedCurrent<Snapshot>(_ kind: Entity<Snapshot>) -> CurrentSelection<Snapshot>? {
+        lock.lock(); defer { lock.unlock() }
+        if let selection = currentSelections[kind.kind] {
+            guard let binding = selection.binding else { return CurrentSelection(value: nil) }
+            let current = binding.observed ? observedInventories[kind.kind]?[binding.id] : inventories[kind.kind]?[binding.id]
+            guard current == binding, !retired.contains(binding) else { return CurrentSelection(value: nil) }
+            return CurrentSelection(value: Entity(kind: kind.kind, requiresTarget: true, mode: kind.mode, binding: binding))
+        }
+        return observedInventories[kind.kind] == nil ? nil : CurrentSelection(value: nil)
+    }
+
+    func remove<Snapshot>(_ entity: Entity<Snapshot>) throws -> () -> Void {
+        if !entity.requiresTarget {
+            lock.lock(); defer { lock.unlock() }
+            guard removedSingletons.insert(entity.kind).inserted else { return {} }
+            let callbacks = singletonRemovalListeners.removeValue(forKey: entity.kind)
+            return { for callback in callbacks?.values ?? [:].values { callback() } }
+        }
+        guard let binding = entity.binding, binding.owner == owner else {
+            throw DeviceReadoutError(.invalidConfiguration, "Expected a bound target from this DeviceAccess context.")
+        }
+        lock.lock(); defer { lock.unlock() }
+        let current = binding.observed ? observedInventories[entity.kind]?[binding.id] : inventories[entity.kind]?[binding.id]
+        guard current == binding, !retired.contains(binding) else { return {} }
+        retired.insert(binding)
+        if binding.observed { observedInventories[entity.kind]?[binding.id] = nil }
+        else {
+            removalSerial += 1
+            nativeRemovalSerials[entity.kind, default: [:]][binding.id] = removalSerial
+        }
+        // Native maps can still be referenced by a read in progress; the retired generation
+        // remains invalid even if that read accepts a previously prepared inventory later.
+        let callbacks = removalListeners.removeValue(forKey: binding)
+        return { for callback in callbacks?.values ?? [:].values { callback() } }
+    }
+
+    func prepare<Snapshot>(_ kind: Entity<Snapshot>, ids: [String], since version: UInt64) throws -> PreparedRead<[Entity<Snapshot>]> {
         guard ids.allSatisfy({ !$0.isEmpty }), Set(ids).count == ids.count else {
             throw DeviceReadoutError(.readFailed, "Native inventory contains an empty or duplicate target ID.")
         }
-        lock.lock(); let previous = inventories; lock.unlock()
-        let bindings = ids.map { id in
-            previous[kind.kind]?[id] ?? TargetBinding(owner: owner, id: id, generation: UUID())
+        lock.lock()
+        let previous = inventories
+        let removedGenerations = retired
+        let removals = nativeRemovalSerials[kind.kind, default: [:]]
+        lock.unlock()
+        // A later removal wins over a native query already in progress. Only discovery begun
+        // after that signal may create a new generation for the same source ID.
+        let bindings = ids.filter { removals[$0, default: 0] <= version }.map { id in
+            if let binding = previous[kind.kind]?[id], !removedGenerations.contains(binding) { return binding }
+            return TargetBinding(owner: owner, id: id, generation: UUID())
         }
         let nextKind = Dictionary(uniqueKeysWithValues: bindings.map { ($0.id, $0) })
         var next = previous
@@ -104,13 +176,19 @@ final class TargetRegistry: @unchecked Sendable {
         }, didCommit: { [self] in notifyRemoved(removed) })
     }
 
-    func prepareCurrent<Snapshot>(_ kind: Entity<Snapshot>, id: String?) throws -> PreparedRead<Entity<Snapshot>?> {
+    func prepareCurrent<Snapshot>(_ kind: Entity<Snapshot>, id: String?, since version: UInt64) throws -> PreparedRead<Entity<Snapshot>?> {
         guard let id = id else { return PreparedRead(value: nil) }
         guard !id.isEmpty else {
             throw DeviceReadoutError(.readFailed, "Native current selection has an empty target ID.")
         }
-        lock.lock(); let previous = inventories; lock.unlock()
-        let binding = previous[kind.kind]?[id] ?? TargetBinding(owner: owner, id: id, generation: UUID())
+        lock.lock()
+        let previous = inventories
+        let removedGenerations = retired
+        let removedSinceStart = nativeRemovalSerials[kind.kind]?[id] ?? 0 > version
+        lock.unlock()
+        if removedSinceStart { return PreparedRead(value: nil) }
+        let existing = previous[kind.kind]?[id].flatMap { removedGenerations.contains($0) ? nil : $0 }
+        let binding = existing ?? TargetBinding(owner: owner, id: id, generation: UUID())
         var next = previous
         next[kind.kind, default: [:]][id] = binding
         let replacement = next
@@ -136,11 +214,18 @@ final class TargetRegistry: @unchecked Sendable {
 
     func observeRemoval<Snapshot>(_ entity: Entity<Snapshot>, removed: @escaping @Sendable () -> Void) throws -> TargetObservation? {
         _ = try validate(entity)
-        guard let binding = entity.binding else { return nil }
+        return try observeRemoval(kind: entity.kind, binding: entity.binding, removed: removed)
+    }
+
+    func observeRemoval(kind: EntityKind, binding: TargetBinding?, removed: @escaping @Sendable () -> Void) throws -> TargetObservation {
+        guard let binding = binding else { return try observeSingletonRemoval(kind, removed: removed) }
+        guard binding.owner == owner else {
+            throw DeviceReadoutError(.invalidConfiguration, "Entity handle belongs to another DeviceAccess context.")
+        }
         let id = UUID()
         lock.lock()
-        let current = binding.observed ? observedInventories[entity.kind]?[binding.id] : inventories[entity.kind]?[binding.id]
-        guard current == binding else {
+        let current = binding.observed ? observedInventories[kind]?[binding.id] : inventories[kind]?[binding.id]
+        guard current == binding, !retired.contains(binding) else {
             lock.unlock()
             throw DeviceReadoutError(.entityRemoved, "The selected target is no longer available.")
         }
@@ -150,6 +235,23 @@ final class TargetRegistry: @unchecked Sendable {
             lock.lock()
             removalListeners[binding]?[id] = nil
             if removalListeners[binding]?.isEmpty == true { removalListeners[binding] = nil }
+            lock.unlock()
+        }
+    }
+
+    private func observeSingletonRemoval(_ kind: EntityKind, removed: @escaping @Sendable () -> Void) throws -> TargetObservation {
+        let id = UUID()
+        lock.lock()
+        guard !removedSingletons.contains(kind) else {
+            lock.unlock()
+            throw DeviceReadoutError(.entityRemoved, "The entity was removed from this context.")
+        }
+        singletonRemovalListeners[kind, default: [:]][id] = removed
+        lock.unlock()
+        return TargetObservation { [self] in
+            lock.lock()
+            singletonRemovalListeners[kind]?[id] = nil
+            if singletonRemovalListeners[kind]?.isEmpty == true { singletonRemovalListeners[kind] = nil }
             lock.unlock()
         }
     }
@@ -164,6 +266,9 @@ final class TargetRegistry: @unchecked Sendable {
         for callback in callbacks { callback() }
     }
 }
+
+// A present selection with a nil value means the application explicitly owns an empty selection.
+struct CurrentSelection<Snapshot: DeviceSnapshot> { let value: Entity<Snapshot>? }
 
 final class TargetObservation: Sendable {
     private let dispose: @Sendable () -> Void
