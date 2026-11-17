@@ -5,6 +5,7 @@ import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {resolve,sep,extname} from 'node:path';
 import {chromium} from 'playwright-core';
 import {setTimeout as delay} from 'node:timers/promises';
+import {createHash} from 'node:crypto';
 
 async function until(read,predicate){
   const end=Date.now()+10000;let last;
@@ -27,16 +28,31 @@ const heldWorker=`onmessage=e=>{const r=e.data;if(r.operation==='cancel')return;
  }
  postMessage({id:r.id,type:'result',value:{collectedAt:new Date().toISOString(),availableLogicalProcessorCount:2,physicalBytes:'4096'}});
 };`;
+const workerRequests=[];
 const server=createServer(async(request,response)=>{
   try{
     const path=new URL(request.url,'http://localhost').pathname;
     if(path==='/held-worker.js'){response.setHeader('Content-Type','text/javascript');response.end(heldWorker);return;}
-    const root=path.startsWith('/contracts/')?contractRoot:buildRoot;
-    const relative=path.startsWith('/contracts/')?path.slice('/contracts'.length):path;
-    const file=resolve(root,'.'+(relative==='/'?'/index.html':decodeURIComponent(relative)));
+    const prefix=['/contracts/','/asset-layout/','/external/'].find(prefix=>path.startsWith(prefix));
+    const root=prefix?contractRoot:buildRoot;
+    const relative=prefix?path.slice(prefix.length-1):path;
+    // This deployment exposes package assets only at its configured assetBase.
+    if(prefix==='/asset-layout/'&&relative.startsWith('/assets/')){response.writeHead(404).end();return;}
+    const file=resolve(root,'.'+(relative==='/'||relative==='/nested/settings'?'/index.html':decodeURIComponent(relative)));
     if(!file.startsWith(root+sep)){response.writeHead(403).end();return;}
     response.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.json':'application/json'})[extname(file)]??'application/octet-stream');
-    response.end(await readFile(file));
+    let content=await readFile(file);
+    if(prefix==='/asset-layout/'&&extname(file)==='.html'){
+      assert.match(content.toString(),/<base href="\/contracts\/">/);
+      content=Buffer.from(content.toString().replace('<base href="/contracts/">','<base href="/asset-layout/">'));
+    }
+    if(prefix==='/asset-layout/'&&relative==='/flutter_bootstrap.js'){
+      const original=content.toString();
+      assert.equal(original.split('_flutter.loader.load({').length,2);
+      content=Buffer.from(original.replace('_flutter.loader.load({',"_flutter.loader.load({config:{assetBase:'/external/'},"));
+    }
+    if(path.endsWith('/device-readout-dart-worker.js'))workerRequests.push({path,sha256:createHash('sha256').update(content).digest('hex')});
+    response.end(content);
   }catch{response.writeHead(404).end();}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -172,4 +188,47 @@ for(const [name,executablePath] of [
   assert.deepEqual(errors,[]);
   await writeFile(`.tools/evidence/${evidencePrefix}-contracts-${name.toLowerCase()}.json`,JSON.stringify({installed,browser:browser.version(),expected,initial,active,inactive,resumed,permission,held,lifetime,checks,passed:true},null,2));
   t.diagnostic(`${checks.length} Flutter application scenarios passed.`);
+});
+
+for(const [name,executablePath] of [
+  ['Chrome','C:/Program Files/Google/Chrome/Application/chrome.exe'],
+  ['Edge','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'],
+])for(const [layout,base,assetBase] of [
+  ['nested-route','/contracts/','/contracts/'],
+  ['custom-assets','/asset-layout/','/external/'],
+])test(`${name}: Flutter package worker resolves ${layout}`,{timeout:60000},async t=>{
+  const browser=await chromium.launch({executablePath,headless:true});t.after(()=>browser.close());
+  const page=await browser.newPage({viewport:{width:920,height:680}});
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.addInitScript(()=>{
+    globalThis.deploymentWorkers=[];globalThis.deploymentWorkersClosed=0;
+    const NativeWorker=Worker;
+    globalThis.Worker=class extends NativeWorker{
+      constructor(url,options){super(url,options);this.sdk=options?.name==='DeviceReadout Dart';
+        if(this.sdk)globalThis.deploymentWorkers.push(String(url));}
+      terminate(){if(this.sdk)globalThis.deploymentWorkersClosed++;return super.terminate();}
+    };
+  });
+  const requestStart=workerRequests.length;
+  await page.goto(`${url}${base}nested/settings`);
+  await page.waitForFunction(()=>globalThis.flutterReadoutReady===true);
+  assert.deepEqual(await page.evaluate(()=>globalThis.deploymentWorkers),[]);
+  const command=name=>page.evaluate(name=>globalThis.flutterReadoutCommand(name),name);
+  const expected=await page.evaluate(()=>({cpu:navigator.hardwareConcurrency,language:navigator.language}));
+  const snapshot=await command('snapshot');
+  assert.equal(snapshot.cpu.availableLogicalProcessorCount,expected.cpu);
+  assert.equal(snapshot.locale.currentLanguageTag,expected.language);
+  assert.deepEqual(snapshot.viewport.size,{width:920,height:680});
+  const workerPath=assetBase+'assets/packages/device_readout_flutter/assets/device-readout-dart-worker.js';
+  const workers=await page.evaluate(()=>globalThis.deploymentWorkers);
+  assert.deepEqual(workers,[url+workerPath]);
+  const delivered=workerRequests.slice(requestStart);
+  const assetSha256=createHash('sha256').update(await readFile(resolve(contractRoot,'assets/packages/device_readout_flutter/assets/device-readout-dart-worker.js'))).digest('hex');
+  assert.deepEqual(delivered,[{path:workerPath,sha256:assetSha256}]);
+  await command('watchViewport');await page.setViewportSize({width:760,height:540});
+  await until(()=>command('state'),state=>state.viewportValues.at(-1)?.size?.width===760&&state.viewportValues.at(-1)?.size?.height===540);
+  const closed=await command('unmount');assert.equal(closed.closedError,'cancelled');
+  assert.equal(await page.evaluate(()=>globalThis.deploymentWorkersClosed),1);
+  assert.deepEqual(errors,[]);
+  await writeFile(`.tools/evidence/${evidencePrefix}-${layout}-${name.toLowerCase()}.json`,JSON.stringify({installed,browser:browser.version(),base,assetBase,workers,delivered,snapshot,closed,passed:true},null,2));
 });

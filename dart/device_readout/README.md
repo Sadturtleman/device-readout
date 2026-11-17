@@ -22,7 +22,11 @@ try {
 }
 ```
 
-The native collector currently implements only `Runtime.processArchitecture` and `Runtime.processBitness`, using the running Dart VM's ABI and native pointer size. It leaves host architecture and supported ABI lists null. Other native entity reads return `UnsupportedEntity`; generated models do not imply native support.
+The native collector implements `Runtime.processArchitecture` and `Runtime.processBitness`, using the running Dart VM's ABI and native pointer size. It leaves host architecture and supported ABI lists null. On Windows it also supports `get(Entities.ram)` and `watch(Entities.ram)`: installed physical bytes, kernel-accessible bytes, available bytes and OS low-memory state. Advertised/free/threshold values remain null. `get(Entities.processMemory)` and `watch(Entities.processMemory)` return the current process's available commit budget as `allocationRemainingBytes`, independently of available physical RAM. Win32 binding, allocation, collection and cleanup run in the collection isolate; native library references are released with their context. Other native entity reads return `UnsupportedEntity`; generated models do not imply native support.
+
+The [Windows RAM checkpoint](../../docs/verification/2026-11-17-dart-windows-ram.md) passes 54/54 contracts in JIT and compiled execution, an independent OS comparison, repeated-read resource checks and a real Flutter Windows release consumer. The full platform/field/version matrix is still incomplete.
+
+The subsequent [Windows process-memory checkpoint](../../docs/verification/2026-11-17-dart-windows-process-memory.md) passes 55/55 JIT and compiled contracts, including an independent same-process Win32 comparison. `tools/test-dart.ps1` now requires Visual Studio 2022 C++ tools and its CMake component to build this test-only reference DLL; the SDK has no corresponding production dependency.
 
 All 46 entity types and `SensorDescription` are generated from the shared schema. Fields are directly nullable, snapshots have one UTC completion timestamp, and collection properties are detached and unmodifiable. Byte counts and signed 64-bit counters use `BigInt`; JSON uses decimal strings. Unknown enums and enum collections containing unknown elements normalize to null. Platform thermal-state enums retain their original meaning.
 

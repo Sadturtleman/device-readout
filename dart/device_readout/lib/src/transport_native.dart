@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:ffi' as ffi;
+import 'dart:io' show Platform;
 import 'dart:isolate';
 
 import 'core.dart';
 import 'transport_api.dart';
 
 part 'transport_native_watch.dart';
+part 'windows_memory.dart';
 
 CollectionChannel createWebChannel(Uri workerUri) =>
     throw const DeviceReadoutException(
@@ -25,16 +27,29 @@ DeviceCollector createNativeCollector(Object? _) => _NativeCollector();
 
 final class _NativeCollector
     implements DeviceCollector, DeviceCapabilityCollector {
+  // The factory and this lazy binding are accessed only by the collection isolate.
+  _WindowsMemory? windowsMemory;
+
   @override
   EntityCapabilities capabilities(EntityAddress entity, ReadContext context) {
     context.cancellation.throwIfCancelled();
-    final available = entity.kind == EntityKind.runtime;
+    final available =
+        entity.kind == EntityKind.runtime ||
+        (Platform.isWindows &&
+            (entity.kind == EntityKind.ram ||
+                entity.kind == EntityKind.processMemory));
     return EntityCapabilities(readable: available, watchable: available);
   }
 
   @override
   DeviceSnapshot read(EntityAddress entity, ReadContext context) {
     context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && entity.kind == EntityKind.ram) {
+      return (windowsMemory ??= _WindowsMemory()).read();
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.processMemory) {
+      return (windowsMemory ??= _WindowsMemory()).readProcess();
+    }
     if (entity.kind != EntityKind.runtime) {
       throw const DeviceReadoutException(
         ErrorCode.unsupportedEntity,
@@ -72,7 +87,10 @@ final class _NativeCollector
   }
 
   @override
-  void dispose() {}
+  void dispose() {
+    windowsMemory?.dispose();
+    windowsMemory = null;
+  }
 }
 
 final class _IsolateChannel implements CollectionChannel {

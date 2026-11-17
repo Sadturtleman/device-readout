@@ -297,13 +297,13 @@ Future<void> capabilityUnknownAndNativeDefaults() async {
       'An older collector without the optional support probe remains unknown.',
     );
     final runtime = await native.capabilities.get(Entities.runtime);
-    final ram = await native.capabilities.get(Entities.ram);
+    final cpu = await native.capabilities.get(Entities.cpu);
     check(
       runtime.readable == true &&
           runtime.watchable == true &&
-          ram.readable == false &&
-          ram.watchable == false,
-      'The standalone adapter reports only its implemented Runtime support.',
+          cpu.readable == false &&
+          cpu.watchable == false,
+      'The standalone adapter distinguishes implemented Runtime from missing CPU support.',
     );
     final cancellation = CancellationToken()..cancel();
     check(

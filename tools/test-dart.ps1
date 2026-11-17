@@ -20,6 +20,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Dart dependency resolution failed.' }
     & $DartPath analyze dart/device_readout
     if ($LASTEXITCODE -ne 0) { throw 'Dart analysis failed.' }
+    & (Join-Path $PSScriptRoot 'build-windows-memory-probe.ps1')
     & $DartPath run dart/device_readout/test/contracts.dart
     if ($LASTEXITCODE -ne 0) { throw 'Dart JIT contract checks failed.' }
     $artifacts = Join-Path $projectRoot '.tools/dart-checks'

@@ -13,6 +13,8 @@ import 'capabilities.dart' as capabilityTests;
 import 'sensor_metadata.dart' as sensorMetadataTests;
 import 'rotations.dart' as rotationTests;
 import 'completion.dart' as completionTests;
+import 'native_windows.dart' as nativeWindowsTests;
+import 'native_windows_process.dart' as nativeProcessTests;
 
 void check(bool condition, String message) {
   if (!condition) throw StateError(message);
@@ -408,7 +410,7 @@ Future<void> nativeRuntime() async {
       values.length == 2 && values.every((v) => v.processBitness == 64),
       'Native constant fields still support state polling.',
     );
-    final error = await failureOf(sdk.get(Entities.ram));
+    final error = await failureOf(sdk.get(Entities.cpu));
     check(
       error is DeviceReadoutException &&
           error.code == ErrorCode.unsupportedEntity,
@@ -579,6 +581,8 @@ Future<void> configurationAndStartupErrors() async {
 
 Future<void> main() async {
   final tests = <String, Future<void> Function()>{
+    ...nativeProcessTests.checks,
+    ...nativeWindowsTests.checks,
     ...observerTests.checks,
     ...failureSourceTests.checks,
     ...nativeStateTests.checks,

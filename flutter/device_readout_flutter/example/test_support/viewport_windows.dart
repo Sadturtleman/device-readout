@@ -130,6 +130,53 @@ Future<void> verify(List<Map<String, Object?>> checks) async {
       'logicalHeight': first.size?.height,
     });
 
+    final memory = await access.get(readout.Entities.ram);
+    require(
+      memory.physicalBytes != null &&
+          memory.kernelAccessibleBytes != null &&
+          memory.availableBytes != null &&
+          memory.physicalBytes! >= memory.kernelAccessibleBytes! &&
+          memory.availableBytes! >= BigInt.zero &&
+          memory.availableBytes! <= memory.kernelAccessibleBytes!,
+      'The Windows application must receive real, distinct native RAM fields.',
+    );
+    final support = await access.capabilities.get(readout.Entities.ram);
+    require(
+      support.readable == true && support.watchable == true,
+      'Windows RAM must advertise its native get/watch support.',
+    );
+    var memoryTicks = 0;
+    final memoryTimer = Timer.periodic(
+      const Duration(milliseconds: 5),
+      (_) => memoryTicks++,
+    );
+    late final List<readout.RamSnapshot> memoryValues;
+    try {
+      memoryValues = await access
+          .withPollInterval(const Duration(milliseconds: 20))
+          .watch(readout.Entities.ram)
+          .take(3)
+          .toList();
+      require(
+        memoryValues.every(
+          (value) => value.physicalBytes == memory.physicalBytes,
+        ),
+        'Native RAM polling must retain unchanged physical byte counts.',
+      );
+      require(
+        memoryTicks >= 2,
+        'The Flutter host timer must run while native RAM polling is active.',
+      );
+    } finally {
+      memoryTimer.cancel();
+    }
+    checks.add({
+      'name': 'real Windows RAM get/watch with Flutter host timer progress',
+      'snapshot': memory.toJson(),
+      'polls': memoryValues.length,
+      'heartbeatTicks': memoryTicks,
+    });
+
     // The engine starts Dart before the runner finishes parenting its child
     // view. Establish a fresh native metrics notification after that startup.
     final settled = MetricsProbe()..next = Completer<void>();

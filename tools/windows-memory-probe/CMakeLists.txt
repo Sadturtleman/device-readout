@@ -1,0 +1,4 @@
+cmake_minimum_required(VERSION 3.16)
+project(DeviceReadoutMemoryProbe LANGUAGES C)
+add_library(device_readout_memory_probe SHARED process_memory.c)
+target_compile_definitions(device_readout_memory_probe PRIVATE WIN32_LEAN_AND_MEAN)
