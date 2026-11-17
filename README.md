@@ -6,6 +6,14 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The current [Swift observer work-in-progress checkpoint](docs/verification/2026-11-17-swift-observers-wip.md) adds app-published state, separate app/native target identities and event-driven delivery. The upload-time Debug run passes 24 of 25 tests; one regression test has three failing assertions around the first observed value and its deadline. This unfinished behavior is preserved in the source and tests. The earlier passing checkpoints below describe their own scopes, not an all-green result for the current tree.
+
+The [Swift context checkpoint](docs/verification/2026-11-17-swift-context-lifetime.md) adds shared-context `close()`, independent completion of held reads/discovery and idle watches, and worker-owned native cleanup. Native read admission is bounded to 128 waiting operations, with explicit overload errors and a separate cleanup path. All twenty-two Swift 5.9.2 Linux tests pass in Debug and Release with warnings treated as errors. Apple collectors, app observers, sensors and the full platform matrix remain required.
+
+The [Swift discovery checkpoint](docs/verification/2026-11-17-swift-discovery.md) adds typed `list`/`current` and resource collections, context-owned target generations and immediate watch termination after accepted removal. Late or malformed inventories preserve existing handles. All seventeen Swift 5.9.2 Linux tests pass in Debug and Release with warnings treated as errors. Autonomous native hotplug, app-owned observers, sensor APIs and Apple platform verification remain required.
+
+The [Swift state-stream checkpoint](docs/verification/2026-11-17-swift-state-streams.md) adds cold `watch(Entity)` polling and immutable `withPollInterval`, plus scalar value normalization. All ten Swift 5.9.2 Linux tests pass in Debug and Release with compiler warnings treated as errors. Independent subscription cadence, cancellation, per-read deadlines, loop-exit cleanup and explicit delivery overflow are covered. Native notifications, typed targets, sensor/observer APIs and Apple platform verification remain required.
+
 The [Swift foundation checkpoint](docs/verification/2026-11-17-swift-foundation.md) passes three public-API tests with Swift 5.9.2 on Ubuntu 22.04 under WSL. These cover nullable snapshots, worker execution, independent deadlines and caller cancellation. Apple platform builds and native collection remain unverified.
 
 The [Windows relative-altitude checkpoint](docs/verification/2026-11-17-windows-relative-altitude.md) adds native signed-meter snapshots, default-device identity checks and shared sampling ownership. Nine held-call cases preserve caller deadlines and nonjoining cleanup. The complete .NET/Windows suite passes 165/165 with zero build warnings or errors. Actual default-altimeter discovery is empty; physical measurements and the full platform matrix remain required.
@@ -58,6 +66,9 @@ The [Dart/Flutter Android capability checkpoint](docs/verification/2026-11-11-fl
 npm ci --workspaces=false --ignore-scripts
 npm test
 npm run test:browser
+# Swift 5.9.2 portable foundation (requires Swift and a POSIX shell):
+sh tools/test-swift.sh -Xswiftc -warnings-as-errors
+sh tools/test-swift.sh -c release -Xswiftc -warnings-as-errors
 # Windows/.NET 10:
 ./tools/test-dotnet.ps1
 # Kotlin/JVM:

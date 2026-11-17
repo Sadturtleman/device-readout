@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "schema": "node tools/extract-schema.mjs",
-    "generate": "node tools/generate-typescript.mjs && node tools/generate-csharp.mjs && node tools/generate-kotlin.mjs && node tools/generate-dart.mjs",
+    "generate": "node tools/generate-typescript.mjs && node tools/generate-csharp.mjs && node tools/generate-kotlin.mjs && node tools/generate-dart.mjs && node tools/generate-swift.mjs",
     "build": "npm run generate && tsc -p packages/core/tsconfig.json && npm run build:web",
     "build:web": "tsc -p packages/web/tsconfig.json && node tools/build-web.mjs",
     "test:types": "tsc -p packages/core/test/tsconfig.json && tsc -p packages/web/test/tsconfig.json",

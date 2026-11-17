@@ -3,6 +3,29 @@ import Foundation
 import XCTest
 
 final class DeviceAccessTests: XCTestCase {
+    func testInvalidIntervalsFailWhenCreatingTheConfiguration() throws {
+        let access = DeviceAccess(collector: RamCollector())
+        for interval in [Duration.zero, .milliseconds(-1)] {
+            XCTAssertThrowsError(try access.withPollInterval(interval)) { error in
+                XCTAssertEqual((error as? DeviceReadoutError)?.code, .invalidConfiguration)
+            }
+            XCTAssertThrowsError(try access.withReadTimeout(interval)) { error in
+                XCTAssertEqual((error as? DeviceReadoutError)?.code, .invalidConfiguration)
+            }
+        }
+        XCTAssertEqual(access.pollInterval, .seconds(1))
+        XCTAssertEqual(access.readTimeout, .seconds(5))
+    }
+
+    func testUnavailableNetworkMeasurementsBecomeNilWithoutLosingZeroOrFalse() async throws {
+        let access = DeviceAccess(collector: InvalidNetworkCollector())
+        let value = try await access.get(Entities.networkPerformance)
+        XCTAssertNil(value.downlinkBps, "non-finite measurements are not readable numeric values")
+        XCTAssertEqual(value.uplinkBps, 0)
+        XCTAssertNil(value.roundTripTime, "elapsed durations cannot be negative")
+        XCTAssertEqual(value.browserOnline, false)
+    }
+
     @MainActor
     func testCallerCancellationDoesNotWaitForNativeReturn() async throws {
         let started = expectation(description: "collector entered before cancellation")
@@ -94,5 +117,12 @@ private struct RamCollector: DeviceCollector {
         XCTAssertEqual(request.kind, .ram)
         return RamSnapshot(physicalBytes: 17_179_869_184, availableBytes: 7_516_192_768,
                            freeBytes: 0, lowMemory: false, collectedAt: Date(timeIntervalSince1970: 0))
+    }
+}
+
+private struct InvalidNetworkCollector: DeviceCollector {
+    func read(_ request: EntityRequest) throws -> any DeviceSnapshot {
+        NetworkPerformanceSnapshot(downlinkBps: .nan, uplinkBps: 0,
+                                   roundTripTime: .milliseconds(-1), browserOnline: false)
     }
 }

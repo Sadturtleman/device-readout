@@ -70,11 +70,31 @@ public struct Entity<Snapshot: DeviceSnapshot>: Sendable, Hashable {
     public let kind: EntityKind
     let requiresTarget: Bool
     let mode: EntityMode
+    let binding: TargetBinding?
+
+    init(kind: EntityKind, requiresTarget: Bool, mode: EntityMode, binding: TargetBinding? = nil) {
+        self.kind = kind; self.requiresTarget = requiresTarget; self.mode = mode; self.binding = binding
+    }
 }
 public struct EntityRequest: Sendable {
     public let kind: EntityKind
+    public let targetId: String?
 }
 public protocol DeviceCollector: Sendable {
     /// Runs on the collection worker. Implementations must not invoke UI getters or permission prompts.
     func read(_ request: EntityRequest) throws -> any DeviceSnapshot
+    /// Complete native inventory. Runs on the collection worker without UI getters or prompts.
+    func list(_ kind: EntityKind) throws -> [String]
+    /// Return only a platform-defined current target, or nil when no selection is available.
+    func current(_ kind: EntityKind) throws -> String?
+    /// Releases native resources on the collection worker after pending native work returns.
+    func close() throws
+}
+
+public extension DeviceCollector {
+    func list(_ kind: EntityKind) throws -> [String] {
+        throw DeviceReadoutError(.unsupportedEntity, "This collector does not support target discovery.")
+    }
+    func current(_ kind: EntityKind) throws -> String? { nil }
+    func close() throws { }
 }

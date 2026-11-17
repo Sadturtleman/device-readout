@@ -6,6 +6,12 @@ enums.SensorKind = schema.entities.filter(e => e.mode !== 'state').map(e => e.na
 const lower = value => value[0].toLowerCase() + value.slice(1);
 const caseName = value => ({US:'us', UK:'uk', IOS:'iOS', IPadOS:'iPadOS'})[value] ?? lower(value);
 const identifier = value => '`' + value + '`';
+function normalize(field) {
+  const value = identifier(field.name);
+  if (field.type === 'Number?') return `SnapshotRules.finite(${value})`;
+  if (field.type === 'Duration?') return `SnapshotRules.duration(${value})`;
+  return value;
+}
 function type(value) {
   if (value.endsWith('?')) return type(value.slice(0, -1)) + '?';
   if (value.startsWith('List<')) return '[' + type(value.slice(5, -1)) + ']';
@@ -28,7 +34,7 @@ for (const entity of [...schema.entities, {name:'SensorDescription', fields:sche
   code += '        self.collectedAt = collectedAt\n';
   for (const field of entity.fields) code += `        self.${identifier(field.name)} = ${identifier(field.name)}\n`;
   code += '    }\n\n    func collected(at date: Date) -> any DeviceSnapshot {\n';
-  code += '        Self(' + entity.fields.map(f => `${identifier(f.name)}: ${identifier(f.name)}`).concat('collectedAt: date').join(', ') + ')\n    }\n}\n\n';
+  code += '        Self(' + entity.fields.map(f => `${f.name}: ${normalize(f)}`).concat('collectedAt: date').join(', ') + ')\n    }\n}\n\n';
 }
 code += 'public enum Entities {\n';
 for (const entity of schema.entities) code += `    public static let ${lower(entity.name)} = Entity<${entity.name}Snapshot>(kind: .${lower(entity.name)}, requiresTarget: ${entity.targeted}, mode: .${entity.mode})\n`;
