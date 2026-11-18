@@ -15,6 +15,7 @@ import 'power_windows.dart' show verifyPower;
 import 'storage_windows.dart' show verifyStorage;
 import 'cpu_windows.dart' show verifyCpu;
 import 'cpu_cores_windows.dart' show verifyCpuCores;
+import 'network_windows.dart' show verifyNetworkInterfaces;
 import 'time_zone_windows.dart' show verifyTimeZone;
 import 'locale_windows.dart' show verifyLocale;
 import 'locale_observer_native.dart' show verifyLocaleObservation;
@@ -199,6 +200,7 @@ Future<void> verify(
     checks.add(await verifyStorage(access, memoryProbe));
     checks.add(await verifyCpu(access, memoryProbe));
     checks.add(await verifyCpuCores(access, memoryProbe));
+    checks.add(await verifyNetworkInterfaces(access, memoryProbe));
     checks.add(await verifyTimeZone(access, memoryProbe));
     checks.add(await verifyLocale(access, memoryProbe));
     checks.add(await verifyLocaleObservation(access));

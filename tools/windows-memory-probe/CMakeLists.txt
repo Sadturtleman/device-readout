@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(DeviceReadoutMemoryProbe LANGUAGES C CXX)
-add_library(device_readout_memory_probe SHARED process_memory.c runtime.c os.c device_info.c time_zone.cpp locale.c locale_formats.cpp power.c storage.c cpu.c cpu_cores.c)
-target_link_libraries(device_readout_memory_probe PRIVATE advapi32 icu powrprof)
+add_library(device_readout_memory_probe SHARED process_memory.c runtime.c os.c device_info.c time_zone.cpp locale.c locale_formats.cpp power.c storage.c cpu.c cpu_cores.c network.c)
+target_link_libraries(device_readout_memory_probe PRIVATE advapi32 icu powrprof iphlpapi ws2_32)
 target_compile_definitions(device_readout_memory_probe PRIVATE WIN32_LEAN_AND_MEAN)
 
 add_library(device_readout_registry_fixture SHARED registry_fixture.c)
@@ -19,3 +19,10 @@ target_compile_definitions(device_readout_cpu_controls PRIVATE WIN32_LEAN_AND_ME
 
 add_library(device_readout_cpu_fixture SHARED cpu_fixture.c cpu_fixture.def)
 target_compile_definitions(device_readout_cpu_fixture PRIVATE WIN32_LEAN_AND_MEAN)
+
+add_library(device_readout_network_fixture SHARED network_fixture.c network_fixture.def)
+target_compile_definitions(device_readout_network_fixture PRIVATE WIN32_LEAN_AND_MEAN)
+
+add_library(device_readout_network_live SHARED network_live.c network_live.def)
+target_link_libraries(device_readout_network_live PRIVATE iphlpapi)
+target_compile_definitions(device_readout_network_live PRIVATE WIN32_LEAN_AND_MEAN)

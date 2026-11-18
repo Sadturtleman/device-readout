@@ -1,5 +1,36 @@
 import 'dart:ffi' as ffi;
 
+typedef WindowsNetworkCallback = ffi.Void Function(
+  ffi.Uint64,
+  ffi.Int32,
+  ffi.Uint32,
+);
+
+@ffi.Native<
+  ffi.Uint64 Function(ffi.Pointer<ffi.NativeFunction<WindowsNetworkCallback>>)
+>(
+  symbol: 'readout_network_callback_create',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external int createNetworkCallback(
+  ffi.Pointer<ffi.NativeFunction<WindowsNetworkCallback>> listener,
+);
+@ffi.Native<ffi.Pointer<ffi.Void> Function()>(
+  symbol: 'readout_network_callback_function',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external ffi.Pointer<ffi.Void> networkCallbackFunction();
+@ffi.Native<ffi.Void Function(ffi.Uint64)>(
+  symbol: 'readout_network_callback_ack',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external void acknowledgeNetworkCallback(int token);
+@ffi.Native<ffi.Void Function(ffi.Uint64)>(
+  symbol: 'readout_network_callback_remove',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external void removeNetworkCallback(int token);
+
 // Ordinals correspond to the internal C ABI; never exposed as entity options.
 enum WindowsCall {
   firstVolume,

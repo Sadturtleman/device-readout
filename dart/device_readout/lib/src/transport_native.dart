@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:ffi' as ffi;
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, InternetAddress;
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -16,6 +16,8 @@ part 'windows_os.dart';
 part 'windows_power.dart';
 part 'windows_storage.dart';
 part 'windows_cpu.dart';
+part 'windows_network.dart';
+part 'windows_network_watch.dart';
 part 'windows_device_info.dart';
 part 'windows_time_zone.dart';
 part 'windows_locale.dart';
@@ -39,9 +41,11 @@ CollectionChannel createChannel(
 final class NativeCollectorBindings {
   final String? windowsStorageLibrary;
   final String? windowsCpuLibrary;
+  final String? windowsNetworkLibrary;
   const NativeCollectorBindings({
     this.windowsStorageLibrary,
     this.windowsCpuLibrary,
+    this.windowsNetworkLibrary,
   });
 }
 
@@ -52,7 +56,8 @@ final class _NativeCollector
     implements
         DeviceCollector,
         DeviceCapabilityCollector,
-        DeviceDiscoveryCollector {
+        DeviceDiscoveryCollector,
+        DeviceStateCollector {
   final NativeCollectorBindings? bindings;
   _NativeCollector(this.bindings);
   // The factory and this lazy binding are accessed only by the collection isolate.
@@ -65,6 +70,19 @@ final class _NativeCollector
   _WindowsPower? windowsPower;
   _WindowsStorage? windowsStorage;
   _WindowsCpu? windowsCpu;
+  _WindowsNetwork? windowsNetwork;
+
+  @override
+  Stream<SnapshotRead>? watch(EntityAddress entity, StateWatchContext context) {
+    if (Platform.isWindows &&
+        entity.kind == EntityKind.networkInterface &&
+        ffi.sizeOf<ffi.UintPtr>() == 8) {
+      return (windowsNetwork ??= _WindowsNetwork(
+        bindings?.windowsNetworkLibrary,
+      )).watch(entity.targetId, context);
+    }
+    return null;
+  }
 
   @override
   EntityCapabilities capabilities(EntityAddress entity, ReadContext context) {
@@ -80,6 +98,8 @@ final class _NativeCollector
                 entity.kind == EntityKind.power ||
                 entity.kind == EntityKind.storageVolume ||
                 entity.kind == EntityKind.cpu ||
+                (entity.kind == EntityKind.networkInterface &&
+                    ffi.sizeOf<ffi.UintPtr>() == 8) ||
                 (entity.kind == EntityKind.cpuCore &&
                     ffi.sizeOf<ffi.UintPtr>() == 8) ||
                 entity.kind == EntityKind.deviceInfo));
@@ -89,6 +109,11 @@ final class _NativeCollector
   @override
   List<String> list(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.networkInterface) {
+      return (windowsNetwork ??= _WindowsNetwork(
+        bindings?.windowsNetworkLibrary,
+      )).list(context);
+    }
     if (Platform.isWindows && kind == EntityKind.cpuCore) {
       return (windowsCpu ??= _WindowsCpu(
         bindings?.windowsCpuLibrary,
@@ -110,6 +135,10 @@ final class _NativeCollector
     context.cancellation.throwIfCancelled();
     if (Platform.isWindows && kind == EntityKind.storageVolume) return null;
     if (Platform.isWindows && kind == EntityKind.cpuCore) return null;
+    if (Platform.isWindows &&
+        kind == EntityKind.networkInterface &&
+        ffi.sizeOf<ffi.UintPtr>() == 8)
+      return null;
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
       'Native current selection is unavailable for this entity.',
@@ -118,6 +147,11 @@ final class _NativeCollector
 
   @override
   DeviceSnapshot read(EntityAddress entity, ReadContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.networkInterface) {
+      return (windowsNetwork ??= _WindowsNetwork(
+        bindings?.windowsNetworkLibrary,
+      )).read(entity.targetId, context);
+    }
     if (Platform.isWindows && entity.kind == EntityKind.cpuCore) {
       return (windowsCpu ??= _WindowsCpu(
         bindings?.windowsCpuLibrary,
@@ -203,7 +237,12 @@ final class _NativeCollector
           try {
             try {
               try {
-                windowsCpu?.dispose();
+                try {
+                  windowsNetwork?.dispose();
+                } finally {
+                  windowsNetwork = null;
+                  windowsCpu?.dispose();
+                }
               } finally {
                 windowsCpu = null;
                 windowsStorage?.dispose();

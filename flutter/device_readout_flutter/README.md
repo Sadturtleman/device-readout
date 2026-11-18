@@ -1,5 +1,9 @@
 # DeviceReadout for Flutter
 
+Windows network watch now uses the shared Dart native-notification bridge with polling for remaining fields. The [notification checkpoint](../../docs/verification/2026-11-18-dart-windows-network-events.md) rebuilds and verifies both checkout and installed Windows consumers at 18/18 scenarios each, with 27/27 framework checks. The bridge is part of the ordinary Windows native asset; reference/fixture DLLs are excluded. Physical network transitions and the complete platform matrix remain pending.
+
+Windows network-interface discovery/get/watch uses the shared Dart isolate collector. The [initial network checkpoint](../../docs/verification/2026-11-18-dart-windows-network.md) compares all nine fields for 84 NDIS entries and 61 routes in both checkout and installed-Pub apps; each passes 18/18 scenarios and framework checks pass 27/27. Its polling baseline is extended by the notification follow-up above; physical transitions and the full platform matrix remain pending.
+
 Windows `cpuCores.list()` uses the shared Dart collector for typed logical-CPU get/watch, membership and clock fields. The [CPU-core checkpoint](../../docs/verification/2026-11-18-dart-windows-cpu-cores.md) passes 17/17 scenarios in both checkout and installed-Pub Windows applications, with full native membership comparisons and timer progress; framework tests pass 27/27. Physical topology changes and the full platform matrix remain pending.
 
 The [CPU native follow-up](../../docs/verification/2026-11-18-dart-windows-cpu-native.md) verifies the current CPU collector in both checkout and independently installed Pub consumers: 16/16 Windows app scenarios each and 27/27 framework checks pass. Native empty-list handling is corrected and the Dart gate includes seventeen CPU response/stall cases per execution mode. Other architectures, physical configurations and the full platform matrix remain pending.

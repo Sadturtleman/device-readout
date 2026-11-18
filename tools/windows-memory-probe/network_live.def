@@ -1,0 +1,11 @@
+EXPORTS
+    GetProcessHeap=readout_live_GetProcessHeap
+    HeapAlloc=readout_live_HeapAlloc
+    HeapFree=readout_live_HeapFree
+    GetAdaptersAddresses=readout_live_GetAdaptersAddresses
+    GetIpForwardTable2=readout_live_GetIpForwardTable2
+    FreeMibTable=readout_live_FreeMibTable
+    NotifyIpInterfaceChange=readout_live_NotifyIpInterfaceChange
+    NotifyUnicastIpAddressChange=readout_live_NotifyUnicastIpAddressChange
+    NotifyRouteChange2=readout_live_NotifyRouteChange2
+    CancelMibChangeNotify2=readout_live_CancelMibChangeNotify2

@@ -28,6 +28,9 @@ import 'native_windows_cpu_controls.dart' as nativeCpuControlTests;
 import 'native_windows_cpu_faults.dart' as nativeCpuFaultTests;
 import 'native_windows_cpu_cores.dart' as nativeCpuCoreTests;
 import 'native_windows_cpu_core_faults.dart' as nativeCpuCoreFaultTests;
+import 'native_windows_network.dart' as nativeNetworkTests;
+import 'native_windows_network_faults.dart' as nativeNetworkFaultTests;
+import 'native_windows_network_events.dart' as nativeNetworkEventTests;
 import 'native_windows_device_info.dart' as nativeDeviceInfoTests;
 import 'native_windows_registry.dart' as nativeRegistryTests;
 
@@ -595,6 +598,8 @@ Future<void> configurationAndStartupErrors() async {
 }
 
 Future<void> main(List<String> arguments) async {
+  if (await nativeNetworkEventTests.runChildIfRequested(arguments)) return;
+  if (await nativeNetworkFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeCpuCoreFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeCpuFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeCpuControlTests.runChildIfRequested(arguments)) return;
@@ -614,6 +619,9 @@ Future<void> main(List<String> arguments) async {
     ...nativeCpuFaultTests.checks,
     ...nativeCpuCoreTests.checks,
     ...nativeCpuCoreFaultTests.checks,
+    ...nativeNetworkTests.checks,
+    ...nativeNetworkFaultTests.checks,
+    ...nativeNetworkEventTests.checks,
     ...nativeRuntimeTests.checks,
     ...nativeProcessTests.checks,
     ...nativeWindowsTests.checks,
@@ -646,7 +654,13 @@ Future<void> main(List<String> arguments) async {
         configurationAndStartupErrors,
   };
   for (final entry in tests.entries) {
-    await entry.value().timeout(const Duration(seconds: 12));
+    // Full NDIS inventory verification performs two OS references and a separate
+    // default-deadline read for every interface (84 on the current host). This
+    // guard bounds the whole verification case, not individual SDK operations.
+    final limit = entry.value == nativeNetworkTests.nativeNetworkInterfaces
+        ? const Duration(seconds: 45)
+        : const Duration(seconds: 12);
+    await entry.value().timeout(limit);
     print('PASS ${entry.key}');
   }
   print('${tests.length}/${tests.length} Dart contract checks passed.');

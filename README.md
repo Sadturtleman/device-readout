@@ -6,6 +6,10 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [Windows network-notification checkpoint](docs/verification/2026-11-18-dart-windows-network-events.md) connects interface/address/route notifications with polling for remaining changes, shared subscriptions and safe callback retirement. It fixes failed native unregister handles being lost before resubscription. Dart passes 175/175 checks in each JIT/CLI-bundle mode, both Windows apps pass 18/18 and Flutter framework checks pass 27/27. Actual OS registration/acknowledgement/teardown is verified; physical transitions, more races and the full matrix remain pending.
+
+The [initial Windows network-interface checkpoint](docs/verification/2026-11-18-dart-windows-network.md) adds typed NDIS discovery and all nine address/state/route fields through the collection isolate. Its Dart JIT/CLI-bundle gates pass 157/157 each; checkout and installed Windows apps pass 18/18 each, and Flutter framework checks pass 27/27. Its polling baseline is extended by the notification follow-up above; physical network changes and the full platform matrix remain pending.
+
 The [Windows CPU-core checkpoint](docs/verification/2026-11-18-dart-windows-cpu-cores.md) adds typed logical-CPU discovery, core/package membership and native clock get/watch, with explicit current selection and observed-removal lifetimes. Final Dart JIT/CLI-bundle gates pass 135/135 each; checkout and installed-Pub Windows apps pass 17/17 each, and Flutter framework tests pass 27/27. Physical topology changes, additional architectures and the full acceptance matrix remain pending.
 
 The [Windows CPU native follow-up](docs/verification/2026-11-18-dart-windows-cpu-native.md) fixes a valid empty CPU-set sizing result losing known process availability. Seventeen native-response/stall scenarios run per Dart mode; final JIT and CLI-bundle suites pass 121/121 each. Checkout and installed-Pub Flutter Windows applications pass 16/16 each, with 27/27 framework checks. Additional architectures, physical configurations and the full acceptance matrix remain pending.
