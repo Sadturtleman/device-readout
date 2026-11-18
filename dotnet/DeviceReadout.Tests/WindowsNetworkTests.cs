@@ -9,16 +9,23 @@ using BclInterfaceType = System.Net.NetworkInformation.NetworkInterfaceType;
 internal static partial class WindowsNetworkTests
 {
     internal static IEnumerable<(string Name, Func<Task> Run)> Cases() => [
+        ("real Windows network discovery includes the complete NDIS inventory", ActualNdisInventory),
+        ("real Windows NDIS fields agree with independent native data", ActualNdisFields),
+        ("Windows network types preserve known Ethernet, cellular and bridge values", NativeInterfaceTypes),
         ("Windows network handles retire after observed removal and do not bind a reappearing native ID", Generations),
         ("Windows network failed inventories preserve handles and read-time removal remains permanent", InventoryFailures),
         ("Windows network notifications wake worker reads, preserve equal values and retire every removed-target stream", Notifications),
         ("Windows IP notification registration ignores acknowledgements, retains protocol changes and releases native callbacks", NativeNotificationContract),
         ("Windows network native registration failures roll back and callback failures stop existing streams", NotificationFailures),
+        ("Windows network failed registration output remains owned during rollback", NotificationOutputFailure),
+        ("Windows network rollback preserves the registration error and retries owned handles at context close", NotificationRollbackRecovery),
         ("real Windows network reads register all IP notifications and cancel them on the collection worker", ActualNativeNotifications),
         ("Windows network routes preserve IPv4, scoped IPv6, default and on-link paths for the selected adapter", RouteFields),
         ("Windows route failures remain field-local and an unspecified scoped next hop is not a gateway", RouteFailures),
         ("Windows MTU reads IPv6-only interfaces and preserves partial availability without changing other fields", MtuFields),
-        ("real Windows network route snapshots include IPv4 and IPv6 loopback routes with no gateway", ActualRoutes)
+        ("real Windows network route snapshots include IPv4 and IPv6 loopback routes with no gateway", ActualRoutes),
+        .. MtuNativeCases(),
+        .. NotificationNativeCases()
     ];
     private static async Task Generations()
     {
@@ -33,6 +40,20 @@ internal static partial class WindowsNetworkTests
         Check(fresh != first, "reappearance must create a new context-owned handle");
         await Error(ErrorCode.EntityRemoved, () => access.Get(first));
         Check((await access.Get(fresh)).Name == "Fixture Ethernet", "fresh generation remains readable");
+    }
+    private static async Task NativeInterfaceTypes()
+    {
+        var adapter = new AdapterFixture();
+        using var access = new DeviceAccess(new WindowsCollector(networkPlatform: new NetworkFixture {Adapters = [adapter]}));
+        var target = (await access.NetworkInterfaces.List()).Single();
+        foreach (var (kind, expected) in new (int, DeviceReadout.NetworkInterfaceType?)[] {
+            (26, DeviceReadout.NetworkInterfaceType.Ethernet), (243, DeviceReadout.NetworkInterfaceType.Cellular),
+            (244, DeviceReadout.NetworkInterfaceType.Cellular), (209, DeviceReadout.NetworkInterfaceType.Bridge), (1, null), (65535, null)
+        }) {
+            adapter.Kind = (BclInterfaceType)kind;
+            var value = await access.Get(target);
+            Check(value.InterfaceType == expected && value.Name == "Fixture Ethernet", $"Windows IFTYPE {kind} preserves its known meaning or null.");
+        }
     }
     private static async Task ActualNativeNotifications()
     {
@@ -77,6 +98,32 @@ internal static partial class WindowsNetworkTests
         }
         await platform.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Check(notifications.Removed.Count == 3, "callback failure still releases every native registration");
+    }
+    private static async Task NotificationOutputFailure()
+    {
+        var native = new NotificationFixture {ReturnFailedHandle = true};
+        native.Results[WindowsNetworkChangeKind.Route] = 31;
+        using var access = new DeviceAccess(new WindowsCollector(networkPlatform: new NetworkFixture {Notifications = native}));
+        await Error(ErrorCode.ReadFailed, () => access.NetworkInterfaces.List());
+        Check(native.Removed.Order().SequenceEqual(new nint[] {1, 2, 3}), "Rollback releases successful registrations and the unexpected handle returned with failure.");
+        native.Emit(WindowsNetworkChangeKind.Route, 0, 1);
+        await Error(ErrorCode.ReadFailed, () => access.NetworkInterfaces.List());
+        Check(native.Entries.Count == 3, "A failed source is not implicitly registered again.");
+    }
+    private static async Task NotificationRollbackRecovery()
+    {
+        var native = new NotificationFixture {UnregisterResult = 5};
+        native.Results[WindowsNetworkChangeKind.Route] = 31;
+        var caller = Environment.CurrentManagedThreadId;
+        using var access = new DeviceAccess(new WindowsCollector(networkPlatform: new WindowsNetworkPlatform(native)));
+        await Error(ErrorCode.ReadFailed, () => access.NetworkInterfaces.List());
+        Check(native.Removed.Count == 0 && native.UnregisterAttempts.Count == 2, "Rollback attempts every acquired handle despite cleanup failure.");
+        native.Emit(WindowsNetworkChangeKind.Interface, 0, 1);
+        await Error(ErrorCode.ReadFailed, () => access.NetworkInterfaces.List());
+        Check(native.Entries.Count == 3 && native.UnregisterAttempts.Count == 2, "Failure remains terminal without an implicit registration or cleanup loop.");
+        native.UnregisterResult = 0;access.Dispose();
+        await TestCompletion.Until(() => native.Removed.Count == 2, "Context close retries both retained native handles");
+        Check(native.UnregisterAttempts.Count == 4 && native.Threads.Distinct().Count() == 1 && !native.Threads.Contains(caller), "Cleanup recovery stays on the original collection worker.");
     }
     private static async Task NativeNotificationContract()
     {
@@ -151,10 +198,12 @@ internal static partial class WindowsNetworkTests
         internal Exception? Failure;
         internal Action? Changed;
         internal IWindowsNetworkNotifications? Notifications;
+        internal IWindowsNetworkPlatform? NativeMtu;
         internal int Registered, Released;
         internal readonly List<int> Threads = [];
         internal readonly TaskCompletionSource Disposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public BclInterface[] Enumerate(CancellationToken token) {Threads.Add(Environment.CurrentManagedThreadId);token.ThrowIfCancellationRequested();if (Failure is not null) throw Failure;return Adapters.ToArray();}
+        public NetworkInterfaceSnapshot? Properties(string adapterId, CancellationToken token) => NativeMtu?.Properties(adapterId, token);
         public IDisposable Observe(Action changed, Action<Exception> fail)
         {
             Threads.Add(Environment.CurrentManagedThreadId);Registered++;Changed = changed;
@@ -165,17 +214,20 @@ internal static partial class WindowsNetworkTests
     }
     private sealed class NotificationFixture : IWindowsNetworkNotifications
     {
+        internal bool ReturnFailedHandle;
+        internal uint UnregisterResult;
         internal readonly Dictionary<WindowsNetworkChangeKind, uint> Results = [];
         internal readonly Dictionary<WindowsNetworkChangeKind, (WindowsNetworkChangeCallback Callback, nint Context, nint Handle)> Entries = [];
-        internal readonly List<nint> Removed = [];
+        internal readonly System.Collections.Concurrent.ConcurrentQueue<nint> Removed = new();
+        internal readonly System.Collections.Concurrent.ConcurrentQueue<nint> UnregisterAttempts = new();
         internal readonly List<int> Threads = [];
         public uint Register(WindowsNetworkChangeKind kind, WindowsNetworkChangeCallback callback, nint context, out nint handle)
         {
             Threads.Add(Environment.CurrentManagedThreadId);handle = (int)kind + 1;Entries.Add(kind, (callback, context, handle));
-            if (Results.GetValueOrDefault(kind) is > 0 and var failure) {handle = 0;return failure;}
+            if (Results.GetValueOrDefault(kind) is > 0 and var failure) {if (!ReturnFailedHandle) handle = 0;return failure;}
             callback(context, 0, 3);return 0;
         }
-        public uint Unregister(nint handle) {Threads.Add(Environment.CurrentManagedThreadId);Removed.Add(handle);return 0;}
+        public uint Unregister(nint handle) {Threads.Add(Environment.CurrentManagedThreadId);UnregisterAttempts.Enqueue(handle);if (UnregisterResult != 0) return UnregisterResult;Removed.Enqueue(handle);return 0;}
         internal void Emit(WindowsNetworkChangeKind kind, uint type, nint row)
         {var entry = Entries[kind];entry.Callback(entry.Context, row, type);}
     }
@@ -207,14 +259,16 @@ internal static partial class WindowsNetworkTests
     private sealed class Cleanup(Action release) : IDisposable {public void Dispose() => release();}
     private sealed class AdapterFixture : BclInterface
     {
-        public override string Id => "{52FDD4D7-27B8-4616-A8B3-100000000001}";
+        internal string NativeId = "{52FDD4D7-27B8-4616-A8B3-100000000001}";
+        public override string Id => NativeId;
         public override string Name => "Fixture Ethernet";
         public override string Description => "Controlled native network input";
         internal OperationalStatus State = OperationalStatus.Up;
+        internal BclInterfaceType Kind = BclInterfaceType.Ethernet;
         internal IPInterfaceProperties? Properties;
         internal bool Ipv4 = true, Ipv6 = true;
         public override OperationalStatus OperationalStatus => State;
-        public override BclInterfaceType NetworkInterfaceType => BclInterfaceType.Ethernet;
+        public override BclInterfaceType NetworkInterfaceType => Kind;
         public override long Speed => 1_000_000_000;
         public override bool SupportsMulticast => true;
         public override bool IsReceiveOnly => false;

@@ -86,12 +86,21 @@ ULONG WINAPI readout_network_GetAdaptersAddresses(ULONG family, ULONG flags, PVO
     if (current == 5) s->gateway_ip.sin_family = 0xffff;
     if (current == 9) s->adapter.Next = &s->adapter;
     if (current == 13) { ++*size; return NO_ERROR; }
-    if (current == 15) {
+    if (current == 15 || current == 18) {
         s->ipv6.sin6_family = AF_INET6; s->ipv6.sin6_scope_id = 7;
         s->ipv6.sin6_addr.u.Byte[0] = 0xfe; s->ipv6.sin6_addr.u.Byte[1] = 0x80; s->ipv6.sin6_addr.u.Byte[15] = 1;
-        s->unicast.Address.lpSockaddr = (SOCKADDR *)&s->ipv6;
-        s->unicast.Address.iSockaddrLength = sizeof(s->ipv6); s->unicast.OnLinkPrefixLength = 64;
+        if (current == 18) {
+            s->ipv6.sin6_addr.u.Byte[1] = 0xc0;
+            s->dns.Address.lpSockaddr = (SOCKADDR *)&s->ipv6;
+            s->dns.Address.iSockaddrLength = sizeof(s->ipv6);
+        } else {
+            s->unicast.Address.lpSockaddr = (SOCKADDR *)&s->ipv6;
+            s->unicast.Address.iSockaddrLength = sizeof(s->ipv6); s->unicast.OnLinkPrefixLength = 64;
+        }
     }
+    if (current == 19) s->dns.Next = &s->dns;
+    if (current == 22) s->dns_ip.sin_family = 0xffff;
+    if (current == 23) s->adapter.FirstDnsServerAddress = NULL;
     *size = sizeof(*s);
     return current == 8 ? ERROR_ACCESS_DENIED : NO_ERROR;
 }

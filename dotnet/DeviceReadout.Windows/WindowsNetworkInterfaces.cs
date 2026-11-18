@@ -10,14 +10,21 @@ namespace DeviceReadout.Windows;
 internal interface IWindowsNetworkPlatform
 {
     BclInterface[] Enumerate(CancellationToken token);
+    NetworkInterfaceSnapshot? Properties(string adapterId, CancellationToken token) => null;
     IDisposable? Observe(Action changed, Action<Exception> fail) => null;
+    void Dispose() { }
 }
 
 [SupportedOSPlatform("windows")]
-internal sealed class WindowsNetworkPlatform(IWindowsNetworkNotifications? notifications = null) : IWindowsNetworkPlatform
+internal sealed class WindowsNetworkPlatform(IWindowsNetworkNotifications? notifications = null, IWindowsNetworkPropertiesPlatform? propertiesPlatform = null) : IWindowsNetworkPlatform
 {
+    private readonly WindowsNetworkProperties properties = new(propertiesPlatform ?? new WindowsNetworkPropertiesPlatform());
+    private readonly WindowsNetworkChanges changes = new(notifications ?? new WindowsNetworkNotifications());
+    public NetworkInterfaceSnapshot Properties(string adapterId, CancellationToken token)
+        => properties.Read(adapterId, token) ?? new NetworkInterfaceSnapshot();
     public IDisposable Observe(Action changed, Action<Exception> fail)
-        => new WindowsNetworkChanges(notifications ?? new WindowsNetworkNotifications()).Subscribe(changed, fail);
+        => changes.Subscribe(changed, fail);
+    public void Dispose() => changes.Dispose();
     public BclInterface[] Enumerate(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();var result = BclInterface.GetAllNetworkInterfaces();
@@ -78,7 +85,8 @@ internal sealed class WindowsNetworkInterfaces(IWindowsNetworkPlatform platform,
     public void Dispose()
     {
         lock (gate) {if (closed) return;closed = true;listeners.Clear();}
-        observation?.Dispose();observation = null;
+        try {observation?.Dispose();}
+        finally {observation = null;platform.Dispose();}
     }
     private Dictionary<string, BclInterface> Refresh(CancellationToken token)
     {
@@ -114,10 +122,14 @@ internal sealed class WindowsNetworkInterfaces(IWindowsNetworkPlatform platform,
         IPInterfaceProperties? ip = null;
         try {ip = adapter.GetIPProperties();} catch (NetworkInformationException) { }
         var address = adapter.GetPhysicalAddress().GetAddressBytes();
+        var native = platform.Properties(adapter.Id, token);
         var snapshot = new NetworkInterfaceSnapshot {Name = adapter.Name,
             InterfaceType = adapter.NetworkInterfaceType switch {
-                BclInterfaceType.Ethernet or BclInterfaceType.GigabitEthernet or BclInterfaceType.FastEthernetFx or BclInterfaceType.FastEthernetT => NetworkInterfaceType.Ethernet,
+                BclInterfaceType.Ethernet or BclInterfaceType.Ethernet3Megabit or BclInterfaceType.GigabitEthernet or BclInterfaceType.FastEthernetFx or BclInterfaceType.FastEthernetT => NetworkInterfaceType.Ethernet,
                 BclInterfaceType.Wireless80211 => NetworkInterfaceType.Wifi, BclInterfaceType.Loopback => NetworkInterfaceType.Loopback,
+                // Native IFTYPE values may be returned even without a named BCL enum member.
+                (BclInterfaceType)243 or (BclInterfaceType)244 => NetworkInterfaceType.Cellular, // IF_TYPE_WWANPP / WWANPP2
+                (BclInterfaceType)209 => NetworkInterfaceType.Bridge, // IANA bridge type
                 BclInterfaceType.Tunnel => NetworkInterfaceType.Tunnel, BclInterfaceType.Ppp => NetworkInterfaceType.Ppp, _ => null
             },
             OperationalState = adapter.OperationalStatus switch {
@@ -127,18 +139,20 @@ internal sealed class WindowsNetworkInterfaces(IWindowsNetworkPlatform platform,
             },
             HardwareAddress = address.Length == 0 ? null : string.Join(":", address.Select(value => value.ToString("X2", CultureInfo.InvariantCulture))),
             IpAddresses = ip?.UnicastAddresses.Select(value => new IpAddressInfo(value.Address.ToString(), value.PrefixLength)).ToImmutableArray(),
-            DnsServers = ip?.DnsAddresses.Select(value => value.ToString()).ToImmutableArray(),
+            // A native provider owns DNS availability: BCL conversion can discard IPv6 scopes.
+            DnsServers = native is not null ? native.DnsServers : ip?.DnsAddresses.Select(value => value.ToString()).ToImmutableArray(),
             Gateways = ip?.GatewayAddresses.Select(value => value.Address.ToString()).ToImmutableArray(),
             Routes = routes.Read(adapter.Id, token),
-            MtuBytes = Mtu(adapter, ip)};
+            MtuBytes = native?.MtuBytes ?? Mtu(adapter, ip)};
         token.ThrowIfCancellationRequested();AssertHealthy();return snapshot;
     }
     private static ulong? Mtu(BclInterface adapter, IPInterfaceProperties? ip)
     {
         if (ip is null) return null;
-        var ipv4 = Try(() => adapter.Supports(NetworkInterfaceComponent.IPv4)) == true ? Try(() => checked((ulong)ip.GetIPv4Properties().Mtu)) : null;
+        // Windows BCL exposes the native ULONG as an unchecked signed int.
+        var ipv4 = Try(() => adapter.Supports(NetworkInterfaceComponent.IPv4)) == true ? Try(() => (ulong)unchecked((uint)ip.GetIPv4Properties().Mtu)) : null;
         if (ipv4.HasValue) return ipv4;
-        return Try(() => adapter.Supports(NetworkInterfaceComponent.IPv6)) == true ? Try(() => checked((ulong)ip.GetIPv6Properties().Mtu)) : null;
+        return Try(() => adapter.Supports(NetworkInterfaceComponent.IPv6)) == true ? Try(() => (ulong)unchecked((uint)ip.GetIPv6Properties().Mtu)) : null;
     }
     private static T? Try<T>(Func<T> read) where T : struct
     {try {return read();} catch (IOException) {return null;} catch (UnauthorizedAccessException) {return null;} catch (NetworkInformationException) {return null;} catch (OverflowException) {return null;}}

@@ -19,21 +19,24 @@ internal static partial class WindowsNetworkTests
         adapter.Properties = new IpPropertiesFixture {Four = new Ipv4PropertiesFixture(0)};
         Check((await access.Get(target)).MtuBytes == 0, "reported zero remains zero");
         adapter.Properties = new IpPropertiesFixture {Four = new Ipv4PropertiesFixture(-1), Six = new Ipv6PropertiesFixture(-1)};
+        Check((await access.Get(target)).MtuBytes == uint.MaxValue, "Windows BCL preserves ULONG MTU bits in its signed int result");
+        adapter.Properties = new IpPropertiesFixture();
         var unavailable = await access.Get(target);
         Check(unavailable.MtuBytes is null && unavailable.IpAddresses?.Length == 0 && unavailable.DnsServers?.Length == 0
-            && unavailable.Gateways?.Length == 0 && unavailable.Name == "Fixture Ethernet", "invalid MTU does not discard other fields or known empty lists");
+            && unavailable.Gateways?.Length == 0 && unavailable.Name == "Fixture Ethernet", "unavailable MTU does not discard other fields or known empty lists");
     }
     private sealed class IpPropertiesFixture : IPInterfaceProperties
     {
         internal IPv4InterfaceProperties? Four;
         internal IPv6InterfaceProperties? Six;
+        internal IPAddressCollection? Dns;
         public override bool IsDnsEnabled => true;
         public override string DnsSuffix => "";
         public override bool IsDynamicDnsEnabled => false;
         public override UnicastIPAddressInformationCollection UnicastAddresses => new EmptyUnicast();
         public override MulticastIPAddressInformationCollection MulticastAddresses => new EmptyMulticast();
         public override IPAddressInformationCollection AnycastAddresses => throw new NetworkInformationException(50);
-        public override IPAddressCollection DnsAddresses => new EmptyIps();
+        public override IPAddressCollection DnsAddresses => Dns ?? new EmptyIps();
         public override GatewayIPAddressInformationCollection GatewayAddresses => new EmptyGateways();
         public override IPAddressCollection DhcpServerAddresses => new EmptyIps();
         public override IPAddressCollection WinsServersAddresses => new EmptyIps();
@@ -57,6 +60,8 @@ internal static partial class WindowsNetworkTests
     private sealed class EmptyMulticast : MulticastIPAddressInformationCollection;
     private sealed class EmptyIps : IPAddressCollection
     {public override int Count => 0;public override IEnumerator<IPAddress> GetEnumerator() => Enumerable.Empty<IPAddress>().GetEnumerator();}
+    private sealed class IpListFixture(params IPAddress[] addresses) : IPAddressCollection
+    {public override int Count => addresses.Length;public override IEnumerator<IPAddress> GetEnumerator() => addresses.AsEnumerable().GetEnumerator();}
     private sealed class EmptyGateways : GatewayIPAddressInformationCollection
     {public override int Count => 0;public override IEnumerator<GatewayIPAddressInformation> GetEnumerator() => Enumerable.Empty<GatewayIPAddressInformation>().GetEnumerator();}
 }

@@ -3,6 +3,18 @@ using System.Diagnostics;
 using DeviceReadout.Windows;
 using System.Collections.Immutable;
 
+if (args is ["--network-notification-child", var notificationFixture, var notificationScenario]) {
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+    try {await WindowsNetworkTests.RunNotificationNativeChild(notificationFixture, notificationScenario);return 0;}
+    catch (Exception error) {Console.Error.WriteLine(error);return 1;}
+}
+
+if (args is ["--network-mtu-child", var mtuFixture, var mtuScenario]) {
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+    try {await WindowsNetworkTests.RunMtuNativeChild(mtuFixture, mtuScenario);return 0;}
+    catch (Exception error) {Console.Error.WriteLine(error);return 1;}
+}
+
 if (args is ["--power-native-parent", var powerFixture]) {
     if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
     try {await WindowsPowerNativeTests.RunParent(powerFixture);return 0;}

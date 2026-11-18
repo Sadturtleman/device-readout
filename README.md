@@ -6,6 +6,10 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [C# network-notification checkpoint](docs/verification/2026-11-18-dotnet-network-notifications.md) retains failed cleanup handles, preserves registration errors and safely ignores retired callbacks. The final .NET gate passes 215/215, including fourteen C callback/lifetime cases and the previous field coverage. Physical transitions, permanent native cleanup refusal and the full SDK acceptance matrix remain pending.
+
+The [C# Windows network checkpoint](docs/verification/2026-11-18-dotnet-windows-network.md) preserves non-IP and unsigned MTU values, IPv6 DNS scopes and additional known interface types. The full .NET gate passes 199/199, including 28 native-boundary cases. Current-host C# and Dart checks agree with the same independent reference for 84 interfaces; physical transitions, additional architectures and the complete SDK acceptance matrix remain pending.
+
 The [Windows network-notification checkpoint](docs/verification/2026-11-18-dart-windows-network-events.md) connects interface/address/route notifications with polling for remaining changes, shared subscriptions and safe callback retirement. It fixes failed native unregister handles being lost before resubscription. Dart passes 175/175 checks in each JIT/CLI-bundle mode, both Windows apps pass 18/18 and Flutter framework checks pass 27/27. Actual OS registration/acknowledgement/teardown is verified; physical transitions, more races and the full matrix remain pending.
 
 The [initial Windows network-interface checkpoint](docs/verification/2026-11-18-dart-windows-network.md) adds typed NDIS discovery and all nine address/state/route fields through the collection isolate. Its Dart JIT/CLI-bundle gates pass 157/157 each; checkout and installed Windows apps pass 18/18 each, and Flutter framework checks pass 27/27. Its polling baseline is extended by the notification follow-up above; physical network changes and the full platform matrix remain pending.

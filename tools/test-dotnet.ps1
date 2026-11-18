@@ -13,6 +13,7 @@ try {
     $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
     $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = 'false'
+    if ($env:OS -eq 'Windows_NT') { & (Join-Path $PSScriptRoot 'build-windows-memory-probe.ps1') }
     & node (Join-Path $projectRoot 'tools/generate-csharp.mjs')
     if ($LASTEXITCODE -ne 0) { throw 'C# generation failed.' }
     & $dotnet build (Join-Path $projectRoot 'dotnet/DeviceReadout.Tests') -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false --verbosity minimal

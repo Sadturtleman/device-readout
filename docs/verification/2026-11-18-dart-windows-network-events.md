@@ -2,6 +2,8 @@
 
 Windows NetworkInterface watch now combines native change notifications with serial polling. This extends the [initial network-field checkpoint](2026-11-18-dart-windows-network.md), without changing the public Entity/Snapshot API. The full [implementation objective](../implementation-status.md) remains incomplete.
 
+The subsequent [C# network-field checkpoint](2026-11-18-dotnet-windows-network.md) verifies the same 84-interface NDIS inventory on .NET 10 and corrects its MTU/DNS/type differences. Fresh Dart native-boundary and actual-reference checks pass with the shared fixture extension. The broader architecture/configuration and physical-transition gaps below remain open.
+
 ## Observation behavior
 
 The first active network watch registers [interface](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-notifyipinterfacechange), [unicast-address](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-notifyunicastipaddresschange) and [route](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-notifyroutechange2) notifications for both address families. Watches in one DeviceAccess context share this registration group. Plain list/get and creation of an uncollected stream do not register observers. The last unsubscribe releases the group; a later subscription explicitly starts a new group.

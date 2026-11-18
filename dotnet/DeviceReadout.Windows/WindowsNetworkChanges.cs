@@ -12,27 +12,37 @@ internal interface IWindowsNetworkNotifications
     uint Register(WindowsNetworkChangeKind kind, WindowsNetworkChangeCallback callback, nint context, out nint handle);
     uint Unregister(nint handle);
 }
-internal sealed class WindowsNetworkChanges(IWindowsNetworkNotifications platform)
+internal sealed class WindowsNetworkChanges(IWindowsNetworkNotifications platform) : IDisposable
 {
+    private Group? owned;
+    private bool closed;
     internal IDisposable Subscribe(Action changed, Action<Exception> fail)
     {
-        var group = new Group();
+        if (closed || owned is not null) throw new DeviceReadoutException(ErrorCode.ReadFailed, "Network notifications already have an owner.");
+        var group = owned = new Group();
         try {
             foreach (var kind in Enum.GetValues<WindowsNetworkChangeKind>()) {
-                var registration = Registration.Create(platform, kind, changed, fail);
-                if (registration is not null) group.Registrations.Add(registration);
+                Registration.Create(platform, kind, changed, fail, group.Registrations);
             }
             return group;
-        } catch {group.Dispose();throw;}
+        } catch {
+            try {group.Dispose();} catch (Exception) { /* Retain failed handles for the owner's final cleanup. */ }
+            throw; // Cleanup failure must not replace the original registration failure.
+        }
     }
+    public void Dispose() {closed = true;owned?.Dispose();}
     private sealed class Group : IDisposable
     {
-        internal readonly List<IDisposable> Registrations = [];
+        internal readonly List<Registration> Registrations = [];
         public void Dispose()
         {
             Exception? failure = null;
-            foreach (var registration in Registrations) try {registration.Dispose();} catch (Exception error) {failure ??= error;}
-            Registrations.Clear();if (failure is not null) throw failure;
+            foreach (var registration in Registrations) registration.Detach();
+            foreach (var registration in Registrations.ToArray()) {
+                try {registration.Dispose();Registrations.Remove(registration);}
+                catch (Exception error) {failure ??= error;}
+            }
+            if (failure is not null) throw failure;
         }
     }
     private sealed class Registration(IWindowsNetworkNotifications platform, Action changed, Action<Exception> fail) : IDisposable
@@ -44,15 +54,16 @@ internal sealed class WindowsNetworkChanges(IWindowsNetworkNotifications platfor
         private Action<Exception>? fail = fail;
         private nint id, handle;
         private int closed;
-        internal static Registration? Create(IWindowsNetworkNotifications platform, WindowsNetworkChangeKind kind, Action changed, Action<Exception> fail)
+        internal static void Create(IWindowsNetworkNotifications platform, WindowsNetworkChangeKind kind, Action changed, Action<Exception> fail, List<Registration> owned)
         {
             var registration = new Registration(platform, changed, fail) {id = checked((nint)Interlocked.Increment(ref sequence))};
+            owned.Add(registration); // Own even an unexpected handle written before a failed return.
             Active.TryAdd(registration.id, registration);
             try {
                 var result = platform.Register(kind, Callback, registration.id, out registration.handle);
-                if (result == 0 && registration.handle != 0) return registration;
+                if (result == 0 && registration.handle != 0) return;
                 registration.Detach();
-                if (result == 50) return null; // Native observation unavailable: serial polling remains active.
+                if (result == 50 && registration.handle == 0) {owned.Remove(registration);return;}
                 throw Failure("Network notification registration", result == 0 ? 6u : result);
             } catch {registration.Detach();throw;}
         }
@@ -68,17 +79,17 @@ internal sealed class WindowsNetworkChanges(IWindowsNetworkNotifications platfor
                 try {Volatile.Read(ref registration.fail)?.Invoke(error);} catch (Exception) { /* Never unwind into IP Helper. */ }
             }
         }
-        private void Detach()
+        internal void Detach()
         {
             Interlocked.Exchange(ref closed, 1);Active.TryRemove(id, out _);
             Interlocked.Exchange(ref changed, null);Interlocked.Exchange(ref fail, null);
         }
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref closed, 1) != 0) return;
-            Detach();var native = Interlocked.Exchange(ref handle, 0);if (native == 0) return;
+            Detach();var native = handle;if (native == 0) return;
             // Runs on the collection worker without callback locks: this API waits for callbacks to return.
             var result = platform.Unregister(native);if (result != 0) throw Failure("CancelMibChangeNotify2", result);
+            handle = 0;
         }
     }
     private static DeviceReadoutException Failure(string api, uint error)
