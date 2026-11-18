@@ -16,6 +16,7 @@ void main(List<String> arguments) async {
         'src/windows_network_events.c',
         'src/windows_connectivity.c',
         'src/windows_wifi.c',
+        'src/windows_battery.c',
       ],
     ).run(input: input, output: output);
   });

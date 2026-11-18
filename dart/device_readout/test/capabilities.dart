@@ -299,14 +299,17 @@ Future<void> capabilityUnknownAndNativeDefaults() async {
     final runtime = await native.capabilities.get(Entities.runtime);
     final cpu = await native.capabilities.get(Entities.cpu);
     final battery = await native.capabilities.get(Entities.battery);
+    final originStorage = await native.capabilities.get(Entities.originStorage);
     check(
       runtime.readable == true &&
           runtime.watchable == true &&
           cpu.readable == Platform.isWindows &&
           cpu.watchable == Platform.isWindows &&
-          battery.readable == false &&
-          battery.watchable == false,
-      'The standalone adapter reports Runtime and Windows CPU support while retaining unsupported Battery metadata.',
+          battery.readable == Platform.isWindows &&
+          battery.watchable == Platform.isWindows &&
+          originStorage.readable == false &&
+          originStorage.watchable == false,
+      'The standalone adapter reports Runtime and Windows CPU/aggregate battery support while retaining unsupported origin-storage metadata.',
     );
     final cancellation = CancellationToken()..cancel();
     check(

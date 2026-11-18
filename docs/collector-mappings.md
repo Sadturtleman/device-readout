@@ -56,7 +56,9 @@ Actual Android API 26/36 and Chrome/Edge applications now verify this mapping an
 
 ## Windows Dart and Flutter
 
-The [latest Wi-Fi upload checkpoint](verification/2026-11-19-upload-wifi.md) adds a fifteenth native entity kind. Current Wi-Fi JIT cases pass, but the complete Dart gate has an unresolved child crash and corrected-source compiled/consumer verification remains pending. The completed counts below describe earlier checkpoints.
+The [aggregate battery upload checkpoint](verification/2026-11-19-upload-aggregate-battery.md) adds OS aggregate current/get/watch alongside the fifteen native kinds described below. It does not implement individual battery list/get or hotplug. Current Dart and checkout-app gates pass; installed-consumer validation for this addition remains pending.
+
+The [Wi-Fi checkpoint](verification/2026-11-19-dart-windows-wifi.md) verifies the fifteenth native entity kind on the corrected sources: 219/219 Dart checks per JIT/CLI-bundle mode, 21/21 in both complete Windows consumers and 27/27 Flutter framework checks, with installed-source parity. Fifteen Wi-Fi native cases per mode include nine held operations. Earlier tooling failures and remaining physical/configuration coverage are preserved. Counts below describe their earlier checkpoints.
 
 The [network-notification follow-up](verification/2026-11-18-dart-windows-network-events.md) connects all three IP Helper notification kinds with shared ownership and serial polling for remaining changes. Safe token retirement and failed-unregister recovery are verified through native fixtures and actual OS registration/acknowledgements/teardown. Final gates pass 175/175 Dart checks per mode, 18/18 in each Windows consumer and 27/27 framework tests. Physical changes, more races and inventory parity across bindings remain pending.
 
@@ -75,7 +77,8 @@ The standalone `DeviceAccess.native()` collector currently implements fifteen en
 | Entity | Native mapping |
 |---|---|
 | DeviceInfo | Read-only BIOS REG_SZ manufacturer/modelName/board, plus GetComputerNameW for the current NetBIOS name. Brand/modelCode/product/formFactor remain null. |
-| WifiConnection | Connected WinRT WLAN profiles with adapter/network GUID identity; preferred WLAN selection; GetConnectedSsid, selected authentication/encryption and WlanQueryInterface RSSI. BSSID/frequency/directional link speeds remain null. Shared native status observation plus independent polling; retained WLAN cleanup failure preserves readable fields. See the [Wi-Fi upload checkpoint](verification/2026-11-19-upload-wifi.md). |
+| Battery (aggregate only) | WinRT aggregate BatteryReport status, nullable signed rate and nonnegative capacities; normalized level and optional known GetSystemPowerStatus lifetime. Shared ReportUpdated observation plus serial polling. Individual battery list/get remain unsupported; see the [upload checkpoint](verification/2026-11-19-upload-aggregate-battery.md). |
+| WifiConnection | Connected WinRT WLAN profiles with adapter/network GUID identity; preferred WLAN selection; GetConnectedSsid, selected authentication/encryption and WlanQueryInterface RSSI. BSSID/frequency/directional link speeds remain null. Shared native status observation plus independent polling; retained WLAN cleanup failure preserves readable fields. See the [Wi-Fi checkpoint](verification/2026-11-19-dart-windows-wifi.md). |
 | Os | RtlGetVersion running NT major.minor.build and build number; Windows/Windows NT identity labels. |
 | Runtime | Dart ABI and pointer size for process fields; IsWow64Process2 native-machine result for host architecture. Supported ABIs remain null. |
 | Cpu | Primary processor registry model/vendor; native topology for whole-system logical/core/package counts; process affinity and default CPU sets for single-group process availability. CPU-time quotas do not alter processor counts. SoC fields and multi-group availability remain null. |

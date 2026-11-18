@@ -24,6 +24,8 @@ import 'native_windows_power.dart' as nativePowerTests;
 import 'native_windows_connectivity.dart' as nativeConnectivityTests;
 import 'native_windows_network_performance.dart' as nativePerformanceTests;
 import 'native_windows_wifi.dart' as nativeWifiTests;
+import 'native_windows_battery.dart' as nativeBatteryTests;
+import 'native_windows_battery_faults.dart' as nativeBatteryFaultTests;
 import 'native_windows_connectivity_faults.dart' as nativeConnectivityFaultTests;
 import 'native_windows_storage.dart' as nativeStorageTests;
 import 'native_windows_storage_faults.dart' as nativeStorageFaultTests;
@@ -603,6 +605,7 @@ Future<void> configurationAndStartupErrors() async {
 
 Future<void> main(List<String> arguments) async {
   if (await nativeConnectivityFaultTests.runChildIfRequested(arguments)) return;
+  if (await nativeBatteryFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeNetworkEventTests.runChildIfRequested(arguments)) return;
   if (await nativeNetworkFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeCpuCoreFaultTests.runChildIfRequested(arguments)) return;
@@ -613,6 +616,8 @@ Future<void> main(List<String> arguments) async {
   final tests = <String, Future<void> Function()>{
     ...nativePerformanceTests.checks,
     ...nativeWifiTests.checks,
+    ...nativeBatteryTests.checks,
+    ...nativeBatteryFaultTests.checks,
     ...nativeConnectivityTests.checks,
     ...nativeConnectivityFaultTests.checks,
     ...nativeRegistryTests.checks,

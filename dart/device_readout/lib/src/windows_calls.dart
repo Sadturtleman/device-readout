@@ -1,5 +1,66 @@
 import 'dart:ffi' as ffi;
 
+final class WindowsBatteryReport extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+  @ffi.Uint32()
+  external int mask;
+  @ffi.Int32()
+  external int rate;
+  @ffi.Int32()
+  external int design;
+  @ffi.Int32()
+  external int full;
+  @ffi.Int32()
+  external int remaining;
+  @ffi.Int32()
+  external int state;
+  @ffi.Uint32()
+  external int timeToEmpty;
+}
+
+@ffi.Native<ffi.Int32 Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_battery_available',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external int windowsBatteryAvailable(ffi.Pointer<ffi.Void> module);
+
+@ffi.Native<WindowsBatteryReport Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_battery_aggregate',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsBatteryReport readWindowsAggregateBattery(
+  ffi.Pointer<ffi.Void> module,
+);
+
+final class WindowsBatteryObservation extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+  external ffi.Pointer<ffi.Void> owner;
+}
+
+@ffi.Native<
+  WindowsBatteryObservation Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Uint64,
+  )
+>(
+  symbol: 'readout_battery_subscribe',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsBatteryObservation subscribeWindowsBattery(
+  ffi.Pointer<ffi.Void> module,
+  ffi.Pointer<ffi.Void> dispatch,
+  int token,
+);
+
+@ffi.Native<ffi.Int32 Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_battery_unsubscribe',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external int unsubscribeWindowsBattery(ffi.Pointer<ffi.Void> owner);
+
 final class WindowsWifiRecord extends ffi.Struct {
   @ffi.Array(32)
   external ffi.Array<ffi.Uint8> identity;

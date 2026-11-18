@@ -15,6 +15,7 @@ import 'power_windows.dart' show verifyPower;
 import 'connectivity_windows.dart' show verifyConnectivity;
 import 'network_performance_windows.dart' show verifyNetworkPerformance;
 import 'wifi_windows.dart' show verifyWifi;
+import 'battery_windows.dart' show verifyAggregateBattery;
 import 'storage_windows.dart' show verifyStorage;
 import 'cpu_windows.dart' show verifyCpu;
 import 'cpu_cores_windows.dart' show verifyCpuCores;
@@ -203,6 +204,7 @@ Future<void> verify(
     checks.add(await verifyConnectivity(access, memoryProbe));
     checks.add(await verifyNetworkPerformance(access, memoryProbe));
     checks.add(await verifyWifi(access, memoryProbe));
+    checks.add(await verifyAggregateBattery(access, memoryProbe));
     checks.add(await verifyStorage(access, memoryProbe));
     checks.add(await verifyCpu(access, memoryProbe));
     checks.add(await verifyCpuCores(access, memoryProbe));

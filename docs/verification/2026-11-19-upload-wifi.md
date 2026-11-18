@@ -2,6 +2,8 @@
 
 This development checkpoint includes the current design, implementation, tests and verification records on 2026-11-19. DeviceReadout's complete 46-entity, language, framework and platform acceptance matrix remains unfinished. The current Wi-Fi sources have not passed the complete regression and installed-consumer gates.
 
+Subsequent unchanged-source verification completed the corrected-source Dart, both Windows consumer and Flutter framework gates. See the [Wi-Fi verification follow-up](2026-11-19-dart-windows-wifi.md). The results below preserve the evidence available at upload time, including the earlier failures.
+
 ## Implementation included
 
 Dart and Flutter Windows add `WifiConnection`, bringing the native Windows implementation to fifteen entity kinds. Use `access.list(Entities.wifiConnection)`, `current(Entities.wifiConnection)` and typed target handles with `get(target)` / `watch(target)`. Connected WLAN profiles are identified by adapter and network GUIDs; observed removal retires the target. The preferred connection is current only when it is Wi-Fi.

@@ -14,6 +14,7 @@ part 'windows_memory.dart';
 part 'windows_runtime.dart';
 part 'windows_os.dart';
 part 'windows_power.dart';
+part 'windows_battery.dart';
 part 'windows_storage.dart';
 part 'windows_cpu.dart';
 part 'windows_network.dart';
@@ -45,11 +46,13 @@ final class NativeCollectorBindings {
   final String? windowsCpuLibrary;
   final String? windowsNetworkLibrary;
   final String? windowsConnectivityLibrary;
+  final String? windowsBatteryLibrary;
   const NativeCollectorBindings({
     this.windowsStorageLibrary,
     this.windowsCpuLibrary,
     this.windowsNetworkLibrary,
     this.windowsConnectivityLibrary,
+    this.windowsBatteryLibrary,
   });
 }
 
@@ -76,9 +79,15 @@ final class _NativeCollector
   _WindowsCpu? windowsCpu;
   _WindowsNetwork? windowsNetwork;
   _WindowsConnectivity? windowsConnectivity;
+  _WindowsBattery? windowsBattery;
 
   @override
   Stream<SnapshotRead>? watch(EntityAddress entity, StateWatchContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.battery) {
+      return (windowsBattery ??= _WindowsBattery(
+        bindings?.windowsBatteryLibrary,
+      )).watch(entity.targetId, context);
+    }
     if (Platform.isWindows && entity.kind == EntityKind.wifiConnection) {
       return (windowsConnectivity ??= _WindowsConnectivity(
         bindings?.windowsConnectivityLibrary,
@@ -113,6 +122,7 @@ final class _NativeCollector
                 entity.kind == EntityKind.timeZone ||
                 entity.kind == EntityKind.locale ||
                 entity.kind == EntityKind.power ||
+                entity.kind == EntityKind.battery ||
                 entity.kind == EntityKind.networkPath ||
                 entity.kind == EntityKind.networkPerformance ||
                 entity.kind == EntityKind.wifiConnection ||
@@ -158,6 +168,11 @@ final class _NativeCollector
   @override
   String? current(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.battery) {
+      return (windowsBattery ??= _WindowsBattery(
+        bindings?.windowsBatteryLibrary,
+      )).current(context);
+    }
     if (Platform.isWindows && kind == EntityKind.wifiConnection) {
       return (windowsConnectivity ??= _WindowsConnectivity(
         bindings?.windowsConnectivityLibrary,
@@ -177,6 +192,11 @@ final class _NativeCollector
 
   @override
   DeviceSnapshot read(EntityAddress entity, ReadContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.battery) {
+      return (windowsBattery ??= _WindowsBattery(
+        bindings?.windowsBatteryLibrary,
+      )).read(entity.targetId, context);
+    }
     if (Platform.isWindows && entity.kind == EntityKind.wifiConnection) {
       return (windowsConnectivity ??= _WindowsConnectivity(
         bindings?.windowsConnectivityLibrary,
@@ -284,7 +304,12 @@ final class _NativeCollector
               try {
                 try {
                   try {
-                    windowsConnectivity?.dispose();
+                    try {
+                      windowsBattery?.dispose();
+                    } finally {
+                      windowsBattery = null;
+                      windowsConnectivity?.dispose();
+                    }
                   } finally {
                     windowsConnectivity = null;
                     windowsNetwork?.dispose();
