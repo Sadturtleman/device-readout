@@ -1,5 +1,9 @@
 # DeviceReadout for Flutter
 
+Windows `cpuCores.list()` uses the shared Dart collector for typed logical-CPU get/watch, membership and clock fields. The [CPU-core checkpoint](../../docs/verification/2026-11-18-dart-windows-cpu-cores.md) passes 17/17 scenarios in both checkout and installed-Pub Windows applications, with full native membership comparisons and timer progress; framework tests pass 27/27. Physical topology changes and the full platform matrix remain pending.
+
+The [CPU native follow-up](../../docs/verification/2026-11-18-dart-windows-cpu-native.md) verifies the current CPU collector in both checkout and independently installed Pub consumers: 16/16 Windows app scenarios each and 27/27 framework checks pass. Native empty-list handling is corrected and the Dart gate includes seventeen CPU response/stall cases per execution mode. Other architectures, physical configurations and the full platform matrix remain pending.
+
 Windows `Entities.cpu` uses the shared isolate-owned Dart collector for identity, topology and process-default availability. The [upload checkpoint](../../docs/verification/2026-11-18-upload-storage-cpu.md) passes 16/16 actual checkout Windows app scenarios, including independent CPU field comparisons and timer progress during polling. Installed CPU consumers and other platform/configuration combinations remain pending.
 
 The [native storage follow-up](../../docs/verification/2026-11-18-dart-windows-storage-native.md) preserves Win32 errors in a Windows-only code asset and fixes malformed optional metadata. Flutter build hooks compile and bundle the production helper automatically. Both checkout and installed-Pub Windows applications pass 15/15; framework checks pass 27/27. An installed Android consumer builds without the Windows DLL; other platform runtimes and physical storage transitions remain pending.

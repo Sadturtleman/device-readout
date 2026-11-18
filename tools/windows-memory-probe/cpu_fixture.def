@@ -1,0 +1,11 @@
+EXPORTS
+    GetProcessHeap=readout_cpu_GetProcessHeap
+    HeapAlloc=readout_cpu_HeapAlloc
+    HeapFree=readout_cpu_HeapFree
+    GetActiveProcessorCount=readout_cpu_GetActiveProcessorCount
+    GetActiveProcessorGroupCount=readout_cpu_GetActiveProcessorGroupCount
+    GetProcessAffinityMask=readout_cpu_GetProcessAffinityMask
+    GetLogicalProcessorInformationEx=readout_cpu_GetLogicalProcessorInformationEx
+    GetProcessDefaultCpuSets=readout_cpu_GetProcessDefaultCpuSets
+    GetSystemCpuSetInformation=readout_cpu_GetSystemCpuSetInformation
+    CallNtPowerInformation=readout_cpu_CallNtPowerInformation

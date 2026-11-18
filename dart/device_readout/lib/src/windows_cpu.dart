@@ -1,14 +1,39 @@
 part of 'transport_native.dart';
 
 typedef _CpuAffinity = ({int groups, int count, BigInt process, BigInt system});
-typedef _CpuCounts = ({int logical, int cores, int? packages});
+typedef _CpuTopology = ({
+  Map<int, CpuCoreSnapshot> logical,
+  int cores,
+  int? packages,
+});
 
 /// Processor topology and process-default scheduling availability. Every native
 /// query, bounded allocation and decode runs on the collection isolate.
 final class _WindowsCpu {
   final ffi.DynamicLibrary kernel;
-  _WindowsCpu([String? libraryPath])
-    : kernel = ffi.DynamicLibrary.open(libraryPath ?? 'kernel32.dll');
+  final String? _libraryPath;
+  ffi.DynamicLibrary? _powerLibrary;
+  _WindowsCpu([this._libraryPath])
+    : kernel = ffi.DynamicLibrary.open(_libraryPath ?? 'kernel32.dll');
+  late final readPower =
+      (_powerLibrary ??= ffi.DynamicLibrary.open(
+        _libraryPath ?? 'powrprof.dll',
+      )).lookupFunction<
+        ffi.Int32 Function(
+          ffi.Int32,
+          ffi.Pointer<ffi.Void>,
+          ffi.Uint32,
+          ffi.Pointer<ffi.Void>,
+          ffi.Uint32,
+        ),
+        int Function(
+          int,
+          ffi.Pointer<ffi.Void>,
+          int,
+          ffi.Pointer<ffi.Void>,
+          int,
+        )
+      >('CallNtPowerInformation');
   late final heap = kernel
       .lookupFunction<
         ffi.Pointer<ffi.Void> Function(),
@@ -48,10 +73,21 @@ final class _WindowsCpu {
   late final systemSets = kernel.lookup<ffi.Void>('GetSystemCpuSetInformation');
   static final _currentProcess = ffi.Pointer<ffi.Void>.fromAddress(-1).address;
 
-  void dispose() => kernel.close();
+  void dispose() {
+    try {
+      _powerLibrary?.close();
+    } finally {
+      kernel.close();
+    }
+  }
+
   DeviceReadoutException _invalid() => const DeviceReadoutException(
     ErrorCode.readFailed,
     'Invalid Windows CPU response.',
+  );
+  DeviceReadoutException _queryError(int error) => DeviceReadoutException(
+    error == 5 ? ErrorCode.permissionDenied : ErrorCode.readFailed,
+    'Windows CPU query failed (Win32 $error).',
   );
   T? _optional<T>(T Function() action) {
     try {
@@ -95,7 +131,10 @@ final class _WindowsCpu {
       if (allowEmpty && size.value == 0) return Uint8List(0);
       throw _invalid();
     }
-    if (calls.error != 122) throw _invalid();
+    if (calls.error != 122) throw _queryError(calls.error);
+    // A null-buffer sizing query may report ERROR_INSUFFICIENT_BUFFER with
+    // zero required bytes when no CPU sets exist. Topology still requires data.
+    if (allowEmpty && size.value == 0) return Uint8List(0);
     for (var attempt = 0; attempt < 3; attempt++) {
       context.cancellation.throwIfCancelled();
       final capacity = size.value;
@@ -107,15 +146,21 @@ final class _WindowsCpu {
         context.cancellation.throwIfCancelled();
         return Uint8List.fromList(data.asTypedList(size.value * unit));
       }
-      if (calls.error != 122 || size.value <= capacity) throw _invalid();
+      if (calls.error != 122) throw _queryError(calls.error);
+      if (size.value <= capacity) throw _invalid();
     }
     throw _invalid();
   });
 
-  _CpuCounts _counts(ReadContext context) {
+  _CpuTopology _topology(ReadContext context) {
     final pointerBytes = ffi.sizeOf<ffi.UintPtr>();
     // WOW64 masks can fold high bits, so never interpret them as complete topology.
-    if (pointerBytes != 8) throw _invalid();
+    if (pointerBytes != 8) {
+      throw const DeviceReadoutException(
+        ErrorCode.unsupportedEntity,
+        'This process cannot identify all logical CPUs from native affinity masks.',
+      );
+    }
     final raw = _bytes(
       context,
       (calls, data, capacity, length) => calls.invoke(
@@ -158,10 +203,15 @@ final class _WindowsCpu {
       offset += size;
     }
     if (cores.isEmpty) throw _invalid();
+    int minimum(Set<int> values) => values.reduce((a, b) => a < b ? a : b);
+    cores.sort((a, b) => minimum(a).compareTo(minimum(b)));
+    packages.sort((a, b) => minimum(a).compareTo(minimum(b)));
     final logical = <int>{};
-    for (final core in cores) {
-      for (final index in core) {
+    final coreMembership = <int, int>{};
+    for (var core = 0; core < cores.length; core++) {
+      for (final index in cores[core]) {
         if (!logical.add(index)) throw _invalid();
+        coreMembership[index] = core;
       }
     }
     final membership = <int, int>{};
@@ -180,10 +230,77 @@ final class _WindowsCpu {
             )))
       throw _invalid();
     return (
-      logical: logical.length,
+      logical: {
+        for (final index in logical.toList()..sort())
+          index: CpuCoreSnapshot(
+            logicalIndex: index,
+            coreIndex: coreMembership[index],
+            packageIndex: membership[index],
+            online: true,
+          ),
+      },
       cores: cores.length,
       packages: packages.isEmpty ? null : packages.length,
     );
+  }
+
+  List<String> list(ReadContext context) =>
+      _topology(context).logical.keys
+          .map((index) => index.toString())
+          .toList(growable: false);
+
+  CpuCoreSnapshot readCore(String? identity, ReadContext context) {
+    final data = _topology(context);
+    final value = data.logical[int.tryParse(identity ?? '')];
+    if (value == null) {
+      throw const DeviceReadoutException(
+        ErrorCode.entityRemoved,
+        'The selected logical CPU is no longer present.',
+      );
+    }
+    final clocks = _optional(() => _clocks(data, value.logicalIndex!, context));
+    return CpuCoreSnapshot(
+      logicalIndex: value.logicalIndex,
+      coreIndex: value.coreIndex,
+      packageIndex: value.packageIndex,
+      online: value.online,
+      currentClockHz: clocks?.current,
+      maximumClockHz: clocks?.maximum,
+    );
+  }
+
+  ({double current, double maximum})? _clocks(
+    _CpuTopology data,
+    int index,
+    ReadContext context,
+  ) {
+    // Power records expose no processor group. Only a contiguous group-zero
+    // inventory can be mapped without guessing which logical CPU they describe.
+    final count = data.logical.length;
+    if (groupCount() != 1 ||
+        count > 64 ||
+        data.logical.keys.first != 0 ||
+        data.logical.keys.last != count - 1)
+      return null;
+    return _withMemory((reserve) {
+      context.cancellation.throwIfCancelled();
+      final values = reserve(count * 24).cast<ffi.Uint32>();
+      if (readPower(11, ffi.nullptr, 0, values.cast(), count * 24) != 0)
+        return null;
+      context.cancellation.throwIfCancelled();
+      final numbers = <int>{};
+      ({double current, double maximum})? result;
+      for (var position = 0; position < count; position++) {
+        final offset = position * 6, number = values[offset];
+        if (number >= count || !numbers.add(number)) return null;
+        if (number == index)
+          result = (
+            current: values[offset + 2] * 1000000.0,
+            maximum: values[offset + 1] * 1000000.0,
+          );
+      }
+      return result;
+    });
   }
 
   _CpuAffinity _affinity(ReadContext context) => _withMemory((reserve) {
@@ -299,7 +416,7 @@ final class _WindowsCpu {
     String? Function(String, String) registry,
   ) {
     context.cancellation.throwIfCancelled();
-    final counts = _optional(() => _counts(context));
+    final counts = _optional(() => _topology(context));
     final total = _optional(() {
       final value = activeCount(0xffff);
       return value > 0 && value != 0xffffffff ? value : null;
@@ -317,7 +434,7 @@ final class _WindowsCpu {
     return CpuSnapshot(
       model: model,
       manufacturer: manufacturer,
-      logicalProcessorCount: counts?.logical ?? total,
+      logicalProcessorCount: counts?.logical.length ?? total,
       availableLogicalProcessorCount: available,
       physicalCoreCount: counts?.cores,
       processorPackageCount: counts?.packages,

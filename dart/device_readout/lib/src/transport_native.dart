@@ -80,6 +80,8 @@ final class _NativeCollector
                 entity.kind == EntityKind.power ||
                 entity.kind == EntityKind.storageVolume ||
                 entity.kind == EntityKind.cpu ||
+                (entity.kind == EntityKind.cpuCore &&
+                    ffi.sizeOf<ffi.UintPtr>() == 8) ||
                 entity.kind == EntityKind.deviceInfo));
     return EntityCapabilities(readable: available, watchable: available);
   }
@@ -87,6 +89,11 @@ final class _NativeCollector
   @override
   List<String> list(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.cpuCore) {
+      return (windowsCpu ??= _WindowsCpu(
+        bindings?.windowsCpuLibrary,
+      )).list(context);
+    }
     if (Platform.isWindows && kind == EntityKind.storageVolume) {
       return (windowsStorage ??= _WindowsStorage(
         bindings?.windowsStorageLibrary,
@@ -102,6 +109,7 @@ final class _NativeCollector
   String? current(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
     if (Platform.isWindows && kind == EntityKind.storageVolume) return null;
+    if (Platform.isWindows && kind == EntityKind.cpuCore) return null;
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
       'Native current selection is unavailable for this entity.',
@@ -110,6 +118,11 @@ final class _NativeCollector
 
   @override
   DeviceSnapshot read(EntityAddress entity, ReadContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.cpuCore) {
+      return (windowsCpu ??= _WindowsCpu(
+        bindings?.windowsCpuLibrary,
+      )).readCore(entity.targetId, context);
+    }
     if (Platform.isWindows && entity.kind == EntityKind.cpu) {
       return (windowsCpu ??= _WindowsCpu(bindings?.windowsCpuLibrary)).read(
         context,

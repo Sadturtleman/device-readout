@@ -6,7 +6,11 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The [latest upload checkpoint](docs/verification/2026-11-18-upload-storage-cpu.md) includes the Windows storage native-boundary fixes and new Dart/Flutter CPU collection. Fresh upload checks pass 104/104 Dart contracts in both JIT and CLI-bundle modes, plus 16/16 actual Flutter Windows scenarios. CPU-specific native faults, installed CPU consumers and the complete platform acceptance matrix remain pending.
+The [Windows CPU-core checkpoint](docs/verification/2026-11-18-dart-windows-cpu-cores.md) adds typed logical-CPU discovery, core/package membership and native clock get/watch, with explicit current selection and observed-removal lifetimes. Final Dart JIT/CLI-bundle gates pass 135/135 each; checkout and installed-Pub Windows apps pass 17/17 each, and Flutter framework tests pass 27/27. Physical topology changes, additional architectures and the full acceptance matrix remain pending.
+
+The [Windows CPU native follow-up](docs/verification/2026-11-18-dart-windows-cpu-native.md) fixes a valid empty CPU-set sizing result losing known process availability. Seventeen native-response/stall scenarios run per Dart mode; final JIT and CLI-bundle suites pass 121/121 each. Checkout and installed-Pub Flutter Windows applications pass 16/16 each, with 27/27 framework checks. Additional architectures, physical configurations and the full acceptance matrix remain pending.
+
+The [earlier storage/CPU upload checkpoint](docs/verification/2026-11-18-upload-storage-cpu.md) includes the Windows storage native-boundary fixes and initial Dart/Flutter CPU collection. At that checkpoint, upload checks passed 104/104 Dart contracts in both JIT and CLI-bundle modes, plus 16/16 actual Flutter Windows scenarios. The CPU follow-ups above extend its native-fault and installed-consumer coverage; the complete platform acceptance matrix remains pending.
 
 The [storage native-boundary follow-up](docs/verification/2026-11-18-dart-windows-storage-native.md) fixes malformed optional metadata and preserves Win32 errors inside a bundled C helper. Dart passes 99/99 checks in JIT and CLI-bundle modes; both checkout and installed-Pub Flutter Windows apps pass 15/15; framework tests pass 27/27 and Chrome/Edge each pass sixteen browser scenarios. Android's installed package builds without a Windows DLL. Physical/platform acceptance gaps remain documented.
 

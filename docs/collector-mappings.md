@@ -56,11 +56,15 @@ Actual Android API 26/36 and Chrome/Edge applications now verify this mapping an
 
 ## Windows Dart and Flutter
 
+The [CPU-core checkpoint](verification/2026-11-18-dart-windows-cpu-cores.md) adds context-owned logical-CPU discovery, per-target topology and unambiguous native clock reads. Current selection is explicit; observed removal retires handles. Current gates pass 135/135 Dart checks per mode, 17/17 in each checkout/installed Windows app and 27/27 framework tests.
+
+The [CPU native follow-up](verification/2026-11-18-dart-windows-cpu-native.md) distinguishes valid empty CPU-set sizing from failure so known affinity remains available. Seventeen native scenarios per mode supplement independent references and real policy checks. Current gates pass 121/121 Dart checks per mode, 16/16 in each checkout/installed Windows app and 27/27 framework checks; remaining physical/architecture/platform coverage is explicit in the record.
+
 The [CPU/upload checkpoint](verification/2026-11-18-upload-storage-cpu.md) passes 104/104 fresh Dart JIT/CLI-bundle checks per mode and 16/16 actual checkout Flutter Windows scenarios. Independent CPU references and four child-process policy cases cover topology, affinity/default CPU sets and CPU-time quota semantics. Installed CPU consumers and additional native/configuration coverage remain pending.
 
 The [native storage follow-up](verification/2026-11-18-dart-windows-storage-native.md) adds field-local malformed-text handling, atomic native result/error capture and 29 controlled native scenarios. The current gates pass 99/99 Dart JIT and CLI-bundle checks, 15/15 in each checkout/installed Windows app, 27 framework checks and sixteen browser scenarios per browser. The native asset is Windows-only; physical storage transitions and the full platform matrix remain pending.
 
-The standalone `DeviceAccess.native()` collector currently implements ten entity kinds on Windows, inherited by Flutter Windows without another platform plugin. These mappings do not establish support for every field or the full Windows version/architecture matrix. The preceding [storage verification](verification/2026-11-18-dart-windows-storage.md) records 70 Dart JIT/native contracts per mode, fifteen actual Flutter Windows scenarios and 27 framework tests. An earlier compiler abort in a test child remains recorded; its cause has not been established.
+The standalone `DeviceAccess.native()` collector currently implements eleven entity kinds on Windows, inherited by Flutter Windows without another platform plugin. These mappings do not establish support for every field or the full Windows version/architecture matrix. The preceding [storage verification](verification/2026-11-18-dart-windows-storage.md) records 70 Dart JIT/native contracts per mode, fifteen actual Flutter Windows scenarios and 27 framework tests. An earlier compiler abort in a test child remains recorded; its cause has not been established.
 
 | Entity | Native mapping |
 |---|---|
@@ -68,6 +72,7 @@ The standalone `DeviceAccess.native()` collector currently implements ten entity
 | Os | RtlGetVersion running NT major.minor.build and build number; Windows/Windows NT identity labels. |
 | Runtime | Dart ABI and pointer size for process fields; IsWow64Process2 native-machine result for host architecture. Supported ABIs remain null. |
 | Cpu | Primary processor registry model/vendor; native topology for whole-system logical/core/package counts; process affinity and default CPU sets for single-group process availability. CPU-time quotas do not alter processor counts. SoC fields and multi-group availability remain null. |
+| CpuCore | Native topology maps logicalIndex = group × 64 + bit, normalized core/package indices and current online presence. CallNtPowerInformation supplies MHz clock fields converted to Hz only for an unambiguous contiguous group-zero inventory; failed/malformed/sparse/multi-group clocks remain null. |
 | Ram | Installed bytes from firmware-backed API, OS-accessible/available bytes from GlobalMemoryStatusEx, current native low-memory state. Advertised/free/threshold fields remain null. |
 | ProcessMemory | GlobalMemoryStatusEx.ullAvailPageFile for the process's available commit budget. |
 | StorageVolume | Local volume GUID discovery, context-owned handles, GetDiskSpaceInformationW unquotaed capacity, separate GetDiskFreeSpaceExW volume/caller values, root-handle metadata and GetDriveTypeW. A bundled C helper preserves native errors; malformed optional text becomes null. No inferred current volume; app selection is explicit. Remaining optional fields are null. Controlled failures/removal/held calls are verified; physical configurations remain pending. |

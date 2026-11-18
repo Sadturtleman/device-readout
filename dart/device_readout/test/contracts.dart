@@ -25,6 +25,9 @@ import 'native_windows_storage.dart' as nativeStorageTests;
 import 'native_windows_storage_faults.dart' as nativeStorageFaultTests;
 import 'native_windows_cpu.dart' as nativeCpuTests;
 import 'native_windows_cpu_controls.dart' as nativeCpuControlTests;
+import 'native_windows_cpu_faults.dart' as nativeCpuFaultTests;
+import 'native_windows_cpu_cores.dart' as nativeCpuCoreTests;
+import 'native_windows_cpu_core_faults.dart' as nativeCpuCoreFaultTests;
 import 'native_windows_device_info.dart' as nativeDeviceInfoTests;
 import 'native_windows_registry.dart' as nativeRegistryTests;
 
@@ -592,6 +595,8 @@ Future<void> configurationAndStartupErrors() async {
 }
 
 Future<void> main(List<String> arguments) async {
+  if (await nativeCpuCoreFaultTests.runChildIfRequested(arguments)) return;
+  if (await nativeCpuFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeCpuControlTests.runChildIfRequested(arguments)) return;
   if (await nativeStorageFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeRegistryTests.runChildIfRequested(arguments)) return;
@@ -606,6 +611,9 @@ Future<void> main(List<String> arguments) async {
     ...nativeStorageFaultTests.checks,
     ...nativeCpuTests.checks,
     ...nativeCpuControlTests.checks,
+    ...nativeCpuFaultTests.checks,
+    ...nativeCpuCoreTests.checks,
+    ...nativeCpuCoreFaultTests.checks,
     ...nativeRuntimeTests.checks,
     ...nativeProcessTests.checks,
     ...nativeWindowsTests.checks,
