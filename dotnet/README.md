@@ -1,5 +1,9 @@
 # DeviceReadout for .NET 10
 
+Run `tools/test-dotnet-power-native.ps1` for the additional [23-scenario native power gate](../docs/verification/2026-11-18-dotnet-power-native.md). It builds a Windows SDK C fixture with Visual Studio 2022 C++ tools and runs each case in an owned child. The production P/Invoke path covers native output/failure semantics, real system capabilities and held calls. The ordinary `tools/test-dotnet.ps1` suite remains separate and passes 168/168; both commands are required to reproduce this checkpoint.
+
+The [Windows power-source checkpoint](../docs/verification/2026-11-18-dotnet-power-source.md) corrects ambiguous DC status to a nullable source, verifies get/watch consistency and preserves precise native source notifications. The normal-user suite passes 168/168; restricted-environment failures and remaining hardware/native-path coverage are recorded separately.
+
 The common package generates all 46 models and typed Entity constants from the shared schema. The Windows package currently implements the 32 entity collectors listed in `../docs/collector-mappings.md`, each with only its documented fields. This is an in-progress implementation, not a claim of complete Windows support.
 
 ```csharp

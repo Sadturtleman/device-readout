@@ -295,7 +295,9 @@ internal sealed class WindowsCollector : IDeviceCollector
     private PowerSnapshot Power()
     {
         var state = power.Read();
-        return new PowerSnapshot {PowerSource = state.AcLineStatus switch {0 => DeviceReadout.PowerSource.Battery, 1 => DeviceReadout.PowerSource.External, _ => null},
+        return new PowerSnapshot {PowerSource = state.AcLineStatus switch {
+                0 when state.BatteryCapabilities is {SystemBatteriesPresent: 1, UpsPresent: 0, BatteriesAreShortTerm: 0} => DeviceReadout.PowerSource.Battery,
+                1 => DeviceReadout.PowerSource.External, _ => null},
             PowerSaveMode = state.SystemStatusFlag switch {0 => false, 1 => true, _ => null}};
     }
 

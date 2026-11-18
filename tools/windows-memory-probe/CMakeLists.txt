@@ -7,3 +7,6 @@ target_compile_definitions(device_readout_memory_probe PRIVATE WIN32_LEAN_AND_ME
 add_library(device_readout_registry_fixture SHARED registry_fixture.c)
 target_link_libraries(device_readout_registry_fixture PRIVATE advapi32)
 target_compile_definitions(device_readout_registry_fixture PRIVATE WIN32_LEAN_AND_MEAN)
+
+add_library(device_readout_power_fixture SHARED power_fixture.c power_fixture.def)
+target_compile_definitions(device_readout_power_fixture PRIVATE WIN32_LEAN_AND_MEAN)

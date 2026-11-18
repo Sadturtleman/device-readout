@@ -1,0 +1,6 @@
+LIBRARY device_readout_power_fixture
+EXPORTS
+    GetSystemPowerStatus=readout_fixture_GetSystemPowerStatus
+    GetPwrCapabilities=readout_fixture_GetPwrCapabilities
+    PowerSettingRegisterNotification=readout_fixture_PowerSettingRegisterNotification
+    PowerSettingUnregisterNotification=readout_fixture_PowerSettingUnregisterNotification

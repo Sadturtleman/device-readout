@@ -1,5 +1,6 @@
-param([string]$Filter)
+param([string]$Filter, [string]$PowerFixture)
 $ErrorActionPreference = 'Stop'
+if ($Filter -and $PowerFixture) { throw 'Filter and PowerFixture select separate verification modes.' }
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $localDotnet = Join-Path $projectRoot '.tools/dotnet/dotnet.exe'
 $dotnet = if (Test-Path -LiteralPath $localDotnet) { $localDotnet } else { (Get-Command dotnet -ErrorAction Stop).Source }
@@ -16,7 +17,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'C# generation failed.' }
     & $dotnet build (Join-Path $projectRoot 'dotnet/DeviceReadout.Tests') -m:1 -p:BuildInParallel=false -p:UseSharedCompilation=false --verbosity minimal
     if ($LASTEXITCODE -ne 0) { throw '.NET build failed.' }
-    $testArguments = if ($Filter) { @('--filter', $Filter) } else { @() }
+    $testArguments = if ($PowerFixture) { @('--power-native-parent', (Resolve-Path -LiteralPath $PowerFixture).Path) }
+        elseif ($Filter) { @('--filter', $Filter) } else { @() }
     & $dotnet (Join-Path $projectRoot 'dotnet/DeviceReadout.Tests/bin/Debug/net10.0/DeviceReadout.Tests.dll') @testArguments
     if ($LASTEXITCODE -ne 0) { throw '.NET contract verification failed.' }
 } finally {

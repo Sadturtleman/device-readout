@@ -254,6 +254,7 @@ internal static partial class WindowsConnectivityTests
         internal readonly TaskCompletionSource Stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource ReadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly ManualResetEventSlim ContinueRead = new(true);
+        internal Func<bool>? BeforeStatusRemoval;
         internal int Initializations, Uninitializations, Reads, Registrations, Removals, LevelReads;
         internal int Level = 3, Cost = 1;
         internal int LevelResult, CostResult, CostTypeResult, ProfileResult, AddResult;
@@ -291,7 +292,8 @@ internal static partial class WindowsConnectivityTests
                 lock (gate) {token = ++nextToken;Marshal.AddRef(handler);handlers.Add(token, handler);}return 0;
             }));
             Set(factory, 13, new WinRtRemoveReportEvent((nint self, long token) => {
-                Record();Removals++;nint handler;lock (gate) {if (!handlers.Remove(token, out handler)) return unchecked((int)0x80070057);}
+                Record();if (BeforeStatusRemoval?.Invoke() == false) return unchecked((int)0x80004005);
+                Removals++;nint handler;lock (gate) {if (!handlers.Remove(token, out handler)) return unchecked((int)0x80070057);}
                 Marshal.Release(handler);return 0;
             }));
         }

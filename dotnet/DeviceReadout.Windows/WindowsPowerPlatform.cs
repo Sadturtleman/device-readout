@@ -5,7 +5,10 @@ using System.Collections.Concurrent;
 namespace DeviceReadout.Windows;
 
 internal readonly record struct WindowsPowerState(byte AcLineStatus, byte SystemStatusFlag,
-    byte BatteryFlag = 255, byte BatteryLifePercent = 255, uint BatteryLifeTime = uint.MaxValue, uint BatteryFullLifeTime = uint.MaxValue);
+    byte BatteryFlag = 255, byte BatteryLifePercent = 255, uint BatteryLifeTime = uint.MaxValue, uint BatteryFullLifeTime = uint.MaxValue,
+    WindowsBatteryCapabilities? BatteryCapabilities = null);
+
+internal readonly record struct WindowsBatteryCapabilities(byte SystemBatteriesPresent, byte UpsPresent, byte BatteriesAreShortTerm);
 
 internal static class WindowsPowerSettings
 {
@@ -27,7 +30,11 @@ internal sealed class WindowsPowerPlatform : IWindowsPowerPlatform
     {
         if (!Native.GetSystemPowerStatus(out var state))
             throw new DeviceReadoutException(ErrorCode.ReadFailed, $"GetSystemPowerStatus failed (Win32 {Marshal.GetLastPInvokeError()}).");
-        return new(state.AcLineStatus, state.SystemStatusFlag, state.BatteryFlag, state.BatteryLifePercent, state.BatteryLifeTime, state.BatteryFullLifeTime);
+        WindowsBatteryCapabilities? batteries = null;
+        if (state.AcLineStatus == 0 && GetPwrCapabilities(out var capabilities))
+            batteries = new(capabilities.SystemBatteriesPresent, capabilities.UpsPresent, capabilities.BatteriesAreShortTerm);
+        return new(state.AcLineStatus, state.SystemStatusFlag, state.BatteryFlag, state.BatteryLifePercent,
+            state.BatteryLifeTime, state.BatteryFullLifeTime, batteries);
     }
     public IDisposable? Subscribe(Guid setting, Action<uint> changed, Action<Exception> fail)
         => Registration.Create(setting, changed, fail);
@@ -97,6 +104,18 @@ internal sealed class WindowsPowerPlatform : IWindowsPowerPlatform
     private delegate uint NotificationCallback(nint context, uint type, nint setting);
     [StructLayout(LayoutKind.Sequential)]
     private struct NotificationParameters {internal nint Callback, Context;}
+    // The Windows SDK fixes these fields within the 76-byte SYSTEM_POWER_CAPABILITIES layout.
+    [StructLayout(LayoutKind.Explicit, Size = 76)]
+    private struct SystemPowerCapabilities
+    {
+        [FieldOffset(12)] internal byte UpsPresent;
+        [FieldOffset(30)] internal byte SystemBatteriesPresent;
+        [FieldOffset(31)] internal byte BatteriesAreShortTerm;
+    }
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("powrprof.dll")]
+    [return: MarshalAs(UnmanagedType.U1)]
+    private static extern bool GetPwrCapabilities(out SystemPowerCapabilities capabilities);
     [DllImport("powrprof.dll")]
     private static extern uint PowerSettingRegisterNotification(in Guid setting, uint flags, ref NotificationParameters recipient, out nint registrationHandle);
     [DllImport("powrprof.dll")]

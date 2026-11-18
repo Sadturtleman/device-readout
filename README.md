@@ -6,7 +6,13 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The [Dart and Flutter Windows power checkpoint](docs/verification/2026-11-18-dart-windows-power.md) adds native Power get/watch, saver status and conservative battery-source disambiguation. Final Dart JIT/native checks pass 69/69 each, the actual Windows release app passes 14/14 and Flutter framework checks pass 27/27. On-battery/UPS transitions, native failures, C# parity and the full acceptance matrix remain pending.
+The [latest upload checkpoint](docs/verification/2026-11-18-upload-power-storage.md) includes the verified C# power changes and initial Dart Windows storage collection. Dart analysis and the standalone storage check pass on this host; aggregate, compiled, independent-reference and Flutter storage verification remain pending.
+
+The [C# native power checkpoint](docs/verification/2026-11-18-dotnet-power-native.md) adds 23 child-process scenarios through the production P/Invoke declarations, covering source flags, native failures, real system capability reads and held-call deadlines/cancellation. The final ordinary-user .NET suite passes 168/168. It also corrects a Wi-Fi test that assumed native cleanup completed synchronously. Physical power transitions and the full acceptance matrix remain pending.
+
+The [C# Windows power-source follow-up](docs/verification/2026-11-18-dotnet-power-source.md) fixes ambiguous DC reads being reported as Battery while preserving exact native source events and independent saver state. The normal-user .NET suite passes 168/168 with zero build warnings/errors. The record also preserves five restricted-environment native failures; native-call coverage is extended by the checkpoint above, while actual battery/UPS transitions remain pending.
+
+The [Dart and Flutter Windows power checkpoint](docs/verification/2026-11-18-dart-windows-power.md) adds native Power get/watch, saver status and conservative battery-source disambiguation. Final Dart JIT/native checks pass 69/69 each, the actual Windows release app passes 14/14 and Flutter framework checks pass 27/27. On-battery/UPS transitions, native failures and the full acceptance matrix remain pending; the C# direct-source follow-up is recorded above.
 
 The [Flutter locale platform checkpoint](docs/verification/2026-11-18-flutter-locale-platforms.md) verifies actual app locale changes and native fallback on Android API 26/36 and Chrome/Edge, including separate consumers installed from Pub archives. Android passes 34/34 per device and consumer; web passes ten application scenarios per browser and consumer, including package worker deployment. Physical devices, Apple platforms, further browsers and the full acceptance matrix remain pending.
 

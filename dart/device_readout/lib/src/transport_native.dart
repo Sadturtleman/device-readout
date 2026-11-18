@@ -12,6 +12,7 @@ part 'windows_memory.dart';
 part 'windows_runtime.dart';
 part 'windows_os.dart';
 part 'windows_power.dart';
+part 'windows_storage.dart';
 part 'windows_device_info.dart';
 part 'windows_time_zone.dart';
 part 'windows_locale.dart';
@@ -33,7 +34,10 @@ CollectionChannel createChannel(
 DeviceCollector createNativeCollector(Object? _) => _NativeCollector();
 
 final class _NativeCollector
-    implements DeviceCollector, DeviceCapabilityCollector {
+    implements
+        DeviceCollector,
+        DeviceCapabilityCollector,
+        DeviceDiscoveryCollector {
   // The factory and this lazy binding are accessed only by the collection isolate.
   _WindowsMemory? windowsMemory;
   _WindowsRuntime? windowsRuntime;
@@ -42,6 +46,7 @@ final class _NativeCollector
   _WindowsTimeZone? windowsTimeZone;
   _WindowsLocale? windowsLocale;
   _WindowsPower? windowsPower;
+  _WindowsStorage? windowsStorage;
 
   @override
   EntityCapabilities capabilities(EntityAddress entity, ReadContext context) {
@@ -55,8 +60,31 @@ final class _NativeCollector
                 entity.kind == EntityKind.timeZone ||
                 entity.kind == EntityKind.locale ||
                 entity.kind == EntityKind.power ||
+                entity.kind == EntityKind.storageVolume ||
                 entity.kind == EntityKind.deviceInfo));
     return EntityCapabilities(readable: available, watchable: available);
+  }
+
+  @override
+  List<String> list(EntityKind kind, ReadContext context) {
+    context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.storageVolume) {
+      return (windowsStorage ??= _WindowsStorage()).list(context);
+    }
+    throw const DeviceReadoutException(
+      ErrorCode.unsupportedEntity,
+      'Native discovery is unavailable for this entity.',
+    );
+  }
+
+  @override
+  String? current(EntityKind kind, ReadContext context) {
+    context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.storageVolume) return null;
+    throw const DeviceReadoutException(
+      ErrorCode.unsupportedEntity,
+      'Native current selection is unavailable for this entity.',
+    );
   }
 
   @override
@@ -82,6 +110,12 @@ final class _NativeCollector
     }
     if (Platform.isWindows && entity.kind == EntityKind.power) {
       return (windowsPower ??= _WindowsPower()).read();
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.storageVolume) {
+      return (windowsStorage ??= _WindowsStorage()).read(
+        entity.targetId,
+        context,
+      );
     }
     if (entity.kind != EntityKind.runtime) {
       throw const DeviceReadoutException(
@@ -128,7 +162,12 @@ final class _NativeCollector
       try {
         try {
           try {
-            windowsPower?.dispose();
+            try {
+              windowsStorage?.dispose();
+            } finally {
+              windowsStorage = null;
+              windowsPower?.dispose();
+            }
           } finally {
             windowsPower = null;
             windowsLocale?.dispose();

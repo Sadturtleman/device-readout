@@ -3,6 +3,17 @@ using System.Diagnostics;
 using DeviceReadout.Windows;
 using System.Collections.Immutable;
 
+if (args is ["--power-native-parent", var powerFixture]) {
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+    try {await WindowsPowerNativeTests.RunParent(powerFixture);return 0;}
+    catch (Exception error) {Console.Error.WriteLine(error);return 1;}
+}
+if (args is ["--power-native-child", var nativePowerFixture, var powerScenario]) {
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+    try {await WindowsPowerNativeTests.RunChild(nativePowerFixture, powerScenario);return 0;}
+    catch (Exception error) {Console.Error.WriteLine(error);return 1;}
+}
+
 if (args is ["--cpu-availability-child"]) {
     if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
     try {await WindowsCpuAvailabilityTests.RunChild();return 0;}

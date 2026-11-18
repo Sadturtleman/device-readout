@@ -76,16 +76,28 @@ internal static partial class WindowsConnectivityTests
     private static async Task WifiRssiRemoval()
     {
         var runtime = new ConnectivityFixture();runtime.EnableWifi();var profile = runtime.AddWifi("Selected");
+        using var continueRemoval = new ManualResetEventSlim();
+        var removalStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runtime.BeforeStatusRemoval = () => {removalStarted.TrySetResult();return continueRemoval.Wait(TimeSpan.FromSeconds(5));};
         var wlan = new WlanFixture();wlan.Signals[profile.AdapterId] = -61;
         using var access = new DeviceAccess(new WindowsCollector(connectivityRuntime: runtime, wlanApi: wlan));
         var first = (await access.List(Entities.WifiConnection)).Single();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        await using (var stream = access.WithPollInterval(TimeSpan.FromHours(1)).Watch(first, deadline.Token).GetAsyncEnumerator()) {
-            Check(await stream.MoveNextAsync(), "initial connected signal");
-            wlan.QueryResult = 5023;wlan.CloseResult = 6;runtime.Fire();
-            await Error(ErrorCode.EntityRemoved, async () => {await stream.MoveNextAsync();});
+        try {
+            await using (var stream = access.WithPollInterval(TimeSpan.FromHours(1)).Watch(first, deadline.Token).GetAsyncEnumerator()) {
+                Check(await stream.MoveNextAsync(), "initial connected signal");
+                wlan.QueryResult = 5023;wlan.CloseResult = 6;runtime.Fire();
+                await Error(ErrorCode.EntityRemoved, async () => {await stream.MoveNextAsync();});
+            }
+            await removalStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Check(runtime.Registrations == 1 && runtime.Removals == 0 && runtime.HandlerCount == 1,
+                "public disconnect and stream disposal finish before held native observation removal");
+        } finally {
+            continueRemoval.Set();
+            await TestCompletion.Until(() => runtime.Registrations == runtime.Removals && runtime.HandlerCount == 0,
+                "disconnected Wi-Fi observation finishes native removal after release");
+            runtime.BeforeStatusRemoval = null;
         }
-        Check(runtime.Registrations == runtime.Removals, "native disconnect stops status observation even if client close reports failure");
         wlan.QueryResult = wlan.CloseResult = 0;
         var calls = wlan.Queries;await Error(ErrorCode.EntityRemoved, () => access.Get(first));
         Check(wlan.Queries == calls, "retired handle performs no more native signal reads");

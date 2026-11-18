@@ -7,10 +7,27 @@ using DeviceReadout.Windows;
 internal static class WindowsPowerTests
 {
     internal static IEnumerable<(string Name, Func<Task> Run)> Cases() => [
+        ("Windows power reads leave an ambiguous DC source null without losing saver state", AmbiguousDirectSource),
+        ("Windows power get and watch distinguish onboard-only capabilities from UPS and unknown flags", SourceCapabilities),
         ("Windows power events preserve payload values and equal samples on the collection worker", EventValues),
         ("real Windows power notifications deliver current settings without a UI message loop", NativeNotifications),
         ("Windows power watches retain polling fallback and release partial or failed subscriptions", SubscriptionLifecycle)
     ];
+
+    private static async Task AmbiguousDirectSource()
+    {
+        var platform = new PowerPlatformFixture {State = new(0, 1), NotificationsAvailable = false};
+        using var access = new DeviceAccess(new WindowsCollector(powerPlatform: platform));
+        var snapshot = await access.Get(Entities.Power);
+        Check(snapshot.PowerSource is null, "DC alone cannot distinguish an onboard battery from a UPS");
+        Check(snapshot.PowerSaveMode == true, "unavailable source classification preserves saver state");
+        await using var stream = access.WithPollInterval(TimeSpan.FromMilliseconds(15)).Watch(Entities.Power).GetAsyncEnumerator();
+        for (var i = 0; i < 2; i++) {
+            Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)), "initial and polled snapshots");
+            Check(stream.Current.PowerSource is null && stream.Current.PowerSaveMode == true,
+                "watch applies the same source semantics as get");
+        }
+    }
 
     private static async Task EventValues()
     {
@@ -22,6 +39,7 @@ internal static class WindowsPowerTests
         try {
             Check(await stream.MoveNextAsync() && stream.Current.PowerSource == PowerSource.External, "initial power read");
             Check(platform.Active == 2, "power source and battery saver notifications");
+            platform.State = new(0, 1);
             platform.Emit(WindowsPowerSettings.Source, 2);
             platform.Emit(WindowsPowerSettings.Source, 1);
             platform.Emit(WindowsPowerSettings.Source, 1);
@@ -35,12 +53,46 @@ internal static class WindowsPowerTests
             Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)) && stream.Current.PowerSaveMode is null, "unknown native saver state");
             platform.Emit(WindowsPowerSettings.Source, uint.MaxValue);
             Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)) && stream.Current.PowerSource is null, "unknown native power source");
+            Check((await access.Get(Entities.Power)).PowerSource is null, "event payload does not become a cached source for unrelated reads");
         } finally {await stream.DisposeAsync();}
         await TestCompletion.Until(() => Volatile.Read(ref platform.Active) == 0, "power notifications released");
         Check(platform.Active == 0, "notifications released with stream");
         Check(platform.NativeThreads.All(thread => thread == platform.NativeThreads[0] && thread != caller), "registration, reads and cleanup share collection lane");
         var reads = platform.Reads;platform.Emit(WindowsPowerSettings.Source, 1);
         await Task.Delay(20);Check(platform.Reads == reads, "late callback performs no collection");
+    }
+
+    private static async Task SourceCapabilities()
+    {
+        (string Name, WindowsPowerState State, PowerSource? Source, bool? Saver)[] cases = [
+            ("onboard-only", new(0, 1, BatteryCapabilities: new(1, 0, 0)), PowerSource.Battery, true),
+            ("UPS", new(0, 0, BatteryCapabilities: new(1, 1, 1)), null, false),
+            ("mixed batteries", new(0, 1, BatteryCapabilities: new(1, 1, 0)), null, true),
+            ("short-term batteries", new(0, 1, BatteryCapabilities: new(1, 0, 1)), null, true),
+            ("no batteries", new(0, 0, BatteryCapabilities: new(0, 0, 0)), null, false),
+            ("unknown battery presence", new(0, 1, BatteryCapabilities: new(255, 0, 0)), null, true),
+            ("unknown UPS presence", new(0, 1, BatteryCapabilities: new(1, 255, 0)), null, true),
+            ("unknown battery duration", new(0, 1, BatteryCapabilities: new(1, 0, 255)), null, true),
+            ("external with UPS present", new(1, 0, BatteryCapabilities: new(1, 1, 1)), PowerSource.External, false),
+            ("unknown line status", new(255, 1, BatteryCapabilities: new(1, 0, 0)), null, true),
+            ("unknown saver flag", new(0, 7, BatteryCapabilities: new(1, 0, 0)), PowerSource.Battery, null)
+        ];
+        foreach (var item in cases) {
+            var platform = new PowerPlatformFixture {State = item.State, NotificationsAvailable = false};
+            using var access = new DeviceAccess(new WindowsCollector(powerPlatform: platform));
+            var snapshot = await access.Get(Entities.Power);
+            Check(snapshot.PowerSource == item.Source && snapshot.PowerSaveMode == item.Saver && snapshot.ThermalState is null,
+                $"{item.Name}: independent nullable fields from get");
+            await using var stream = access.WithPollInterval(TimeSpan.FromMilliseconds(15)).Watch(Entities.Power).GetAsyncEnumerator();
+            DateTimeOffset? previous = null;
+            for (var i = 0; i < 2; i++) {
+                Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)), $"{item.Name}: watch value");
+                Check(stream.Current.PowerSource == item.Source && stream.Current.PowerSaveMode == item.Saver,
+                    $"{item.Name}: identical get/watch semantics");
+                Check(previous is null || stream.Current.CollectedAt > previous, $"{item.Name}: equal values are collected again");
+                previous = stream.Current.CollectedAt;
+            }
+        }
     }
 
     private static async Task NativeNotifications()
