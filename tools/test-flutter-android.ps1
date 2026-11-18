@@ -122,7 +122,12 @@ try {
             $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload))
             $report = $json | ConvertFrom-Json
             Set-Content -LiteralPath $reportPath -Value $json -Encoding utf8
-            if (-not $report.passed -or $report.checks.Count -ne 28) { throw "Android state/sensor verification failed; see $reportPath" }
+            if (-not $report.passed -or $report.checks.Count -ne 29) { throw "Android state/sensor verification failed; see $reportPath" }
+            $locale = $report.nativeState.appLocale
+            if (($locale.resolvedLocales -join ',') -cne 'zh-Hant-TW,fr-FR' -or
+                -not $locale.nativeRestored -or $locale.detachError -cne 'readFailed') {
+                throw 'App locale observation or native restoration evidence is incomplete.'
+            }
             if (-not $powerChanged) { throw 'A native power transition was not exercised.' }
             $api = ((Invoke-TestAdb -AdbArguments @('shell', 'getprop', 'ro.build.version.sdk')) -join '').Trim()
             $model = ((Invoke-TestAdb -AdbArguments @('shell', 'getprop', 'ro.product.model')) -join '').Trim()
@@ -181,7 +186,7 @@ try {
             $json = $report | ConvertTo-Json -Depth 6 -Compress
             Set-Content -LiteralPath $reportPath -Value $json -Encoding utf8
             Write-Output $json
-            Write-Output "33/33 Flutter Android state and sensor scenarios passed on $avd."
+            Write-Output "34/34 Flutter Android state and sensor scenarios passed on $avd."
             return
         }
         Start-Sleep -Milliseconds 500

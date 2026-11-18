@@ -268,6 +268,7 @@ final class DeviceAccess {
     _context.closed = true;
     _context.lifetime.cancel();
     _context.sensorSources.clear();
+    _context.stateSources.clear();
     _context.scopedFailures.clear();
     _context.channel.close();
   }
@@ -297,6 +298,7 @@ final class _AccessContext {
   final CollectionChannel channel;
   final lifetime = CancellationToken();
   final observed = <_EntityKey, DeviceSnapshot?>{};
+  final stateSources = <_EntityKey, Object>{};
   final targets = <_EntityKey, Entity<DeviceSnapshot>>{};
   final nativeAddresses = <_EntityKey, EntityAddress>{};
   final nativeTargets = <_EntityKey, Entity<DeviceSnapshot>>{};

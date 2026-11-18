@@ -34,6 +34,10 @@ class _BrowserContractsState extends State<BrowserContracts>
   final sensorErrors = <String>[];
   late final Ticker ticker;
   int frames = 0;
+  final appLocale = ValueNotifier(const ui.Locale('en', 'US'));
+  final localeState = ValueNotifier(
+    readout.FlutterLocaleState(currentLocale: null),
+  );
 
   @override
   void initState() {
@@ -76,6 +80,8 @@ class _BrowserContractsState extends State<BrowserContracts>
 
   Future<Map<String, Object?>> _command(String name) async {
     switch (name) {
+      case 'localeObservation':
+        return _verifyLocaleObservation();
       case 'startSensor':
         sensor = access.observers.target(
           readout.Entities.relativeOrientation,
@@ -286,6 +292,67 @@ class _BrowserContractsState extends State<BrowserContracts>
     'lastSample': lastSample?.toJson(),
   };
 
+  Future<Map<String, Object?>> _verifyLocaleObservation() async {
+    final native = await access.get(readout.Entities.locale);
+    final originalLocale = appLocale.value;
+    Future<void> change(ui.Locale locale) async {
+      appLocale.value = locale;
+      await WidgetsBinding.instance.endOfFrame;
+    }
+
+    await change(
+      const ui.Locale.fromSubtags(
+        languageCode: 'zh',
+        scriptCode: 'Hant',
+        countryCode: 'TW',
+      ),
+    );
+    final observer = readout.FlutterLocaleObserver.attach(
+      access,
+      state: localeState,
+    );
+    final snapshots = <readout.LocaleSnapshot>[];
+    String? streamError;
+    final watch = access
+        .watch(readout.Entities.locale)
+        .listen(
+          snapshots.add,
+          onError: (Object error) {
+            streamError = error is readout.DeviceReadoutException
+                ? error.code.name
+                : '$error';
+          },
+        );
+    try {
+      await _until(() => snapshots.isNotEmpty || streamError != null);
+      final first = await access.get(readout.Entities.locale);
+      await change(const ui.Locale('fr', 'FR'));
+      await _until(() => snapshots.length >= 2 || streamError != null);
+      localeState.value = readout.FlutterLocaleState(
+        currentLocale: const ui.Locale('fr', 'FR'),
+      );
+      await _until(() => snapshots.length >= 3 || streamError != null);
+      final latest = await access.get(readout.Entities.locale);
+      final deliveryError = streamError;
+      observer.dispose();
+      await _until(() => streamError != null);
+      final restored = await access.get(readout.Entities.locale);
+      return {
+        'native': native.toJson(),
+        'first': first.toJson(),
+        'latest': latest.toJson(),
+        'snapshots': snapshots.map((s) => s.toJson()).toList(),
+        'deliveryError': deliveryError,
+        'detachError': streamError,
+        'restored': restored.toJson(),
+      };
+    } finally {
+      await watch.cancel();
+      observer.dispose();
+      await change(originalLocale);
+    }
+  }
+
   @override
   void dispose() {
     unawaited(viewportWatch?.cancel());
@@ -294,6 +361,8 @@ class _BrowserContractsState extends State<BrowserContracts>
     viewport?.dispose();
     displays.dispose();
     activity.dispose();
+    appLocale.dispose();
+    localeState.dispose();
     access.dispose();
     WidgetsBinding.instance.removeObserver(this);
     ticker.dispose();
@@ -303,8 +372,39 @@ class _BrowserContractsState extends State<BrowserContracts>
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('DeviceReadout browser contracts')),
-    body: Center(child: Text('Rendered frames: $frames')),
+    body: ValueListenableBuilder<ui.Locale>(
+      valueListenable: appLocale,
+      builder: (context, locale, child) => Localizations.override(
+        context: context,
+        locale: locale,
+        child: _LocaleCapture(
+          localeState,
+          child: Center(child: Text('Rendered frames: $frames')),
+        ),
+      ),
+    ),
   );
+}
+
+final class _LocaleCapture extends StatefulWidget {
+  final ValueNotifier<readout.FlutterLocaleState> input;
+  final Widget child;
+  const _LocaleCapture(this.input, {required this.child});
+  @override
+  State<_LocaleCapture> createState() => _LocaleCaptureState();
+}
+
+final class _LocaleCaptureState extends State<_LocaleCapture> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    widget.input.value = readout.FlutterLocaleState(
+      currentLocale: Localizations.maybeLocaleOf(context),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 Future<void> _until(bool Function() ready) async {

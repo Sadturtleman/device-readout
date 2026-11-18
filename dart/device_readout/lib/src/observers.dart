@@ -5,6 +5,30 @@ final class ObserverInputs {
   final _AccessContext _context;
   ObserverInputs._(this._context);
 
+  /// Own the complete observed state of a singleton until dispose(). Source
+  /// changes fail existing reads/watches; new operations use the current source.
+  /// No native collection or application callback runs during registration.
+  ObserverStateSource<S> stateSource<S extends DeviceSnapshot>(
+    Entity<S> entity,
+  ) {
+    final address = entity._address(_context);
+    _context.assertLive(address);
+    final key = _key(address);
+    if (entity.mode != EntityMode.state ||
+        entity._targeted ||
+        _context.observed.containsKey(key)) {
+      throw const DeviceReadoutException(
+        ErrorCode.invalidConfiguration,
+        'Expected a singleton state without an existing observation source.',
+      );
+    }
+    final source = ObserverStateSource<S>._(_context, entity, address);
+    _context.stateSources[key] = source;
+    _context.observed[key] = null;
+    _context.notify(_ObservedChange(address, error: _stateSourceChanged));
+    return source;
+  }
+
   /// Feed application foreground/visibility policy. Desktop focus loss alone
   /// should not be reported as inactivity.
   void sensorActivity(bool active) {
@@ -189,6 +213,12 @@ final class ObserverInputs {
   void publish<S extends DeviceSnapshot>(Entity<S> entity, S snapshot) {
     if (_context.closed) throw const DeviceReadoutCancelled();
     final address = entity._address(_context);
+    if (_context.stateSources.containsKey(_key(address))) {
+      throw const DeviceReadoutException(
+        ErrorCode.invalidConfiguration,
+        'Publish through the registered state source.',
+      );
+    }
     if (_context.removed.contains(_key(address))) return;
     if (snapshot.entityKind != entity.kind) {
       throw const DeviceReadoutException(
@@ -204,6 +234,47 @@ final class ObserverInputs {
     }
     _context.observed[_key(address)] = snapshot;
     _context.notify(_ObservedChange(address, snapshot: snapshot));
+  }
+}
+
+const _stateSourceChanged = DeviceReadoutException(
+  ErrorCode.readFailed,
+  'The application state source changed. Start a new read or watch.',
+);
+
+/// A single owner of complete singleton snapshots. Disposing releases only this
+/// source and restores native collection for subsequent operations. Existing
+/// reads and watches fail with ReadFailed, rather than emitting stale state.
+final class ObserverStateSource<S extends DeviceSnapshot> {
+  final _AccessContext _context;
+  final Entity<S> _entity;
+  final EntityAddress _address;
+  bool _disposed = false;
+  ObserverStateSource._(this._context, this._entity, this._address);
+
+  void publish(S snapshot) {
+    if (_disposed) throw const DeviceReadoutCancelled();
+    _context.assertLive(_address);
+    if (snapshot.entityKind != _entity.kind) {
+      throw const DeviceReadoutException(
+        ErrorCode.invalidConfiguration,
+        'The published snapshot must match the entity.',
+      );
+    }
+    _context.observed[_key(_address)] = snapshot;
+    _context.notify(_ObservedChange(_address, snapshot: snapshot));
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    final key = _key(_address);
+    if (!identical(_context.stateSources[key], this)) return;
+    _context.stateSources.remove(key);
+    _context.observed.remove(key);
+    if (!_context.closed) {
+      _context.notify(_ObservedChange(_address, error: _stateSourceChanged));
+    }
   }
 }
 

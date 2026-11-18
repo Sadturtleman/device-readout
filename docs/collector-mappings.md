@@ -42,6 +42,12 @@ Viewport references: [CSSOM View Window dimensions](https://drafts.csswg.org/css
 
 Display references: [Window Management](https://www.w3.org/TR/window-management/), [Chromium ScreenDetailed properties](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/modules/screen_details/screen_detailed.cc), [Chromium window-owned ScreenOrientation](https://raw.githubusercontent.com/chromium/chromium/main/third_party/blink/renderer/modules/screen_orientation/screen_orientation.cc).
 
+## Flutter application locale observer
+
+Actual Android API 26/36 and Chrome/Edge applications now verify this mapping and native fallback, including separate consumers installed from Pub archives. See the [platform follow-up](verification/2026-11-18-flutter-locale-platforms.md) for exact environments and remaining coverage.
+
+`FlutterLocaleObserver.attach(access, state: ...)` supplies Locale from immutable `FlutterLocaleState` captured by the app. Effective locale becomes a BCP47 language tag with only its explicit region/script; ordered preferred/system/app lists and formatting fields are supplied independently. It does not merge native preferences from another locale. An exclusive singleton state source owns publication and releases to native collection on detach; existing operations receive ReadFailed. See [Flutter locale observation verification](verification/2026-11-18-flutter-locale-observer.md) for field meanings, app lifecycle wiring and actual Windows Localizations evidence.
+
 ## Flutter application viewport observer
 
 `FlutterViewportObserver.attach(access, view: ...)` observes one app-selected FlutterView through WidgetsBinding. It maps physicalSize/devicePixelRatio to Viewport.size, viewPadding/devicePixelRatio to safeAreaInsets, and the system PlatformDispatcher.textScaleFactor to textScaleFactor. Visual viewport size/scale remain null; keyboard insets are not substituted for a visual-viewport API. Initial and framework event callbacks copy the values, while ordinary SDK reads never query Flutter UI properties. Handles follow view lifetime, removal and exact registered-object identity, including ID reuse. Worker normalization, typed failure invalidation and explicit app current-target selection use the common Dart observer runtime. Ten combined screen engine checks and five actual Windows Release scenarios pass. Other platforms and physical lifecycle evidence remain pending. See [Flutter screen verification](verification/2026-11-11-flutter-screens.md).
@@ -59,6 +65,7 @@ The standalone `DeviceAccess.native()` collector currently implements seven enti
 | Runtime | Dart ABI and pointer size for process fields; IsWow64Process2 native-machine result for host architecture. Supported ABIs remain null. |
 | Ram | Installed bytes from firmware-backed API, OS-accessible/available bytes from GlobalMemoryStatusEx, current native low-memory state. Advertised/free/threshold fields remain null. |
 | ProcessMemory | GlobalMemoryStatusEx.ullAvailPageFile for the process's available commit budget. |
+| Power | GetSystemPowerStatus source/saver flags; offline Battery only with confirmed onboard-only GetPwrCapabilities flags. Ambiguous UPS/source and Windows thermal stages remain null. Serial polling; see the [power checkpoint](verification/2026-11-18-dart-windows-power.md). |
 | TimeZone | GetDynamicTimeZoneInformation Windows key, current bias and DST state; Windows ICU default Windows-to-IANA mapping. App defaults and caches are unchanged. |
 | Locale | User formatting locale plus separate user/system/process MUI lists; NLS region/calendar/time/digit/weekday/measurement preferences, ICU script and decimal numbering identifiers. App-framework locale overrides require observations. |
 

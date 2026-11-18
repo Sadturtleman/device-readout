@@ -6,6 +6,12 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [Dart and Flutter Windows power checkpoint](docs/verification/2026-11-18-dart-windows-power.md) adds native Power get/watch, saver status and conservative battery-source disambiguation. Final Dart JIT/native checks pass 69/69 each, the actual Windows release app passes 14/14 and Flutter framework checks pass 27/27. On-battery/UPS transitions, native failures, C# parity and the full acceptance matrix remain pending.
+
+The [Flutter locale platform checkpoint](docs/verification/2026-11-18-flutter-locale-platforms.md) verifies actual app locale changes and native fallback on Android API 26/36 and Chrome/Edge, including separate consumers installed from Pub archives. Android passes 34/34 per device and consumer; web passes ten application scenarios per browser and consumer, including package worker deployment. Physical devices, Apple platforms, further browsers and the full acceptance matrix remain pending.
+
+The [Flutter app locale checkpoint](docs/verification/2026-11-18-flutter-locale-observer.md) connects explicit application locale observations to get/watch, with owned source lifetime and native fallback after detachment. Dart JIT/native checks pass 68/68 each, Flutter framework tests pass 27/27 and the actual Windows release app passes 13/13, including real Localizations changes. Other platform/application combinations and the complete acceptance matrix remain pending.
+
 The [Dart and Flutter Windows locale checkpoint](docs/verification/2026-11-18-dart-windows-locale.md) adds NLS/ICU collection for all eleven Locale fields with separate user/system/process language lists. Current fields match independent sources; Dart JIT/native suites pass 66/66 each, the actual Flutter Windows app passes 12/12 and framework tests pass 24/24. Additional settings/locale combinations, app-framework locale observations and the full platform matrix remain pending.
 
 The [Dart and Flutter Windows time-zone checkpoint](docs/verification/2026-11-18-dart-windows-time-zone.md) adds native Windows/IANA IDs, current UTC offset and DST state through isolate-owned get/watch. Final Dart JIT/native suites pass 65/65 each, actual Flutter Windows checks pass 11/11 and framework tests pass 24/24. The record preserves an earlier, unreproduced JIT compiler abort in a registry test child. Other zones/DST transitions, native failures and the full platform matrix remain pending.

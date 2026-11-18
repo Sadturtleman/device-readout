@@ -11,6 +11,7 @@ part 'transport_native_watch.dart';
 part 'windows_memory.dart';
 part 'windows_runtime.dart';
 part 'windows_os.dart';
+part 'windows_power.dart';
 part 'windows_device_info.dart';
 part 'windows_time_zone.dart';
 part 'windows_locale.dart';
@@ -40,6 +41,7 @@ final class _NativeCollector
   _WindowsDeviceInfo? windowsDeviceInfo;
   _WindowsTimeZone? windowsTimeZone;
   _WindowsLocale? windowsLocale;
+  _WindowsPower? windowsPower;
 
   @override
   EntityCapabilities capabilities(EntityAddress entity, ReadContext context) {
@@ -52,6 +54,7 @@ final class _NativeCollector
                 entity.kind == EntityKind.os ||
                 entity.kind == EntityKind.timeZone ||
                 entity.kind == EntityKind.locale ||
+                entity.kind == EntityKind.power ||
                 entity.kind == EntityKind.deviceInfo));
     return EntityCapabilities(readable: available, watchable: available);
   }
@@ -76,6 +79,9 @@ final class _NativeCollector
     }
     if (Platform.isWindows && entity.kind == EntityKind.locale) {
       return (windowsLocale ??= _WindowsLocale()).read();
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.power) {
+      return (windowsPower ??= _WindowsPower()).read();
     }
     if (entity.kind != EntityKind.runtime) {
       throw const DeviceReadoutException(
@@ -121,7 +127,12 @@ final class _NativeCollector
     try {
       try {
         try {
-          windowsLocale?.dispose();
+          try {
+            windowsPower?.dispose();
+          } finally {
+            windowsPower = null;
+            windowsLocale?.dispose();
+          }
         } finally {
           windowsLocale = null;
           windowsTimeZone?.dispose();

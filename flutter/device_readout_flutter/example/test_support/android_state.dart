@@ -5,6 +5,7 @@ import 'package:device_readout_flutter/device_readout_flutter.dart';
 
 import 'android_discovery.dart';
 import 'android_mixed.dart';
+import 'locale_observer_native.dart' show verifyLocaleObservation;
 
 void _require(bool value, String message) {
   if (!value) throw StateError(message);
@@ -82,6 +83,10 @@ Future<Map<String, Object?>> verifyAndroidState(List<String> checks) async {
       );
     }
     checks.add('native Android singleton state snapshots');
+    final appLocale = await verifyLocaleObservation(access);
+    checks.add(
+      'app Localizations changes reach get/watch and detach restores native locale',
+    );
     try {
       await access.get(Entities.hardwareSerial);
       throw StateError(
@@ -173,6 +178,7 @@ Future<Map<String, Object?>> verifyAndroidState(List<String> checks) async {
     return {
       ...discovery,
       'mixedLifecycle': mixedLifecycle,
+      'appLocale': appLocale,
       'apiLevel': build.apiLevel,
       'modelName': device.modelName,
       'kernelAccessibleBytes': ram.kernelAccessibleBytes.toString(),

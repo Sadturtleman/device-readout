@@ -1,5 +1,9 @@
 # DeviceReadout for Dart
 
+Windows `get(Entities.power)` and `watch(Entities.power)` now collect current source/saver state on the collection isolate. Offline status is labeled Battery only when native capabilities rule out UPS/short-term ambiguity; unavailable fields remain null. The [power checkpoint](../../docs/verification/2026-11-18-dart-windows-power.md) records independent native/Windows Forms agreement and final 69/69 JIT/native checks. Actual battery/UPS transitions and the complete platform matrix remain pending.
+
+`access.observers.stateSource(entity)` reserves an app-owned singleton state source. Publish complete snapshots and dispose the owner to restore native collection for subsequent operations; source changes terminate existing reads/watches with ReadFailed. Duplicate writers are rejected and app failure policy remains independent. The [Flutter locale integration checkpoint](../../docs/verification/2026-11-18-flutter-locale-observer.md) verifies ownership/deadlines and passes 68/68 Dart contracts in JIT and native modes.
+
 Implementation foundation, verified with Dart 3.13.7 from Flutter 3.47.9 on Windows x64. This is not yet a complete Flutter plugin or a claim of support for the complete platform matrix.
 
 Windows `get(Entities.locale)` / `watch(Entities.locale)` now read the default formatting locale, distinct user/system/process language lists and NLS/ICU format preferences. The [locale checkpoint](../../docs/verification/2026-11-18-dart-windows-locale.md) passes 66/66 JIT/native contracts, with all eleven fields compared on this host. Process MUI languages do not automatically describe a framework's private locale override; app-local observations and further locale combinations remain required.

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:device_readout/device_readout.dart';
 
 import 'observers.dart' as observerTests;
+import 'state_sources.dart' as stateSourceTests;
 import 'sensors.dart' as sensorTests;
 import 'failure_sources.dart' as failureSourceTests;
 import 'native_state_streams.dart' as nativeStateTests;
@@ -19,6 +20,7 @@ import 'native_windows_runtime.dart' as nativeRuntimeTests;
 import 'native_windows_os.dart' as nativeOsTests;
 import 'native_windows_time_zone.dart' as nativeTimeZoneTests;
 import 'native_windows_locale.dart' as nativeLocaleTests;
+import 'native_windows_power.dart' as nativePowerTests;
 import 'native_windows_device_info.dart' as nativeDeviceInfoTests;
 import 'native_windows_registry.dart' as nativeRegistryTests;
 
@@ -593,10 +595,12 @@ Future<void> main(List<String> arguments) async {
     ...nativeOsTests.checks,
     ...nativeTimeZoneTests.checks,
     ...nativeLocaleTests.checks,
+    ...nativePowerTests.checks,
     ...nativeRuntimeTests.checks,
     ...nativeProcessTests.checks,
     ...nativeWindowsTests.checks,
     ...observerTests.checks,
+    ...stateSourceTests.checks,
     ...failureSourceTests.checks,
     ...nativeStateTests.checks,
     ...discoveryTests.checks,

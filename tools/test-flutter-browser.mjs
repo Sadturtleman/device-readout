@@ -126,6 +126,19 @@ for(const [name,executablePath] of [
   assert.equal(initial.display.currentMode,null);
   assert.ok(initial.currentIsListed&&initial.viewportIsCurrent&&initial.readable&&initial.watchable);
   checks.push('typed browser reads and app-owned viewport/display discovery');
+  const locale=await command('localeObservation');
+  assert.equal(locale.first.currentLanguageTag,'zh-Hant-TW');
+  assert.equal(locale.first.regionCode,'TW');assert.equal(locale.first.scriptCode,'Hant');
+  assert.equal(locale.first.systemLanguageTags,null);assert.equal(locale.first.calendar,null);
+  assert.equal(locale.latest.currentLanguageTag,'fr-FR');assert.equal(locale.latest.regionCode,'FR');
+  assert.equal(locale.latest.scriptCode,null);
+  assert.deepEqual(locale.snapshots.map(value=>value.currentLanguageTag),['zh-Hant-TW','fr-FR','fr-FR']);
+  assert.equal(locale.deliveryError,null);assert.equal(locale.detachError,'readFailed');
+  const fields=value=>Object.fromEntries(Object.entries(value).filter(([key])=>key!=='collectedAt'));
+  assert.deepEqual(fields(locale.restored),fields(locale.native));
+  assert.equal(locale.restored.currentLanguageTag,expected.language);
+  assert.equal(await page.evaluate(()=>navigator.language),expected.language);
+  checks.push('actual app locale override, duplicate delivery and native fallback after detachment');
   await command('watchViewport');await page.setViewportSize({width:840,height:620});
   await until(()=>command('state'),state=>{
     return state.viewportValues.at(-1)?.size?.width===840&&state.viewportValues.at(-1)?.size?.height===620;
@@ -186,7 +199,7 @@ for(const [name,executablePath] of [
   const lifetime=await page.evaluate(()=>({created:globalThis.sdkWorkersCreated,closed:globalThis.sdkWorkersClosed}));
   assert.deepEqual(lifetime,{created:2,closed:2});checks.push('widget unmount releases its owned SDK worker');
   assert.deepEqual(errors,[]);
-  await writeFile(`.tools/evidence/${evidencePrefix}-contracts-${name.toLowerCase()}.json`,JSON.stringify({installed,browser:browser.version(),expected,initial,active,inactive,resumed,permission,held,lifetime,checks,passed:true},null,2));
+  await writeFile(`.tools/evidence/${evidencePrefix}-contracts-${name.toLowerCase()}.json`,JSON.stringify({installed,browser:browser.version(),expected,initial,locale,active,inactive,resumed,permission,held,lifetime,checks,passed:true},null,2));
   t.diagnostic(`${checks.length} Flutter application scenarios passed.`);
 });
 
