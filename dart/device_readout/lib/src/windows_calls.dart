@@ -1,5 +1,89 @@
 import 'dart:ffi' as ffi;
 
+final class WindowsPerformanceResult extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+  @ffi.Int32()
+  external int present;
+  @ffi.Int32()
+  external int inboundStatus;
+  @ffi.Int32()
+  external int outboundStatus;
+  @ffi.Double()
+  external double inbound;
+  @ffi.Double()
+  external double outbound;
+}
+
+@ffi.Native<WindowsPerformanceResult Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_connectivity_performance',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsPerformanceResult readWindowsPerformance(
+  ffi.Pointer<ffi.Void> activation,
+);
+
+final class WindowsConnectivityResult extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+  @ffi.Int32()
+  external int hasProfile;
+  @ffi.Int32()
+  external int levelStatus;
+  @ffi.Int32()
+  external int level;
+  @ffi.Int32()
+  external int costStatus;
+  @ffi.Int32()
+  external int cost;
+}
+
+@ffi.Native<WindowsConnectivityResult Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_connectivity_read',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsConnectivityResult readWindowsConnectivity(
+  ffi.Pointer<ffi.Void> activation,
+);
+
+final class WindowsConnectivitySubscription extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+  external ffi.Pointer<ffi.Void> owner;
+}
+
+@ffi.Native<
+  WindowsConnectivitySubscription Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Uint64,
+  )
+>(
+  symbol: 'readout_connectivity_subscribe',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsConnectivitySubscription subscribeWindowsConnectivity(
+  ffi.Pointer<ffi.Void> activation,
+  ffi.Pointer<ffi.Void> dispatch,
+  int token,
+);
+@ffi.Native<ffi.Int32 Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_connectivity_unsubscribe',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external int unsubscribeWindowsConnectivity(ffi.Pointer<ffi.Void> owner);
+
+@ffi.Native<WindowsConnectivitySubscription Function()>(
+  symbol: 'readout_connectivity_context_create',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsConnectivitySubscription createWindowsConnectivityContext();
+@ffi.Native<ffi.Int32 Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_connectivity_context_close',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external int closeWindowsConnectivityContext(ffi.Pointer<ffi.Void> cookie);
+
 typedef WindowsNetworkCallback = ffi.Void Function(
   ffi.Uint64,
   ffi.Int32,

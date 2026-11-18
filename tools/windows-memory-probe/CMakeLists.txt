@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(DeviceReadoutMemoryProbe LANGUAGES C CXX)
-add_library(device_readout_memory_probe SHARED process_memory.c runtime.c os.c device_info.c time_zone.cpp locale.c locale_formats.cpp power.c storage.c cpu.c cpu_cores.c network.c)
+add_library(device_readout_connectivity_fixture SHARED connectivity_fixture.c connectivity_box.cpp)
+target_compile_features(device_readout_connectivity_fixture PRIVATE cxx_std_17)
+add_library(device_readout_memory_probe SHARED process_memory.c runtime.c os.c device_info.c time_zone.cpp locale.c locale_formats.cpp power.c storage.c cpu.c cpu_cores.c network.c connectivity.cpp)
+target_compile_features(device_readout_memory_probe PRIVATE cxx_std_17)
 target_link_libraries(device_readout_memory_probe PRIVATE advapi32 icu powrprof iphlpapi ws2_32)
 target_compile_definitions(device_readout_memory_probe PRIVATE WIN32_LEAN_AND_MEAN)
 

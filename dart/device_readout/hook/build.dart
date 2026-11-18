@@ -11,7 +11,11 @@ void main(List<String> arguments) async {
     await CBuilder.library(
       name: 'device_readout_win32',
       assetName: 'src/windows_calls.dart',
-      sources: ['src/windows_calls.c', 'src/windows_network_events.c'],
+      sources: [
+        'src/windows_calls.c',
+        'src/windows_network_events.c',
+        'src/windows_connectivity.c',
+      ],
     ).run(input: input, output: output);
   });
 }

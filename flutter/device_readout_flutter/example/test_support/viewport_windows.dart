@@ -12,6 +12,8 @@ import 'process_memory_windows.dart' show verifyProcessMemory;
 import 'runtime_windows.dart' show verifyRuntime;
 import 'os_windows.dart' show verifyOs;
 import 'power_windows.dart' show verifyPower;
+import 'connectivity_windows.dart' show verifyConnectivity;
+import 'network_performance_windows.dart' show verifyNetworkPerformance;
 import 'storage_windows.dart' show verifyStorage;
 import 'cpu_windows.dart' show verifyCpu;
 import 'cpu_cores_windows.dart' show verifyCpuCores;
@@ -197,6 +199,8 @@ Future<void> verify(
     checks.add(await verifyRuntime(access, memoryProbe));
     checks.add(await verifyOs(access, memoryProbe));
     checks.add(await verifyPower(access, memoryProbe));
+    checks.add(await verifyConnectivity(access, memoryProbe));
+    checks.add(await verifyNetworkPerformance(access, memoryProbe));
     checks.add(await verifyStorage(access, memoryProbe));
     checks.add(await verifyCpu(access, memoryProbe));
     checks.add(await verifyCpuCores(access, memoryProbe));

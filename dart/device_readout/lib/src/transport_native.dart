@@ -18,6 +18,7 @@ part 'windows_storage.dart';
 part 'windows_cpu.dart';
 part 'windows_network.dart';
 part 'windows_network_watch.dart';
+part 'windows_connectivity.dart';
 part 'windows_device_info.dart';
 part 'windows_time_zone.dart';
 part 'windows_locale.dart';
@@ -42,10 +43,12 @@ final class NativeCollectorBindings {
   final String? windowsStorageLibrary;
   final String? windowsCpuLibrary;
   final String? windowsNetworkLibrary;
+  final String? windowsConnectivityLibrary;
   const NativeCollectorBindings({
     this.windowsStorageLibrary,
     this.windowsCpuLibrary,
     this.windowsNetworkLibrary,
+    this.windowsConnectivityLibrary,
   });
 }
 
@@ -71,9 +74,17 @@ final class _NativeCollector
   _WindowsStorage? windowsStorage;
   _WindowsCpu? windowsCpu;
   _WindowsNetwork? windowsNetwork;
+  _WindowsConnectivity? windowsConnectivity;
 
   @override
   Stream<SnapshotRead>? watch(EntityAddress entity, StateWatchContext context) {
+    if (Platform.isWindows &&
+        (entity.kind == EntityKind.networkPath ||
+            entity.kind == EntityKind.networkPerformance)) {
+      return (windowsConnectivity ??= _WindowsConnectivity(
+        bindings?.windowsConnectivityLibrary,
+      )).watch(entity.kind, context);
+    }
     if (Platform.isWindows &&
         entity.kind == EntityKind.networkInterface &&
         ffi.sizeOf<ffi.UintPtr>() == 8) {
@@ -96,6 +107,8 @@ final class _NativeCollector
                 entity.kind == EntityKind.timeZone ||
                 entity.kind == EntityKind.locale ||
                 entity.kind == EntityKind.power ||
+                entity.kind == EntityKind.networkPath ||
+                entity.kind == EntityKind.networkPerformance ||
                 entity.kind == EntityKind.storageVolume ||
                 entity.kind == EntityKind.cpu ||
                 (entity.kind == EntityKind.networkInterface &&
@@ -147,6 +160,16 @@ final class _NativeCollector
 
   @override
   DeviceSnapshot read(EntityAddress entity, ReadContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.networkPerformance) {
+      return (windowsConnectivity ??= _WindowsConnectivity(
+        bindings?.windowsConnectivityLibrary,
+      )).readPerformance(context);
+    }
+    if (Platform.isWindows && entity.kind == EntityKind.networkPath) {
+      return (windowsConnectivity ??= _WindowsConnectivity(
+        bindings?.windowsConnectivityLibrary,
+      )).read(context);
+    }
     if (Platform.isWindows && entity.kind == EntityKind.networkInterface) {
       return (windowsNetwork ??= _WindowsNetwork(
         bindings?.windowsNetworkLibrary,
@@ -238,7 +261,12 @@ final class _NativeCollector
             try {
               try {
                 try {
-                  windowsNetwork?.dispose();
+                  try {
+                    windowsConnectivity?.dispose();
+                  } finally {
+                    windowsConnectivity = null;
+                    windowsNetwork?.dispose();
+                  }
                 } finally {
                   windowsNetwork = null;
                   windowsCpu?.dispose();

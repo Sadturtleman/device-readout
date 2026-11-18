@@ -6,6 +6,10 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [2026-11-19 upload checkpoint](docs/verification/2026-11-19-upload-connectivity-performance.md) includes Dart/Flutter Windows NetworkPath and NetworkPerformance collectors. Dart passes 203/203 checks in each JIT/CLI-bundle mode, and the checkout Windows application reports 20 passing scenarios. The record distinguishes these results from intermittent compiler/build failures and the pending installed-consumer/framework reruns for the performance addition.
+
+The [Dart/Flutter Windows connectivity checkpoint](docs/verification/2026-11-18-dart-windows-connectivity.md) adds preferred-profile NetworkPath get/watch with shared WinRT notifications, supplemental polling and context-owned MTA lifetime. Dart passes 190/190 checks in each JIT/CLI-bundle mode, checkout and installed Windows apps pass 19/19 each, and Flutter framework checks pass 27/27. Remaining path fields, physical transitions and the full SDK matrix remain pending.
+
 The [C# network-notification checkpoint](docs/verification/2026-11-18-dotnet-network-notifications.md) retains failed cleanup handles, preserves registration errors and safely ignores retired callbacks. The final .NET gate passes 215/215, including fourteen C callback/lifetime cases and the previous field coverage. Physical transitions, permanent native cleanup refusal and the full SDK acceptance matrix remain pending.
 
 The [C# Windows network checkpoint](docs/verification/2026-11-18-dotnet-windows-network.md) preserves non-IP and unsigned MTU values, IPv6 DNS scopes and additional known interface types. The full .NET gate passes 199/199, including 28 native-boundary cases. Current-host C# and Dart checks agree with the same independent reference for 84 interfaces; physical transitions, additional architectures and the complete SDK acceptance matrix remain pending.

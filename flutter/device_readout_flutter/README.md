@@ -1,5 +1,7 @@
 # DeviceReadout for Flutter
 
+Windows NetworkPath uses the shared Dart collector for preferred-profile connectivity and cost. The [connectivity checkpoint](../../docs/verification/2026-11-18-dart-windows-connectivity.md) verifies independent C++/WinRT agreement and host timer progress in checkout and separately installed Windows apps, each passing 19/19 scenarios. Framework checks pass 27/27. Remaining fields, physical transitions and the complete platform matrix remain pending.
+
 Windows network watch now uses the shared Dart native-notification bridge with polling for remaining fields. The [notification checkpoint](../../docs/verification/2026-11-18-dart-windows-network-events.md) rebuilds and verifies both checkout and installed Windows consumers at 18/18 scenarios each, with 27/27 framework checks. The bridge is part of the ordinary Windows native asset; reference/fixture DLLs are excluded. Physical network transitions and the complete platform matrix remain pending.
 
 Windows network-interface discovery/get/watch uses the shared Dart isolate collector. The [initial network checkpoint](../../docs/verification/2026-11-18-dart-windows-network.md) compares all nine fields for 84 NDIS entries and 61 routes in both checkout and installed-Pub apps; each passes 18/18 scenarios and framework checks pass 27/27. Its polling baseline is extended by the notification follow-up above; physical transitions and the full platform matrix remain pending.

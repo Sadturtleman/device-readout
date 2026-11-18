@@ -21,6 +21,9 @@ import 'native_windows_os.dart' as nativeOsTests;
 import 'native_windows_time_zone.dart' as nativeTimeZoneTests;
 import 'native_windows_locale.dart' as nativeLocaleTests;
 import 'native_windows_power.dart' as nativePowerTests;
+import 'native_windows_connectivity.dart' as nativeConnectivityTests;
+import 'native_windows_network_performance.dart' as nativePerformanceTests;
+import 'native_windows_connectivity_faults.dart' as nativeConnectivityFaultTests;
 import 'native_windows_storage.dart' as nativeStorageTests;
 import 'native_windows_storage_faults.dart' as nativeStorageFaultTests;
 import 'native_windows_cpu.dart' as nativeCpuTests;
@@ -428,11 +431,11 @@ Future<void> nativeRuntime() async {
       values.length == 2 && values.every((v) => v.processBitness == 64),
       'Native constant fields still support state polling.',
     );
-    final error = await failureOf(sdk.get(Entities.networkPath));
+    final error = await failureOf(sdk.get(Entities.androidBuild));
     check(
       error is DeviceReadoutException &&
           error.code == ErrorCode.unsupportedEntity,
-      'Missing native collectors must not fabricate values.',
+      'Unavailable platform entities must not fabricate values.',
     );
   } finally {
     sdk.dispose();
@@ -598,6 +601,7 @@ Future<void> configurationAndStartupErrors() async {
 }
 
 Future<void> main(List<String> arguments) async {
+  if (await nativeConnectivityFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeNetworkEventTests.runChildIfRequested(arguments)) return;
   if (await nativeNetworkFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeCpuCoreFaultTests.runChildIfRequested(arguments)) return;
@@ -606,6 +610,9 @@ Future<void> main(List<String> arguments) async {
   if (await nativeStorageFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeRegistryTests.runChildIfRequested(arguments)) return;
   final tests = <String, Future<void> Function()>{
+    ...nativePerformanceTests.checks,
+    ...nativeConnectivityTests.checks,
+    ...nativeConnectivityFaultTests.checks,
     ...nativeRegistryTests.checks,
     ...nativeDeviceInfoTests.checks,
     ...nativeOsTests.checks,
