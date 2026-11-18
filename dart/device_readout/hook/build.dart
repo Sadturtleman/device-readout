@@ -15,6 +15,7 @@ void main(List<String> arguments) async {
         'src/windows_calls.c',
         'src/windows_network_events.c',
         'src/windows_connectivity.c',
+        'src/windows_wifi.c',
       ],
     ).run(input: input, output: output);
   });

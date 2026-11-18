@@ -1,5 +1,6 @@
 #include <winrt/Windows.Networking.Connectivity.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <cstdint>
 #pragma comment(lib, "windowsapp.lib")
 
@@ -24,6 +25,19 @@ extern "C" __declspec(dllexport) uint64_t readout_probe_connectivity(void) {
 }
 
 struct PerformanceProbe { int32_t status, present; double inbound, outbound; };
+extern "C" __declspec(dllexport) uint64_t readout_probe_wifi(void) {
+    try {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+        struct Apartment { ~Apartment() { winrt::uninit_apartment(); } } apartment;
+        using namespace winrt::Windows::Networking::Connectivity;
+        uint64_t count=0;
+        for(auto const& profile:NetworkInformation::GetConnectionProfiles())
+            if(profile.IsWlanConnectionProfile() && profile.GetNetworkConnectivityLevel()!=NetworkConnectivityLevel::None) ++count;
+        auto preferred=NetworkInformation::GetInternetConnectionProfile();
+        const bool current=preferred && preferred.IsWlanConnectionProfile() && preferred.GetNetworkConnectivityLevel()!=NetworkConnectivityLevel::None;
+        return count | (uint64_t(current)<<32);
+    } catch (...) { return UINT64_MAX; }
+}
 extern "C" __declspec(dllexport) PerformanceProbe readout_probe_network_performance(void) {
     PerformanceProbe result = {};
     try {

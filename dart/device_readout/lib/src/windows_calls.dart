@@ -1,5 +1,80 @@
 import 'dart:ffi' as ffi;
 
+final class WindowsWifiRecord extends ffi.Struct {
+  @ffi.Array(32)
+  external ffi.Array<ffi.Uint8> identity;
+  @ffi.Int32()
+  external int ssidStatus;
+  @ffi.Int32()
+  external int securityStatus;
+  @ffi.Int32()
+  external int rssiStatus;
+  @ffi.Uint32()
+  external int ssidLength;
+  external ffi.Pointer<ffi.Uint16> ssid;
+  @ffi.Int32()
+  external int authentication;
+  @ffi.Int32()
+  external int encryption;
+  @ffi.Int32()
+  external int rssi;
+  @ffi.Int32()
+  external int removed;
+  external ffi.Pointer<ffi.Void> retainedClient;
+}
+
+final class WindowsWifiInventory extends ffi.Struct {
+  @ffi.Int32()
+  external int status;
+  @ffi.Uint32()
+  external int count;
+  external ffi.Pointer<WindowsWifiRecord> records;
+  @ffi.Int32()
+  external int current;
+}
+
+@ffi.Native<WindowsWifiInventory Function(ffi.Pointer<ffi.Void>, ffi.Int32)>(
+  symbol: 'readout_wifi_inventory',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsWifiInventory readWindowsWifiInventory(
+  ffi.Pointer<ffi.Void> activate,
+  int current,
+);
+@ffi.Native<
+  ffi.Int32 Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<WindowsWifiRecord>,
+    ffi.Int32,
+  )
+>(
+  symbol: 'readout_wifi_fields',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external int readWindowsWifiFields(
+  ffi.Pointer<ffi.Void> activate,
+  ffi.Pointer<ffi.Void> module,
+  ffi.Pointer<WindowsWifiRecord> record,
+  int wlanStatus,
+);
+@ffi.Native<ffi.Void Function(ffi.Pointer<WindowsWifiRecord>, ffi.Uint32)>(
+  symbol: 'readout_wifi_free',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external void freeWindowsWifiInventory(
+  ffi.Pointer<WindowsWifiRecord> records,
+  int count,
+);
+@ffi.Native<ffi.Int32 Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_wifi_close',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external int closeWindowsWifiClient(
+  ffi.Pointer<ffi.Void> module,
+  ffi.Pointer<ffi.Void> client,
+);
+
 final class WindowsPerformanceResult extends ffi.Struct {
   @ffi.Int32()
   external int status;

@@ -23,6 +23,7 @@ import 'native_windows_locale.dart' as nativeLocaleTests;
 import 'native_windows_power.dart' as nativePowerTests;
 import 'native_windows_connectivity.dart' as nativeConnectivityTests;
 import 'native_windows_network_performance.dart' as nativePerformanceTests;
+import 'native_windows_wifi.dart' as nativeWifiTests;
 import 'native_windows_connectivity_faults.dart' as nativeConnectivityFaultTests;
 import 'native_windows_storage.dart' as nativeStorageTests;
 import 'native_windows_storage_faults.dart' as nativeStorageFaultTests;
@@ -611,6 +612,7 @@ Future<void> main(List<String> arguments) async {
   if (await nativeRegistryTests.runChildIfRequested(arguments)) return;
   final tests = <String, Future<void> Function()>{
     ...nativePerformanceTests.checks,
+    ...nativeWifiTests.checks,
     ...nativeConnectivityTests.checks,
     ...nativeConnectivityFaultTests.checks,
     ...nativeRegistryTests.checks,

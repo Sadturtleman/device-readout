@@ -15,8 +15,13 @@ final class _WindowsConnectivity {
   int? _token;
   bool _unsupportedEvents = false;
   Object? _failure;
-  Stream<SnapshotRead> watch(EntityKind kind, StateWatchContext context) =>
-      _WindowsConnectivityWatch(this, kind, context).stream;
+  _WindowsWifi? _wifi;
+  _WindowsWifi get wifi => _wifi ??= _WindowsWifi(this);
+  Stream<SnapshotRead> watch(
+    EntityKind kind,
+    StateWatchContext context, {
+    SnapshotRead? read,
+  }) => _WindowsConnectivityWatch(this, kind, context, read).stream;
 
   void _add(_WindowsConnectivityWatch listener) {
     _ensureContext();
@@ -148,14 +153,19 @@ final class _WindowsConnectivity {
 
   void dispose() {
     try {
-      _release();
+      try {
+        _wifi?.dispose();
+      } finally {
+        _release();
+      }
     } finally {
       if (_mta != ffi.nullptr) {
         closeWindowsConnectivityContext(_mta);
         _mta = ffi.nullptr;
       }
       // Failed native unregister still owns COM objects from this module.
-      if (_owner == ffi.nullptr) _fixture?.close();
+      if (_owner == ffi.nullptr && (_wifi?._pendingClients.isEmpty ?? true))
+        _fixture?.close();
     }
   }
 }
@@ -164,12 +174,18 @@ final class _WindowsConnectivityWatch {
   final _WindowsConnectivity owner;
   final EntityKind kind;
   final StateWatchContext context;
+  final SnapshotRead? readOverride;
   late final StreamController<SnapshotRead> _controller;
   Timer? _timer;
   void Function()? _detach;
   Future<void>? _stopped;
   bool _closed = false, _attached = false, _pollQueued = false;
-  _WindowsConnectivityWatch(this.owner, this.kind, this.context) {
+  _WindowsConnectivityWatch(
+    this.owner,
+    this.kind,
+    this.context,
+    this.readOverride,
+  ) {
     _controller = StreamController<SnapshotRead>(
       onListen: _start,
       onCancel: _stop,
@@ -187,9 +203,10 @@ final class _WindowsConnectivityWatch {
     });
   }
 
-  DeviceSnapshot _read() {
+  FutureOr<DeviceSnapshot> _read() {
     context.cancellation.throwIfCancelled();
     try {
+      if (readOverride != null) return readOverride!();
       final readContext = ReadContext(
         context.cancellation,
         SensorSamplingRate.platformDefault,

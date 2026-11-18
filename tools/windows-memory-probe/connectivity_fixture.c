@@ -79,10 +79,18 @@ static HRESULT WINAPI plan(void *self, void **output) {
     HRESULT hr=make(plan_table,output);
     return current_mode()==42 && SUCCEEDED(hr) ? E_FAIL : hr;
 }
-static void *profile_table[11] = {NULL,add,release,NULL,NULL,NULL,NULL,level,NULL,cost,plan};
+static HRESULT WINAPI wifi_profile_query(Object *, REFIID, void **);
+static HRESULT WINAPI wifi_level(Object *, INT32 *);
+static HRESULT WINAPI wifi_adapter(Object *, void **);
+static HRESULT WINAPI wifi_settings(Object *, void **);
+static HRESULT WINAPI wifi_profiles(void *, void **);
+static HRESULT wifi_preferred(void **);
+static ULONG wifi_counter(ULONG);
+static void *profile_table[15] = {wifi_profile_query,add,release,NULL,NULL,NULL,NULL,wifi_level,NULL,cost,plan,wifi_adapter,NULL,NULL,wifi_settings};
 static HRESULT WINAPI profile(void *self, void **output) {
     (void)self; apartment(); hold(20); *output=NULL;
     LONG m=current_mode(); if(m==7) return E_FAIL;
+    if(m>=70) return wifi_preferred(output);
     return m==1 ? S_OK : make(profile_table,output);
 }
 static HRESULT WINAPI subscribe(void *self, void *handler, INT64 *token) {
@@ -104,18 +112,19 @@ static HRESULT WINAPI unsubscribe(void *self, INT64 token) {
     if(!handler) return E_INVALIDARG;
     ((Reference)(*(void ***)handler)[2])(handler); return S_OK;
 }
-static void *factory_table[14] = {NULL,add,release,NULL,NULL,NULL,NULL,profile,NULL,NULL,NULL,NULL,subscribe,unsubscribe};
+static void *factory_table[14] = {NULL,add,release,NULL,NULL,NULL,wifi_profiles,profile,NULL,NULL,NULL,NULL,subscribe,unsubscribe};
 __declspec(dllexport) HRESULT WINAPI readout_connectivity_activate(void **output) {
     apartment(); *output=NULL; LONG m=current_mode();
     if(m==6) return REGDB_E_CLASSNOTREG; if(m==12) return S_OK;
     HRESULT hr=make(factory_table,output); return m==13 && SUCCEEDED(hr) ? E_FAIL : hr;
 }
 __declspec(dllexport) void readout_connectivity_configure(LONG value) {
-    InterlockedExchange(&mode,value); InterlockedExchange(&released,(value>=20 && value<=22) || (value>=50 && value<=52) ? 0 : 1);
+    InterlockedExchange(&mode,value); InterlockedExchange(&released,(value>=20 && value<=22) || (value>=50 && value<=52) || (value>=90 && value<=96) ? 0 : 1);
 }
 __declspec(dllexport) void readout_connectivity_release(void) { InterlockedExchange(&released,1); }
 __declspec(dllexport) ULONG readout_connectivity_counter(ULONG field) {
     if(field==7) return GetCurrentThreadId();
+    if(field>=10) return wifi_counter(field);
     volatile LONG *p=field==0 ? &objects : field==1 ? &registrations : field==2 ? &active : field==3 ? &removals :
         field==4 ? &callbacks : field==5 ? &threads : field==6 ? &bad_apartment : field==8 ? &held : &worker;
     return InterlockedCompareExchange(p,0,0);
@@ -132,3 +141,4 @@ __declspec(dllexport) DWORD readout_connectivity_emit(void) {
     if(!thread) { InterlockedDecrement(&threads); return GetLastError(); }
     CloseHandle(thread); return 0;
 }
+#include "wifi_fixture.c"

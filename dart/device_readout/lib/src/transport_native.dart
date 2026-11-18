@@ -19,6 +19,7 @@ part 'windows_cpu.dart';
 part 'windows_network.dart';
 part 'windows_network_watch.dart';
 part 'windows_connectivity.dart';
+part 'windows_wifi.dart';
 part 'windows_device_info.dart';
 part 'windows_time_zone.dart';
 part 'windows_locale.dart';
@@ -78,6 +79,11 @@ final class _NativeCollector
 
   @override
   Stream<SnapshotRead>? watch(EntityAddress entity, StateWatchContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.wifiConnection) {
+      return (windowsConnectivity ??= _WindowsConnectivity(
+        bindings?.windowsConnectivityLibrary,
+      )).wifi.watch(entity.targetId, context);
+    }
     if (Platform.isWindows &&
         (entity.kind == EntityKind.networkPath ||
             entity.kind == EntityKind.networkPerformance)) {
@@ -109,6 +115,7 @@ final class _NativeCollector
                 entity.kind == EntityKind.power ||
                 entity.kind == EntityKind.networkPath ||
                 entity.kind == EntityKind.networkPerformance ||
+                entity.kind == EntityKind.wifiConnection ||
                 entity.kind == EntityKind.storageVolume ||
                 entity.kind == EntityKind.cpu ||
                 (entity.kind == EntityKind.networkInterface &&
@@ -122,6 +129,11 @@ final class _NativeCollector
   @override
   List<String> list(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.wifiConnection) {
+      return (windowsConnectivity ??= _WindowsConnectivity(
+        bindings?.windowsConnectivityLibrary,
+      )).wifi.list(context);
+    }
     if (Platform.isWindows && kind == EntityKind.networkInterface) {
       return (windowsNetwork ??= _WindowsNetwork(
         bindings?.windowsNetworkLibrary,
@@ -146,6 +158,11 @@ final class _NativeCollector
   @override
   String? current(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.wifiConnection) {
+      return (windowsConnectivity ??= _WindowsConnectivity(
+        bindings?.windowsConnectivityLibrary,
+      )).wifi.current(context);
+    }
     if (Platform.isWindows && kind == EntityKind.storageVolume) return null;
     if (Platform.isWindows && kind == EntityKind.cpuCore) return null;
     if (Platform.isWindows &&
@@ -160,6 +177,11 @@ final class _NativeCollector
 
   @override
   DeviceSnapshot read(EntityAddress entity, ReadContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.wifiConnection) {
+      return (windowsConnectivity ??= _WindowsConnectivity(
+        bindings?.windowsConnectivityLibrary,
+      )).wifi.read(entity.targetId, context);
+    }
     if (Platform.isWindows && entity.kind == EntityKind.networkPerformance) {
       return (windowsConnectivity ??= _WindowsConnectivity(
         bindings?.windowsConnectivityLibrary,

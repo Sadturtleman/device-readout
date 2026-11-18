@@ -6,6 +6,10 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
+The [latest Wi-Fi upload checkpoint](docs/verification/2026-11-19-upload-wifi.md) adds Dart/Flutter Windows connection discovery, SSID, selected security and RSSI. All fifteen Wi-Fi native JIT scenarios pass on the current sources, but the complete Dart gate stops on a `persistent-unregister` child crash. Corrected-source compiled and Flutter consumer gates remain pending. Earlier passing counts below belong to their respective checkpoints.
+
+The [Dart/Flutter Windows performance checkpoint](docs/verification/2026-11-19-dart-windows-network-performance.md) verifies nullable provider data-plan rates and shared connectivity observation. Dart passes 203/203 checks per JIT/CLI-bundle mode, both checkout and installed Windows apps pass 20/20 including ordinary-example restoration, and Flutter framework checks pass 27/27. Installed runtime files match the verified sources. Prior compiler/build failures and remaining physical/platform coverage are recorded.
+
 The [2026-11-19 upload checkpoint](docs/verification/2026-11-19-upload-connectivity-performance.md) includes Dart/Flutter Windows NetworkPath and NetworkPerformance collectors. Dart passes 203/203 checks in each JIT/CLI-bundle mode, and the checkout Windows application reports 20 passing scenarios. The record distinguishes these results from intermittent compiler/build failures and the pending installed-consumer/framework reruns for the performance addition.
 
 The [Dart/Flutter Windows connectivity checkpoint](docs/verification/2026-11-18-dart-windows-connectivity.md) adds preferred-profile NetworkPath get/watch with shared WinRT notifications, supplemental polling and context-owned MTA lifetime. Dart passes 190/190 checks in each JIT/CLI-bundle mode, checkout and installed Windows apps pass 19/19 each, and Flutter framework checks pass 27/27. Remaining path fields, physical transitions and the full SDK matrix remain pending.

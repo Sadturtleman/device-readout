@@ -8,8 +8,18 @@ Future<Map<String, Object?>> _exercise(
   void Function(int) configure,
   void Function() release,
 ) async {
+  if (scenario.startsWith('wifi-')) {
+    return _wifiExercise(scenario, access, counter, emit, configure, release);
+  }
   if (scenario.startsWith('performance-')) {
-    return _performanceExercise(scenario, access, counter, emit, configure, release);
+    return _performanceExercise(
+      scenario,
+      access,
+      counter,
+      emit,
+      configure,
+      release,
+    );
   }
   void typed(Object? error, ErrorCode code) => check(
     error is DeviceReadoutException && error.code == code,

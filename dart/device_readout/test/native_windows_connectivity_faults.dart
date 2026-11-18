@@ -10,9 +10,25 @@ import 'package:device_readout/src/transport_native.dart'
 import 'observers.dart' show check, errorOf;
 part 'native_windows_connectivity_cases.dart';
 part 'native_windows_performance_cases.dart';
+part 'native_windows_wifi_cases.dart';
 
 const _flag = '--device-readout-connectivity-child';
 const _scenarios = [
+  'wifi-fields',
+  'wifi-lifetimes',
+  'wifi-shared-events',
+  'wifi-error-recovery',
+  'wifi-retained-close',
+  'wifi-permission-observers',
+  'wifi-held-inventory',
+  'wifi-held-identity',
+  'wifi-held-ssid',
+  'wifi-held-security',
+  'wifi-held-open',
+  'wifi-held-query',
+  'wifi-held-close',
+  'wifi-cancel',
+  'wifi-dispose',
   'performance-fields',
   'performance-shared',
   'performance-source-failure',

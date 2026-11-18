@@ -2,6 +2,8 @@
 
 This checkpoint publishes the current implementation and its recorded verification on 2026-11-19. DeviceReadout remains in development; the complete 46-entity, language, framework and platform acceptance matrix is not complete.
 
+Subsequent unchanged-source verification completed both Windows consumer scripts and the framework suite. See the [performance follow-up](2026-11-19-dart-windows-network-performance.md). The results below preserve what was established at upload time.
+
 ## Changes included
 
 - Dart and Flutter Windows add typed `NetworkPath` and `NetworkPerformance` reads and streams. Together with the previous collectors, fourteen native entity kinds now have implementations.
