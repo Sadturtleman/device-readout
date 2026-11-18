@@ -6,7 +6,13 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The [latest upload checkpoint](docs/verification/2026-11-18-upload-power-storage.md) includes the verified C# power changes and initial Dart Windows storage collection. Dart analysis and the standalone storage check pass on this host; aggregate, compiled, independent-reference and Flutter storage verification remain pending.
+The [latest upload checkpoint](docs/verification/2026-11-18-upload-storage-cpu.md) includes the Windows storage native-boundary fixes and new Dart/Flutter CPU collection. Fresh upload checks pass 104/104 Dart contracts in both JIT and CLI-bundle modes, plus 16/16 actual Flutter Windows scenarios. CPU-specific native faults, installed CPU consumers and the complete platform acceptance matrix remain pending.
+
+The [storage native-boundary follow-up](docs/verification/2026-11-18-dart-windows-storage-native.md) fixes malformed optional metadata and preserves Win32 errors inside a bundled C helper. Dart passes 99/99 checks in JIT and CLI-bundle modes; both checkout and installed-Pub Flutter Windows apps pass 15/15; framework tests pass 27/27 and Chrome/Edge each pass sixteen browser scenarios. Android's installed package builds without a Windows DLL. Physical/platform acceptance gaps remain documented.
+
+The [Dart and Flutter Windows storage checkpoint](docs/verification/2026-11-18-dart-windows-storage.md) verifies local volume discovery, typed get/watch and independent native capacity/metadata comparisons. Dart passes 70/70 in JIT and compiled modes, the actual Windows release app passes 15/15 and Flutter framework tests pass 27/27. Native fault/removal cases, additional storage configurations and the complete acceptance matrix remain pending.
+
+The [previous upload checkpoint](docs/verification/2026-11-18-upload-power-storage.md) includes the verified C# power changes and initial Dart Windows storage collection. Its storage verification gaps are followed up in the newer records above.
 
 The [C# native power checkpoint](docs/verification/2026-11-18-dotnet-power-native.md) adds 23 child-process scenarios through the production P/Invoke declarations, covering source flags, native failures, real system capability reads and held-call deadlines/cancellation. The final ordinary-user .NET suite passes 168/168. It also corrects a Wi-Fi test that assumed native cleanup completed synchronously. Physical power transitions and the full acceptance matrix remain pending.
 

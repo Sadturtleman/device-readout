@@ -1,16 +1,26 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:device_readout/device_readout.dart';
 
 import 'observers.dart' show check, errorOf;
+import '../../../flutter/device_readout_flutter/example/test_support/windows_storage_reference.dart';
 
 Future<void> nativeWindowsStorage() async {
   if (!Platform.isWindows) return;
   final sdk = DeviceAccess.native();
   final other = DeviceAccess.native();
+  final probe = WindowsStorageReference(
+    File('.tools/windows-memory-probe/Release/device_readout_memory_probe.dll')
+        .absolute
+        .path,
+  );
   try {
+    final reference = probe.read();
+    check(reference['structureSize'] == 96, 'Windows SDK disk-space ABI size.');
     final volumes = await sdk.storageVolumes.list();
+    check(volumes.length == probe.count(), 'Native and SDK inventories agree.');
     check(volumes.isNotEmpty, 'Windows must expose its mounted local volumes.');
     final again = await sdk.storageVolumes.list();
     check(
@@ -22,6 +32,7 @@ Future<void> nativeWindowsStorage() async {
       'Do not infer application storage from a drive letter or working directory.',
     );
     Entity<StorageVolumeSnapshot>? readable;
+    StorageVolumeSnapshot? matchedReference;
     for (final volume in volumes) {
       late StorageVolumeSnapshot snapshot;
       try {
@@ -32,7 +43,29 @@ Future<void> nativeWindowsStorage() async {
         rethrow;
       }
       if (snapshot.totalBytes != null && snapshot.fileSystem != null) {
-        readable ??= volume;
+        if (snapshot.totalBytes == reference['totalBytes'] &&
+            snapshot.name == reference['name'] &&
+            snapshot.fileSystem == reference['fileSystem']) {
+          readable = volume;
+          matchedReference = snapshot;
+          check(
+            snapshot.totalBytesForCaller == reference['totalBytesForCaller'],
+            'Caller quota capacity agrees with the independent reference.',
+          );
+          check(
+            snapshot.readOnly == reference['readOnly'] &&
+                snapshot.removable == reference['removable'],
+            'Volume flags agree with the independent reference.',
+          );
+          check(
+            snapshot.freeBytes! >= BigInt.zero &&
+                snapshot.freeBytes! <= snapshot.totalBytes! &&
+                snapshot.availableToCallerBytes! >= BigInt.zero &&
+                snapshot.availableToCallerBytes! <=
+                    snapshot.totalBytesForCaller!,
+            'Live free-space values stay within their respective capacities.',
+          );
+        }
         check(
           snapshot.totalBytes! > BigInt.zero,
           'The volume capacity is positive.',
@@ -53,7 +86,7 @@ Future<void> nativeWindowsStorage() async {
     }
     check(
       readable != null,
-      'At least one local volume is readable on this host.',
+      'The independently queried Windows volume must be present and readable.',
     );
     final target = readable!;
     sdk.observers.current(Entities.storageVolume, target);
@@ -92,9 +125,13 @@ Future<void> nativeWindowsStorage() async {
       support.readable == true && support.watchable == true,
       'Native volume support is advertised.',
     );
+    print(
+      'WINDOWS_STORAGE ${jsonEncode({'volumeCount': volumes.length, 'reference': reference.map((key, value) => MapEntry(key, value is BigInt ? value.toString() : value)), 'snapshot': matchedReference!.toJson(), 'polledSnapshots': snapshots.length})}',
+    );
   } finally {
     other.dispose();
     sdk.dispose();
+    probe.dispose();
   }
 }
 

@@ -91,7 +91,10 @@ final class _WindowsDeviceInfo {
     }
   }
 
-  String? biosString(String name) {
+  String? biosString(String name) =>
+      registryString(r'HARDWARE\DESCRIPTION\System\BIOS', name);
+
+  String? registryString(String key, String name) {
     final owner = heap();
     if (owner == ffi.nullptr) return null;
     final inputs = <ffi.Pointer<ffi.Void>>[];
@@ -110,7 +113,7 @@ final class _WindowsDeviceInfo {
     }
 
     try {
-      final path = wide(r'HARDWARE\DESCRIPTION\System\BIOS');
+      final path = wide(key);
       final value = wide(name);
       final count = reserve(4).cast<ffi.Uint32>();
       if (path == ffi.nullptr || value == ffi.nullptr || count == ffi.nullptr)

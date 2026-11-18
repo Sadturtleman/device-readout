@@ -11,6 +11,14 @@ bin/
 obj/
 test-results/
 *.log
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
 swift/.build/
 swift/.swiftpm/
 packages/react-native/android/shared/

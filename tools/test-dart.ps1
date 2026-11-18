@@ -25,9 +25,16 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Dart JIT contract checks failed.' }
     $artifacts = Join-Path $projectRoot '.tools/dart-checks'
     New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
-    $executable = Join-Path $artifacts 'contracts.exe'
-    & $DartPath compile exe dart/device_readout/test/contracts.dart -o $executable
-    if ($LASTEXITCODE -ne 0) { throw 'Dart native compilation failed.' }
+    node tools/prepare-dart-native-runner.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'Dart native consumer preparation failed.' }
+    Push-Location (Join-Path $projectRoot '.tools/dart-native-runner')
+    try {
+        & $DartPath pub get --offline
+        if ($LASTEXITCODE -ne 0) { throw 'Dart native consumer dependency resolution failed.' }
+        & $DartPath build cli --target=bin/contracts.dart --output=$artifacts
+        if ($LASTEXITCODE -ne 0) { throw 'Dart native compilation and asset bundling failed.' }
+    } finally { Pop-Location }
+    $executable = Join-Path $artifacts 'bundle/bin/contracts.exe'
     & $executable
     if ($LASTEXITCODE -ne 0) { throw 'Dart compiled contract checks failed.' }
     & $DartPath compile js dart/device_readout/test/web_boundary.dart -o (Join-Path $artifacts 'web-boundary.js')

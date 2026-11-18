@@ -1,5 +1,11 @@
 # DeviceReadout for Flutter
 
+Windows `Entities.cpu` uses the shared isolate-owned Dart collector for identity, topology and process-default availability. The [upload checkpoint](../../docs/verification/2026-11-18-upload-storage-cpu.md) passes 16/16 actual checkout Windows app scenarios, including independent CPU field comparisons and timer progress during polling. Installed CPU consumers and other platform/configuration combinations remain pending.
+
+The [native storage follow-up](../../docs/verification/2026-11-18-dart-windows-storage-native.md) preserves Win32 errors in a Windows-only code asset and fixes malformed optional metadata. Flutter build hooks compile and bundle the production helper automatically. Both checkout and installed-Pub Windows applications pass 15/15; framework checks pass 27/27. An installed Android consumer builds without the Windows DLL; other platform runtimes and physical storage transitions remain pending.
+
+Windows local storage volumes are available through typed `storageVolumes.list()` handles and the shared Dart collector. The [storage checkpoint](../../docs/verification/2026-11-18-dart-windows-storage.md) verifies independent capacity/metadata agreement, explicit app current-volume selection and polling in the actual Windows release app: 15/15 scenarios and 27/27 framework checks pass. Native fault/removal and other storage environments remain pending.
+
 Windows `Entities.power` is available through the shared Dart collector, with isolate-owned get/watch and no additional platform plugin. The [power checkpoint](../../docs/verification/2026-11-18-dart-windows-power.md) passes 14/14 actual Windows release-app scenarios and 27/27 framework tests. Current source/saver values match native references; battery/UPS transitions, native faults and installed Windows consumer coverage remain pending.
 
 The [locale platform follow-up](../../docs/verification/2026-11-18-flutter-locale-platforms.md) verifies the observer on actual Android API 26/36 and Chrome/Edge applications, both from checkout and separately installed Pub archives. Android passes 34/34 per device and consumer; web passes ten application scenarios per browser and consumer. These development packages remain unpublished; physical devices, Apple applications and further browsers/versions remain unverified.

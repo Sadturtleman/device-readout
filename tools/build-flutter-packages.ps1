@@ -1,4 +1,4 @@
-param([string]$FlutterRoot, [string]$SdkRoot, [ValidateSet('Android','Web')][string]$Platform = 'Android')
+param([string]$FlutterRoot, [string]$SdkRoot, [ValidateSet('Android','Web','Windows')][string]$Platform = 'Android')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $FlutterRoot) { $FlutterRoot = Join-Path $projectRoot '.tools/flutter-3.47.9/flutter' }

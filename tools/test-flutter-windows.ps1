@@ -1,11 +1,12 @@
-param([string]$FlutterRoot)
+param([string]$FlutterRoot, [string]$ExampleRoot)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $FlutterRoot) { $FlutterRoot = Join-Path $projectRoot '.tools/flutter-3.47.9/flutter' }
 $FlutterRoot = (Resolve-Path -LiteralPath $FlutterRoot).Path
 $dartExecutable = Join-Path $FlutterRoot 'bin/cache/dart-sdk/bin/dart.exe'
 $toolSnapshot = Join-Path $FlutterRoot 'bin/cache/flutter_tools.snapshot'
-$exampleRoot = (Resolve-Path -LiteralPath (Join-Path $projectRoot 'flutter/device_readout_flutter/example')).Path
+if (-not $ExampleRoot) { $ExampleRoot = Join-Path $projectRoot 'flutter/device_readout_flutter/example' }
+$exampleRoot = (Resolve-Path -LiteralPath $ExampleRoot).Path
 $buildRoot = [IO.Path]::GetFullPath((Join-Path $exampleRoot 'build'))
 if (-not $buildRoot.StartsWith($exampleRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Generated build outputs must remain inside the example directory.'
@@ -50,12 +51,12 @@ try {
     if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { throw 'Windows test host produced no report.' }
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
     Write-Output (Get-Content -LiteralPath $reportPath -Raw)
-    if (-not $report.passed -or $report.checks.Count -ne 14) { throw "Windows verification failed; see $reportPath" }
+    if (-not $report.passed -or $report.checks.Count -ne 16) { throw "Windows verification failed; see $reportPath" }
     # Leave a regular example executable after verification. It has no test channel
     # and uses the original application entrypoint.
     $env:DEVICE_READOUT_WINDOWS_TEST = $null
     Invoke-LocalFlutter build windows --release --no-pub --target=lib/main.dart
-    Write-Output "14/14 native Windows screen, memory, runtime, OS, power, locale, time-zone and device scenarios passed. Report: $reportPath"
+    Write-Output "16/16 native Windows screen, CPU, storage, memory, runtime, OS, power, locale, time-zone and device scenarios passed. Report: $reportPath"
 } finally {
     $env:FLUTTER_ROOT = $oldFlutterRoot
     $env:PUB_CACHE = $oldPubCache

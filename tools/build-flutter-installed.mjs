@@ -10,11 +10,12 @@ if (!flutterRoot || !process.env.PUB_CACHE) throw Error('Use build-flutter-packa
 const dart = path.join(flutterRoot, 'bin/cache/dart-sdk/bin/dart.exe');
 const tool = path.join(flutterRoot, 'bin/cache/flutter_tools.snapshot');
 const web = process.argv.includes('--platform=web');
-const consumer = path.join(projectRoot, web ? '.tools/flutter-web-installed' : '.tools/flutter-installed');
+const windows = process.argv.includes('--platform=windows');
+const consumer = path.join(projectRoot, web ? '.tools/flutter-web-installed' : windows ? '.tools/flutter-windows-installed' : '.tools/flutter-installed');
 const example = path.join(projectRoot, 'flutter/device_readout_flutter/example');
 const records = prepareFlutterPackages(flutterRoot);
 fs.mkdirSync(consumer, {recursive: true});
-for (const name of [...(web ? [] : ['android']), 'lib', 'test_support', 'web']) copySources(path.join(example, name), path.join(consumer, name));
+for (const name of [...(web ? [] : windows ? ['windows'] : ['android']), 'lib', 'test_support', 'web']) copySources(path.join(example, name), path.join(consumer, name));
 fs.copyFileSync(path.join(projectRoot, 'flutter/device_readout_flutter/analysis_options.yaml'), path.join(consumer, 'analysis_options.yaml'));
 const requests = [];
 let origin;
@@ -61,11 +62,16 @@ try {
     for (const [target, output, base] of [['lib/main.dart', 'web', '/'], ['test_support/web_contracts.dart', 'web-contracts', '/contracts/']]) {
       await flutter('build', 'web', '--release', '--no-pub', '--no-web-resources-cdn', '--no-wasm-dry-run', '--target=' + target, '--output=build/' + output, '--base-href=' + base);
     }
+  } else if (windows) {
+    await flutter('build', 'windows', '--release', '--no-pub', '--target=lib/main.dart');
+    if (!fs.existsSync(path.join(consumer, 'build/windows/x64/runner/Release/device_readout_win32.dll'))) {
+      throw Error('The installed consumer must bundle the production Win32 error-capture library.');
+    }
   } else {
     await flutter('build', 'apk', '--debug', '--target-platform=android-x64', '--no-pub', '--target=test_support/android_sensors.dart');
   }
   fs.mkdirSync(path.join(projectRoot, '.tools/evidence'), {recursive: true});
-  fs.writeFileSync(path.join(projectRoot, web ? '.tools/evidence/flutter-web-installed-packages.json' : '.tools/evidence/flutter-installed-packages.json'), JSON.stringify({passed: true, origin, requests, records}, null, 2));
+  fs.writeFileSync(path.join(projectRoot, web ? '.tools/evidence/flutter-web-installed-packages.json' : windows ? '.tools/evidence/flutter-windows-installed-packages.json' : '.tools/evidence/flutter-installed-packages.json'), JSON.stringify({passed: true, origin, requests, records}, null, 2));
 } finally {
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));

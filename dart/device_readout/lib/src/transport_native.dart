@@ -3,9 +3,11 @@ import 'dart:collection';
 import 'dart:ffi' as ffi;
 import 'dart:io' show Platform;
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'core.dart';
 import 'transport_api.dart';
+import 'windows_calls.dart';
 
 part 'transport_native_watch.dart';
 part 'windows_memory.dart';
@@ -13,6 +15,7 @@ part 'windows_runtime.dart';
 part 'windows_os.dart';
 part 'windows_power.dart';
 part 'windows_storage.dart';
+part 'windows_cpu.dart';
 part 'windows_device_info.dart';
 part 'windows_time_zone.dart';
 part 'windows_locale.dart';
@@ -31,13 +34,27 @@ CollectionChannel createChannel(
   Object? initialData,
 ) => _IsolateChannel(factory, initialData);
 
-DeviceCollector createNativeCollector(Object? _) => _NativeCollector();
+// Internal platform-adapter seam. The public native() factory supplies null.
+// Explicit isolated factories can supply bindings without process-wide overrides.
+final class NativeCollectorBindings {
+  final String? windowsStorageLibrary;
+  final String? windowsCpuLibrary;
+  const NativeCollectorBindings({
+    this.windowsStorageLibrary,
+    this.windowsCpuLibrary,
+  });
+}
+
+DeviceCollector createNativeCollector(Object? data) =>
+    _NativeCollector(data as NativeCollectorBindings?);
 
 final class _NativeCollector
     implements
         DeviceCollector,
         DeviceCapabilityCollector,
         DeviceDiscoveryCollector {
+  final NativeCollectorBindings? bindings;
+  _NativeCollector(this.bindings);
   // The factory and this lazy binding are accessed only by the collection isolate.
   _WindowsMemory? windowsMemory;
   _WindowsRuntime? windowsRuntime;
@@ -47,6 +64,7 @@ final class _NativeCollector
   _WindowsLocale? windowsLocale;
   _WindowsPower? windowsPower;
   _WindowsStorage? windowsStorage;
+  _WindowsCpu? windowsCpu;
 
   @override
   EntityCapabilities capabilities(EntityAddress entity, ReadContext context) {
@@ -61,6 +79,7 @@ final class _NativeCollector
                 entity.kind == EntityKind.locale ||
                 entity.kind == EntityKind.power ||
                 entity.kind == EntityKind.storageVolume ||
+                entity.kind == EntityKind.cpu ||
                 entity.kind == EntityKind.deviceInfo));
     return EntityCapabilities(readable: available, watchable: available);
   }
@@ -69,7 +88,9 @@ final class _NativeCollector
   List<String> list(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
     if (Platform.isWindows && kind == EntityKind.storageVolume) {
-      return (windowsStorage ??= _WindowsStorage()).list(context);
+      return (windowsStorage ??= _WindowsStorage(
+        bindings?.windowsStorageLibrary,
+      )).list(context);
     }
     throw const DeviceReadoutException(
       ErrorCode.unsupportedEntity,
@@ -89,6 +110,12 @@ final class _NativeCollector
 
   @override
   DeviceSnapshot read(EntityAddress entity, ReadContext context) {
+    if (Platform.isWindows && entity.kind == EntityKind.cpu) {
+      return (windowsCpu ??= _WindowsCpu(bindings?.windowsCpuLibrary)).read(
+        context,
+        (windowsDeviceInfo ??= _WindowsDeviceInfo()).registryString,
+      );
+    }
     context.cancellation.throwIfCancelled();
     if (Platform.isWindows && entity.kind == EntityKind.ram) {
       return (windowsMemory ??= _WindowsMemory()).read();
@@ -112,10 +139,9 @@ final class _NativeCollector
       return (windowsPower ??= _WindowsPower()).read();
     }
     if (Platform.isWindows && entity.kind == EntityKind.storageVolume) {
-      return (windowsStorage ??= _WindowsStorage()).read(
-        entity.targetId,
-        context,
-      );
+      return (windowsStorage ??= _WindowsStorage(
+        bindings?.windowsStorageLibrary,
+      )).read(entity.targetId, context);
     }
     if (entity.kind != EntityKind.runtime) {
       throw const DeviceReadoutException(
@@ -163,7 +189,12 @@ final class _NativeCollector
         try {
           try {
             try {
-              windowsStorage?.dispose();
+              try {
+                windowsCpu?.dispose();
+              } finally {
+                windowsCpu = null;
+                windowsStorage?.dispose();
+              }
             } finally {
               windowsStorage = null;
               windowsPower?.dispose();

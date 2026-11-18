@@ -298,12 +298,15 @@ Future<void> capabilityUnknownAndNativeDefaults() async {
     );
     final runtime = await native.capabilities.get(Entities.runtime);
     final cpu = await native.capabilities.get(Entities.cpu);
+    final battery = await native.capabilities.get(Entities.battery);
     check(
       runtime.readable == true &&
           runtime.watchable == true &&
-          cpu.readable == false &&
-          cpu.watchable == false,
-      'The standalone adapter distinguishes implemented Runtime from missing CPU support.',
+          cpu.readable == Platform.isWindows &&
+          cpu.watchable == Platform.isWindows &&
+          battery.readable == false &&
+          battery.watchable == false,
+      'The standalone adapter reports Runtime and Windows CPU support while retaining unsupported Battery metadata.',
     );
     final cancellation = CancellationToken()..cancel();
     check(

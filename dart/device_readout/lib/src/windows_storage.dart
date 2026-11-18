@@ -13,7 +13,9 @@ final class _DiskSpaceInformation extends ffi.Struct {
 
 /// Local volume GUID inventory and read-only queries, owned by the collection isolate.
 final class _WindowsStorage {
-  final kernel = ffi.DynamicLibrary.open('kernel32.dll');
+  final ffi.DynamicLibrary kernel;
+  _WindowsStorage([String? libraryPath])
+    : kernel = ffi.DynamicLibrary.open(libraryPath ?? 'kernel32.dll');
   static const _nameUnits = 261;
   static final _volumeName = RegExp(
     r'^\\\\\?\\Volume\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}\\$',
@@ -42,42 +44,14 @@ final class _WindowsStorage {
         ),
         int Function(ffi.Pointer<ffi.Void>, int, ffi.Pointer<ffi.Void>)
       >('HeapFree');
-  late final lastError = kernel
-      .lookupFunction<ffi.Uint32 Function(), int Function()>('GetLastError');
-  late final firstVolume = kernel
-      .lookupFunction<
-        ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Uint16>, ffi.Uint32),
-        ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Uint16>, int)
-      >('FindFirstVolumeW');
-  late final nextVolume = kernel
-      .lookupFunction<
-        ffi.Int32 Function(
-          ffi.Pointer<ffi.Void>,
-          ffi.Pointer<ffi.Uint16>,
-          ffi.Uint32,
-        ),
-        int Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Uint16>, int)
-      >('FindNextVolumeW');
+  late final firstVolume = kernel.lookup<ffi.Void>('FindFirstVolumeW');
+  late final nextVolume = kernel.lookup<ffi.Void>('FindNextVolumeW');
   late final closeSearch = kernel
       .lookupFunction<
         ffi.Int32 Function(ffi.Pointer<ffi.Void>),
         int Function(ffi.Pointer<ffi.Void>)
       >('FindVolumeClose');
-  late final diskFreeSpace = kernel
-      .lookupFunction<
-        ffi.Int32 Function(
-          ffi.Pointer<ffi.Uint16>,
-          ffi.Pointer<ffi.Uint64>,
-          ffi.Pointer<ffi.Uint64>,
-          ffi.Pointer<ffi.Uint64>,
-        ),
-        int Function(
-          ffi.Pointer<ffi.Uint16>,
-          ffi.Pointer<ffi.Uint64>,
-          ffi.Pointer<ffi.Uint64>,
-          ffi.Pointer<ffi.Uint64>,
-        )
-      >('GetDiskFreeSpaceExW');
+  late final diskFreeSpace = kernel.lookup<ffi.Void>('GetDiskFreeSpaceExW');
   late final diskSpace = kernel
       .lookupFunction<
         ffi.Int32 Function(
@@ -94,50 +68,10 @@ final class _WindowsStorage {
         ffi.Uint32 Function(ffi.Pointer<ffi.Uint16>),
         int Function(ffi.Pointer<ffi.Uint16>)
       >('GetDriveTypeW');
-  late final openFile = kernel
-      .lookupFunction<
-        ffi.Pointer<ffi.Void> Function(
-          ffi.Pointer<ffi.Uint16>,
-          ffi.Uint32,
-          ffi.Uint32,
-          ffi.Pointer<ffi.Void>,
-          ffi.Uint32,
-          ffi.Uint32,
-          ffi.Pointer<ffi.Void>,
-        ),
-        ffi.Pointer<ffi.Void> Function(
-          ffi.Pointer<ffi.Uint16>,
-          int,
-          int,
-          ffi.Pointer<ffi.Void>,
-          int,
-          int,
-          ffi.Pointer<ffi.Void>,
-        )
-      >('CreateFileW');
-  late final volumeInformation = kernel
-      .lookupFunction<
-        ffi.Int32 Function(
-          ffi.Pointer<ffi.Void>,
-          ffi.Pointer<ffi.Uint16>,
-          ffi.Uint32,
-          ffi.Pointer<ffi.Uint32>,
-          ffi.Pointer<ffi.Uint32>,
-          ffi.Pointer<ffi.Uint32>,
-          ffi.Pointer<ffi.Uint16>,
-          ffi.Uint32,
-        ),
-        int Function(
-          ffi.Pointer<ffi.Void>,
-          ffi.Pointer<ffi.Uint16>,
-          int,
-          ffi.Pointer<ffi.Uint32>,
-          ffi.Pointer<ffi.Uint32>,
-          ffi.Pointer<ffi.Uint32>,
-          ffi.Pointer<ffi.Uint16>,
-          int,
-        )
-      >('GetVolumeInformationByHandleW');
+  late final openFile = kernel.lookup<ffi.Void>('CreateFileW');
+  late final volumeInformation = kernel.lookup<ffi.Void>(
+    'GetVolumeInformationByHandleW',
+  );
   late final closeHandle = kernel
       .lookupFunction<
         ffi.Int32 Function(ffi.Pointer<ffi.Void>),
@@ -145,19 +79,22 @@ final class _WindowsStorage {
       >('CloseHandle');
 
   T _withStorage<T>(T Function(ffi.Pointer<ffi.Void> Function(int)) body) {
-    // Resolve and warm the error accessor before a failing API can set its value.
-    // Lazy native symbol resolution after failure can overwrite GetLastError.
-    lastError();
     final heap = processHeap();
     if (heap == ffi.nullptr) {
-      throw const DeviceReadoutException(ErrorCode.readFailed, 'The process heap is unavailable.');
+      throw const DeviceReadoutException(
+        ErrorCode.readFailed,
+        'The process heap is unavailable.',
+      );
     }
     final buffers = <ffi.Pointer<ffi.Void>>[];
     try {
       return body((bytes) {
         final buffer = allocate(heap, 8, bytes);
         if (buffer == ffi.nullptr) {
-          throw const DeviceReadoutException(ErrorCode.readFailed, 'Native volume buffer allocation failed.');
+          throw const DeviceReadoutException(
+            ErrorCode.readFailed,
+            'Native volume buffer allocation failed.',
+          );
         }
         buffers.add(buffer);
         return buffer;
@@ -173,25 +110,39 @@ final class _WindowsStorage {
       handle == ffi.nullptr ||
       handle.address == ffi.Pointer<ffi.Void>.fromAddress(-1).address;
 
-  String _text(ffi.Pointer<ffi.Uint16> buffer, int capacity) {
+  String? _text(ffi.Pointer<ffi.Uint16> buffer, int capacity) {
     final units = <int>[];
+    var pendingHighSurrogate = false;
     for (var i = 0; i < capacity; i++) {
       final unit = buffer[i];
-      if (unit == 0) return String.fromCharCodes(units);
+      if (unit == 0) {
+        return pendingHighSurrogate ? null : String.fromCharCodes(units);
+      }
+      if (unit >= 0xd800 && unit <= 0xdbff) {
+        if (pendingHighSurrogate) return null;
+        pendingHighSurrogate = true;
+      } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+        if (!pendingHighSurrogate) return null;
+        pendingHighSurrogate = false;
+      } else if (pendingHighSurrogate) {
+        return null;
+      }
       units.add(unit);
     }
-    throw const DeviceReadoutException(
-      ErrorCode.readFailed,
-      'Native volume text is not terminated within its bound.',
-    );
+    return null;
   }
 
   List<String> list(ReadContext context) => _withStorage((reserve) {
     context.cancellation.throwIfCancelled();
+    final calls = WindowsCalls(reserve);
     const capacity = 64; // A volume GUID path, including its terminator, fits in 50 UTF-16 units.
     final name = reserve(capacity * 2).cast<ffi.Uint16>();
-    final handle = firstVolume(name, capacity);
-    final firstError = lastError();
+    final first = calls.invoke(WindowsCall.firstVolume, firstVolume, [
+      name.address,
+      capacity,
+    ]);
+    final firstError = calls.error;
+    final handle = ffi.Pointer<ffi.Void>.fromAddress(first);
     if (_invalid(handle)) {
       if (firstError == 18) return <String>[];
       throw _failure('FindFirstVolumeW', firstError);
@@ -201,7 +152,8 @@ final class _WindowsStorage {
       while (true) {
         context.cancellation.throwIfCancelled();
         final value = _text(name, capacity);
-        if (!_volumeName.hasMatch(value) ||
+        if (value == null ||
+            !_volumeName.hasMatch(value) ||
             !identities.add(value.toLowerCase()) ||
             identities.length > 4096) {
           throw const DeviceReadoutException(
@@ -212,8 +164,12 @@ final class _WindowsStorage {
         for (var i = 0; i < capacity; i++) {
           name[i] = 0;
         }
-        final found = nextVolume(handle, name, capacity);
-        final error = lastError();
+        final found = calls.invoke(WindowsCall.nextVolume, nextVolume, [
+          handle.address,
+          name.address,
+          capacity,
+        ]);
+        final error = calls.error;
         if (found != 0) continue;
         if (error != 18) throw _failure('FindNextVolumeW', error);
         break;
@@ -232,6 +188,7 @@ final class _WindowsStorage {
       );
     }
     return _withStorage((reserve) {
+      final calls = WindowsCalls(reserve);
       final root = reserve((identity.length + 1) * 2).cast<ffi.Uint16>();
       for (var i = 0; i < identity.length; i++) {
         root[i] = identity.codeUnitAt(i);
@@ -245,12 +202,18 @@ final class _WindowsStorage {
       String? name, fileSystem;
       bool? readOnly;
       int? failure;
-      if (diskFreeSpace(root, counts, counts + 1, counts + 2) != 0) {
+      if (calls.invoke(WindowsCall.freeSpace, diskFreeSpace, [
+            root.address,
+            counts.address,
+            (counts + 1).address,
+            (counts + 2).address,
+          ]) !=
+          0) {
         available = BigInt.from(counts[0]).toUnsigned(64);
         callerTotal = BigInt.from(counts[1]).toUnsigned(64);
         freeBytes = BigInt.from(counts[2]).toUnsigned(64);
       } else {
-        failure = lastError();
+        failure = calls.error;
       }
       context.cancellation.throwIfCancelled();
       if (diskSpace(root, space) == 0) {
@@ -265,39 +228,41 @@ final class _WindowsStorage {
       }
       // Open the root for metadata only, sharing all normal operations. The handle-based
       // information query avoids the path API's documented empty-media prompt behavior.
-      final handle = openFile(
-        root,
+      final opened = calls.invoke(WindowsCall.openFile, openFile, [
+        root.address,
         0,
         7,
-        ffi.nullptr,
+        0,
         3,
         0x02000000,
-        ffi.nullptr,
-      );
+        0,
+      ]);
+      final openError = calls.error;
+      final handle = ffi.Pointer<ffi.Void>.fromAddress(opened);
       if (!_invalid(handle)) {
         try {
-          if (volumeInformation(
-                handle,
-                names,
+          if (calls.invoke(WindowsCall.volumeInformation, volumeInformation, [
+                handle.address,
+                names.address,
                 _nameUnits,
-                ffi.nullptr,
-                ffi.nullptr,
-                flags,
-                names + _nameUnits,
+                0,
+                0,
+                flags.address,
+                (names + _nameUnits).address,
                 _nameUnits,
-              ) !=
+              ]) !=
               0) {
             name = _text(names, _nameUnits);
             fileSystem = _text(names + _nameUnits, _nameUnits);
             readOnly = (flags.value & 0x00080000) != 0;
           } else {
-            failure ??= lastError();
+            failure ??= calls.error;
           }
         } finally {
           closeHandle(handle);
         }
       } else {
-        failure ??= lastError();
+        failure ??= openError;
       }
       final removable = switch (driveType(root)) {
         2 => true,

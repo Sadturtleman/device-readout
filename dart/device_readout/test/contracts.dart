@@ -21,6 +21,10 @@ import 'native_windows_os.dart' as nativeOsTests;
 import 'native_windows_time_zone.dart' as nativeTimeZoneTests;
 import 'native_windows_locale.dart' as nativeLocaleTests;
 import 'native_windows_power.dart' as nativePowerTests;
+import 'native_windows_storage.dart' as nativeStorageTests;
+import 'native_windows_storage_faults.dart' as nativeStorageFaultTests;
+import 'native_windows_cpu.dart' as nativeCpuTests;
+import 'native_windows_cpu_controls.dart' as nativeCpuControlTests;
 import 'native_windows_device_info.dart' as nativeDeviceInfoTests;
 import 'native_windows_registry.dart' as nativeRegistryTests;
 
@@ -418,7 +422,7 @@ Future<void> nativeRuntime() async {
       values.length == 2 && values.every((v) => v.processBitness == 64),
       'Native constant fields still support state polling.',
     );
-    final error = await failureOf(sdk.get(Entities.cpu));
+    final error = await failureOf(sdk.get(Entities.networkPath));
     check(
       error is DeviceReadoutException &&
           error.code == ErrorCode.unsupportedEntity,
@@ -588,6 +592,8 @@ Future<void> configurationAndStartupErrors() async {
 }
 
 Future<void> main(List<String> arguments) async {
+  if (await nativeCpuControlTests.runChildIfRequested(arguments)) return;
+  if (await nativeStorageFaultTests.runChildIfRequested(arguments)) return;
   if (await nativeRegistryTests.runChildIfRequested(arguments)) return;
   final tests = <String, Future<void> Function()>{
     ...nativeRegistryTests.checks,
@@ -596,6 +602,10 @@ Future<void> main(List<String> arguments) async {
     ...nativeTimeZoneTests.checks,
     ...nativeLocaleTests.checks,
     ...nativePowerTests.checks,
+    ...nativeStorageTests.checks,
+    ...nativeStorageFaultTests.checks,
+    ...nativeCpuTests.checks,
+    ...nativeCpuControlTests.checks,
     ...nativeRuntimeTests.checks,
     ...nativeProcessTests.checks,
     ...nativeWindowsTests.checks,

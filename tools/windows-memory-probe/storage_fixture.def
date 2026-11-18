@@ -1,0 +1,14 @@
+EXPORTS
+    GetProcessHeap=readout_storage_GetProcessHeap
+    HeapAlloc=readout_storage_HeapAlloc
+    HeapFree=readout_storage_HeapFree
+    GetLastError=readout_storage_GetLastError
+    FindFirstVolumeW=readout_storage_FindFirstVolumeW
+    FindNextVolumeW=readout_storage_FindNextVolumeW
+    FindVolumeClose=readout_storage_FindVolumeClose
+    GetDiskFreeSpaceExW=readout_storage_GetDiskFreeSpaceExW
+    GetDiskSpaceInformationW=readout_storage_GetDiskSpaceInformationW
+    GetDriveTypeW=readout_storage_GetDriveTypeW
+    CreateFileW=readout_storage_CreateFileW
+    GetVolumeInformationByHandleW=readout_storage_GetVolumeInformationByHandleW
+    CloseHandle=readout_storage_CloseHandle

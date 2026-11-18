@@ -12,6 +12,8 @@ import 'process_memory_windows.dart' show verifyProcessMemory;
 import 'runtime_windows.dart' show verifyRuntime;
 import 'os_windows.dart' show verifyOs;
 import 'power_windows.dart' show verifyPower;
+import 'storage_windows.dart' show verifyStorage;
+import 'cpu_windows.dart' show verifyCpu;
 import 'time_zone_windows.dart' show verifyTimeZone;
 import 'locale_windows.dart' show verifyLocale;
 import 'locale_observer_native.dart' show verifyLocaleObservation;
@@ -193,6 +195,8 @@ Future<void> verify(
     checks.add(await verifyRuntime(access, memoryProbe));
     checks.add(await verifyOs(access, memoryProbe));
     checks.add(await verifyPower(access, memoryProbe));
+    checks.add(await verifyStorage(access, memoryProbe));
+    checks.add(await verifyCpu(access, memoryProbe));
     checks.add(await verifyTimeZone(access, memoryProbe));
     checks.add(await verifyLocale(access, memoryProbe));
     checks.add(await verifyLocaleObservation(access));

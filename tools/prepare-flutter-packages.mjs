@@ -26,6 +26,9 @@ export function prepareFlutterPackages(flutterRoot) {
     const source = path.join(projectRoot, relative), target = path.join(staging, name);
     fs.mkdirSync(target, {recursive: true});
     for (const item of ['pubspec.yaml', 'README.md', 'lib']) copySources(path.join(source, item), path.join(target, item));
+    if (name === 'device_readout') {
+      for (const item of ['hook', 'src']) copySources(path.join(source, item), path.join(target, item));
+    }
     fs.copyFileSync(path.join(projectRoot, 'LICENSE'), path.join(target, 'LICENSE'));
     if (name === 'device_readout_flutter') {
       copySources(path.join(source, 'assets'), path.join(target, 'assets'));
