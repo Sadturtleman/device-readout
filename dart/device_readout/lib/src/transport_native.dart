@@ -15,6 +15,7 @@ part 'windows_runtime.dart';
 part 'windows_os.dart';
 part 'windows_power.dart';
 part 'windows_battery.dart';
+part 'windows_battery_packs.dart';
 part 'windows_storage.dart';
 part 'windows_cpu.dart';
 part 'windows_network.dart';
@@ -139,6 +140,11 @@ final class _NativeCollector
   @override
   List<String> list(EntityKind kind, ReadContext context) {
     context.cancellation.throwIfCancelled();
+    if (Platform.isWindows && kind == EntityKind.battery) {
+      return (windowsBattery ??= _WindowsBattery(
+        bindings?.windowsBatteryLibrary,
+      )).list(context);
+    }
     if (Platform.isWindows && kind == EntityKind.wifiConnection) {
       return (windowsConnectivity ??= _WindowsConnectivity(
         bindings?.windowsConnectivityLibrary,

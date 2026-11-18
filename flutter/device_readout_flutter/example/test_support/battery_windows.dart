@@ -74,6 +74,21 @@ Map<String, Object?> _reference(String path) {
   }
 }
 
+// These closures capture only a path. Keeping them outside the verification
+// scope avoids Dart's shared closure context also retaining SDK target handles.
+Future<Map<String, Object?>> _aggregateReference(String path) =>
+    Isolate.run(() => _reference(path));
+Future<int> _packReference(String path) => Isolate.run(() {
+  final library = ffi.DynamicLibrary.open(path);
+  try {
+    return library.lookupFunction<ffi.Int64 Function(), int Function()>(
+      'readout_probe_battery_pack_count',
+    )();
+  } finally {
+    library.close();
+  }
+});
+
 Future<Map<String, Object?>> verifyAggregateBattery(
   readout.DeviceAccess access,
   String probePath,
@@ -81,9 +96,21 @@ Future<Map<String, Object?>> verifyAggregateBattery(
   final target = await access.current(readout.Entities.battery);
   if (target == null)
     throw StateError('The Windows aggregate endpoint is missing.');
-  final before = await Isolate.run(() => _reference(probePath));
+  final packCount = await _packReference(probePath);
+  final discovered = await access.list(readout.Entities.battery);
+  if (packCount < 0 ||
+      !discovered.contains(target) ||
+      discovered.length != packCount + 1)
+    throw StateError(
+      'Individual battery discovery disagrees with independent native enumeration.',
+    );
+  for (final pack in discovered.where((p) => p != target)) {
+    if ((await access.get(pack)).present != true)
+      throw StateError('A present individual pack is unreadable.');
+  }
+  final before = await _aggregateReference(probePath);
   final snapshot = await access.get(target);
-  final after = await Isolate.run(() => _reference(probePath));
+  final after = await _aggregateReference(probePath);
   final actual = <String, Object?>{
     'present': snapshot.present,
     'state': snapshot.state,
@@ -133,6 +160,8 @@ Future<Map<String, Object?>> verifyAggregateBattery(
       'name': 'native Windows aggregate battery agrees with C++/WinRT',
       'snapshot': snapshot.toJson(),
       'matchedReferenceFields': matched,
+      'individualPackCount': packCount,
+      'listedCount': discovered.length,
       'polls': values.length,
       'heartbeatTicks': ticks,
     };

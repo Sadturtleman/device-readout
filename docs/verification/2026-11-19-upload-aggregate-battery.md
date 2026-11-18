@@ -2,6 +2,8 @@
 
 This development snapshot includes the design, implementation and verification records available on 2026-11-19. The full 46-entity, language, framework and platform acceptance matrix remains unfinished. No packages are published by this upload.
 
+Subsequent verification completes the previously pending installed-package gate; see the [aggregate battery follow-up](2026-11-19-dart-windows-aggregate-battery.md). The separate [C# capacity correction](2026-11-19-dotnet-aggregate-capacity.md) also reproduces and fixes negative aggregate energy. The evidence below preserves the original upload cutoff.
+
 ## Implementation included
 
 Dart and Flutter Windows add the operating system's logical aggregate battery through `current(Entities.battery)`, followed by typed `get(target)` and `watch(target)`. The aggregate handle remains stable when no battery is present. Individual battery enumeration, individual-pack reads and interface hotplug are not implemented in this Dart collector; `list(Entities.battery)` remains unsupported.

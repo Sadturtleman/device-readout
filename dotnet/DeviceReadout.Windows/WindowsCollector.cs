@@ -181,15 +181,18 @@ internal sealed class WindowsCollector : IDeviceCollector
     {
         var report = aggregate.Read() ?? throw new DeviceReadoutException(ErrorCode.UnsupportedEntity, "The OS aggregate battery is unavailable.");
         if (report.Status == 0) return new BatterySnapshot {Present = false};
+        var design = report.DesignCapacity is >= 0 ? report.DesignCapacity : null;
+        var full = report.FullChargeCapacity is >= 0 ? report.FullChargeCapacity : null;
+        var remaining = report.RemainingCapacity is >= 0 ? report.RemainingCapacity : null;
         return new BatterySnapshot {
             Present = report.Status is >= 1 and <= 3 ? true : null,
             Charging = report.Status switch {1 or 2 => false, 3 => true, _ => null},
             State = report.Status switch {1 => BatteryState.Discharging, 2 => BatteryState.Idle, 3 => BatteryState.Charging, _ => null},
-            Level = report.FullChargeCapacity > 0 ? (double?)report.RemainingCapacity / report.FullChargeCapacity : null,
+            Level = full > 0 ? (double?)remaining / full : null,
             ChargeRateMilliwatts = report.ChargeRate,
-            DesignEnergyMilliwattHours = report.DesignCapacity,
-            FullChargeEnergyMilliwattHours = report.FullChargeCapacity,
-            RemainingEnergyMilliwattHours = report.RemainingCapacity,
+            DesignEnergyMilliwattHours = design,
+            FullChargeEnergyMilliwattHours = full,
+            RemainingEnergyMilliwattHours = remaining,
             TimeToEmpty = AggregateRemainingTime()
         };
     }

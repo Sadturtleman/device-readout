@@ -1,10 +1,27 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:device_readout/device_readout.dart';
 
 import 'observers.dart' show check;
+
+Future<int> _packReference() => Isolate.run(() {
+  final library = ffi.DynamicLibrary.open(
+    File('.tools/windows-memory-probe/Release/device_readout_memory_probe.dll')
+        .absolute
+        .path,
+  );
+  try {
+    return library.lookupFunction<ffi.Int64 Function(), int Function()>(
+      'readout_probe_battery_pack_count',
+    )();
+  } finally {
+    library.close();
+  }
+});
 
 Future<void> nativeWindowsAggregateBattery() async {
   if (!Platform.isWindows) return;
@@ -29,6 +46,20 @@ Future<void> nativeWindowsAggregateBattery() async {
       support.readable == true && support.watchable == true,
       'The aggregate endpoint supports get and watch.',
     );
+    final packCount = await _packReference();
+    final discovered = await access.list(Entities.battery);
+    check(
+      packCount >= 0 &&
+          discovered.contains(target) &&
+          discovered.length == packCount + 1,
+      'Battery discovery agrees with independent native pack enumeration and includes the logical aggregate.',
+    );
+    for (final pack in discovered.where((p) => p != target)) {
+      check(
+        (await access.get(pack)).present == true,
+        'Each independently enumerated present pack is readable.',
+      );
+    }
     final reference = await Process.run('powershell.exe', [
       '-NoProfile',
       '-File',
@@ -78,7 +109,7 @@ Future<void> nativeWindowsAggregateBattery() async {
       'Caller progress and the logical aggregate lifetime survive watch cancellation.',
     );
     print(
-      'WINDOWS_BATTERY ${jsonEncode({'snapshot': snapshot.toJson(), 'reference': expected, 'polls': values.length, 'heartbeat': ticks})}',
+      'WINDOWS_BATTERY ${jsonEncode({'snapshot': snapshot.toJson(), 'reference': expected, 'individualPackCount': packCount, 'listedCount': discovered.length, 'polls': values.length, 'heartbeat': ticks})}',
     );
   } finally {
     timer.cancel();

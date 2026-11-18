@@ -1,5 +1,7 @@
 # DeviceReadout for .NET 10
 
+The [aggregate capacity correction](../docs/verification/2026-11-19-dotnet-aggregate-capacity.md) makes negative design/full/remaining energy null while preserving signed discharge power and valid zero. Public get and native-event watch reproduce the defect before the fix; the final suite passes **216/216** checks. Compiler failures encountered before test execution remain preserved separately, and physical battery values/transitions remain unverified.
+
 The [network notification follow-up](../docs/verification/2026-11-18-dotnet-network-notifications.md) passes **215/215** checks. Failed registration and unregister outputs remain owned until final cleanup; the original error is preserved, released siblings are not canceled twice, and retired native callbacks are ignored. Fourteen C fixture cases cover events, fallback, malformed results, cleanup recovery/refusal and held native operations. Persistent native refusal remains an explicit limitation.
 
 The [Windows network-field checkpoint](../docs/verification/2026-11-18-dotnet-windows-network.md) passes **199/199** checks, including 28 owned-child native cases and an independent comparison of 84 interfaces, nine fields and 61 routes. MTU remains available without enabled IP protocols, unsigned MTU bits and IPv6 DNS scopes are preserved, and known Ethernet/WWAN/bridge types are mapped. The Windows test script now builds its independent C fixtures with Visual Studio 2022 C++ tools; SDK consumers do not need those test helpers.

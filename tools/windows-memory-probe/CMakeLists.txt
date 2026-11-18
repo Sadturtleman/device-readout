@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(DeviceReadoutMemoryProbe LANGUAGES C CXX)
 add_library(device_readout_battery_fixture SHARED battery_fixture.c)
+add_library(device_readout_battery_packs_fixture SHARED battery_packs_fixture.c)
 add_library(device_readout_connectivity_fixture SHARED connectivity_fixture.c connectivity_box.cpp)
 target_compile_features(device_readout_connectivity_fixture PRIVATE cxx_std_17)
 add_library(device_readout_memory_probe SHARED process_memory.c runtime.c os.c device_info.c time_zone.cpp locale.c locale_formats.cpp power.c battery.cpp storage.c cpu.c cpu_cores.c network.c connectivity.cpp)

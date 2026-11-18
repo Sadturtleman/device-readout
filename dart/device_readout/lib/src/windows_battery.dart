@@ -10,6 +10,7 @@ final class _WindowsBattery {
   int? _token;
   Object? _failure;
   bool _unsupportedEvents = false;
+  _WindowsBatteryPacks? _packs;
   _WindowsBattery(String? library)
     : _fixture = library == null ? null : ffi.DynamicLibrary.open(library);
   ffi.Pointer<ffi.Void> get _module => _fixture?.handle ?? ffi.nullptr;
@@ -31,12 +32,15 @@ final class _WindowsBattery {
     return status == 1 ? null : aggregateId;
   }
 
+  List<String> list(ReadContext context) {
+    final targets = (_packs ??= _WindowsBatteryPacks(this)).list(context);
+    final aggregate = current(context);
+    return [...targets, if (aggregate != null) aggregate];
+  }
+
   BatterySnapshot read(String? target, ReadContext context) {
     if (target != aggregateId) {
-      throw const DeviceReadoutException(
-        ErrorCode.unsupportedEntity,
-        'This native battery target is not implemented.',
-      );
+      return (_packs ??= _WindowsBatteryPacks(this)).read(target, context);
     }
     _ensureContext(context);
     final value = readWindowsAggregateBattery(_module);
@@ -81,6 +85,10 @@ final class _WindowsBattery {
       _WindowsBatteryWatch(this, target, context).stream;
 
   void _add(_WindowsBatteryWatch listener) {
+    if (listener.target != aggregateId) {
+      (_packs ??= _WindowsBatteryPacks(this)).add(listener);
+      return;
+    }
     _ensureContext(listener.readContext);
     if (_listeners.isEmpty && _owner != ffi.nullptr) _release();
     _listeners.add(listener);
@@ -127,6 +135,10 @@ final class _WindowsBattery {
   }
 
   void _remove(_WindowsBatteryWatch listener) {
+    if (listener.target != aggregateId) {
+      _packs?.remove(listener);
+      return;
+    }
     _listeners.remove(listener);
     if (_listeners.isEmpty) _release();
   }
@@ -150,13 +162,18 @@ final class _WindowsBattery {
 
   void dispose() {
     try {
-      _release();
+      try {
+        _packs?.dispose();
+      } finally {
+        _release();
+      }
     } finally {
       if (_mta != ffi.nullptr) {
         closeWindowsConnectivityContext(_mta);
         _mta = ffi.nullptr;
       }
-      if (_owner == ffi.nullptr) _fixture?.close();
+      if (_owner == ffi.nullptr && (_packs?.released ?? true))
+        _fixture?.close();
     }
   }
 

@@ -10,8 +10,37 @@ internal static class WindowsAggregateBatteryTests
         ("Windows current battery exposes the OS aggregate with distinct capacities and signed power", AggregateFields),
         ("real Windows aggregate battery reads, registers events and releases its runtime on the worker", NativeAggregate),
         ("Windows aggregate WinRT nullable properties and report callbacks preserve values and release references", AggregateAbi),
+        ("Windows aggregate battery rejects negative energy while preserving signed power and valid zero", AggregateCapacityValidation),
         ("Windows aggregate remaining runtime preserves sentinels and does not become charging time", AggregateRuntime)
     ];
+    private static async Task AggregateCapacityValidation()
+    {
+        var runtime = new RuntimeFixture();
+        runtime.Values[1] = -60000;runtime.Values[2] = -50000;runtime.Values[3] = -20000;
+        using var access = new DeviceAccess(new WindowsCollector(new EmptyDevices(), new WindowsPowerTests.PowerPlatformFixture(), new WindowsAggregateBatteryPlatform(runtime)));
+        var target = (await access.Batteries.Current())!;
+        var value = await access.Get(target);
+        Check(value.DesignEnergyMilliwattHours is null && value.FullChargeEnergyMilliwattHours is null && value.RemainingEnergyMilliwattHours is null,
+            $"negative native capacities must become null: design={value.DesignEnergyMilliwattHours}, full={value.FullChargeEnergyMilliwattHours}, remaining={value.RemainingEnergyMilliwattHours}");
+        Check(value.Level is null && value.ChargeRateMilliwatts == -5000 && value.State == BatteryState.Discharging, "capacity validation preserves signed discharge power and status");
+        await using (var stream = access.WithPollInterval(TimeSpan.FromHours(1)).Watch(target).GetAsyncEnumerator()) {
+            Check(await stream.MoveNextAsync() && stream.Current.DesignEnergyMilliwattHours is null && stream.Current.FullChargeEnergyMilliwattHours is null && stream.Current.RemainingEnergyMilliwattHours is null, "initial watch validates capacities");
+            runtime.Values[1] = 60000;runtime.Values[2] = 50000;
+            runtime.Emit();
+            Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)), "native update with independently invalid remaining capacity");
+            value = stream.Current;
+            Check(value.RemainingEnergyMilliwattHours is null && value.Level is null && value.DesignEnergyMilliwattHours == 60000 && value.FullChargeEnergyMilliwattHours == 50000 && value.ChargeRateMilliwatts == -5000, "one invalid capacity does not discard other native fields");
+            Array.Fill(runtime.Values, 0);
+            runtime.Emit();
+            Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)), "native zero capacity update");
+            value = stream.Current;
+            Check(value.DesignEnergyMilliwattHours == 0 && value.FullChargeEnergyMilliwattHours == 0 && value.RemainingEnergyMilliwattHours == 0 && value.ChargeRateMilliwatts == 0 && value.Level is null, "valid zero remains available without dividing by zero");
+            runtime.Values[0] = -5000;runtime.Values[1] = 60000;runtime.Values[2] = 50000;
+            runtime.Emit();
+            Check(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)) && stream.Current.Level == 0 && stream.Current.RemainingEnergyMilliwattHours == 0 && stream.Current.ChargeRateMilliwatts == -5000, "empty battery level and signed discharge remain valid");
+        }
+        access.Dispose();await runtime.Stopped.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }
     private static async Task AggregateRuntime()
     {
         var report = new AggregateFixture();var power = new WindowsPowerTests.PowerPlatformFixture {State = new(0, 0, 2, 40, 600, 1500)};
