@@ -2,14 +2,14 @@
 import DeviceReadout
 import Foundation
 import XCTest
-#if os(macOS)
-import DarwinNotify
-#endif
 
 final class ApplePowerTests: XCTestCase {
     #if os(macOS)
     @MainActor
     func testNativePowerDeliversSourceNotificationBeforePolling() async throws {
+        guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" else {
+            throw XCTSkip("Posting a system power notification requires an isolated CI host.")
+        }
         let access = try DeviceAccess().withPollInterval(.seconds(3600))
         defer { access.close() }
         let first = expectation(description: "initial power source")
@@ -30,8 +30,16 @@ final class ApplePowerTests: XCTestCase {
             if !Task.isCancelled { consumer.cancel() }
         }
         defer { failSafe.cancel() }
-        // An invalidation on the isolated CI host; no power setting is changed.
-        XCTAssertEqual(notify_post("com.apple.system.powersources.source"), UInt32(NOTIFY_STATUS_OK))
+        // This namespace is reserved for root. The independent test helper posts
+        // an invalidation on the isolated CI host without changing a power setting.
+        try await Task.detached {
+            let command = Process()
+            command.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+            command.arguments = ["-n", "/usr/bin/notifyutil", "-p", "com.apple.system.powersources.source"]
+            try command.run()
+            command.waitUntilExit()
+            guard command.terminationStatus == 0 else { throw PowerReferenceError.failedCommand }
+        }.value
         await fulfillment(of: [changed], timeout: 2)
         let values = try await consumer.value
         XCTAssertEqual(values.count, 2)
