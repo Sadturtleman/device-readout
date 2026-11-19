@@ -34,6 +34,8 @@ private enum SocReference {
         let bytes = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else { throw Failure.command }
+        // ioreg emits no archive when the name search has no matching entry.
+        guard !bytes.isEmpty else { return nil }
         let plist = try PropertyListSerialization.propertyList(from: bytes, options: [], format: nil)
         guard let entries = plist as? [[String: Any]] else { throw Failure.format }
         guard let product = entries.first(where: { ($0["IORegistryEntryName"] as? String) == "product" }),
