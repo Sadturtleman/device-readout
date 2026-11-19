@@ -2,7 +2,6 @@
 // The SDK receives one real token; its first cancellation is deliberately refused.
 #include <notify.h>
 #include <IOKit/ps/IOPowerSources.h>
-#include <dlfcn.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdint.h>
@@ -28,10 +27,7 @@ static void record(const char *event) {
 __attribute__((constructor)) static void loaded(void) { record("fixture-loaded"); }
 
 static uint32_t fixture_register(const char *name, int *token, dispatch_queue_t queue, notify_handler_t handler) {
-    typedef uint32_t (*Register)(const char *, int *, dispatch_queue_t, notify_handler_t);
-    Register original = (Register)dlsym(RTLD_NEXT, "notify_register_dispatch");
-    if (original == NULL) { fputs("Cannot resolve native notification registration\n", stderr); abort(); }
-    uint32_t status = original(name, token, queue, handler);
+    uint32_t status = notify_register_dispatch(name, token, queue, handler);
     if (name != NULL && strcmp(name, kIOPSNotifyPowerSource) == 0 && status == NOTIFY_STATUS_OK) {
         atomic_store(&watched_token, *token);
         record("registered");
@@ -40,19 +36,16 @@ static uint32_t fixture_register(const char *name, int *token, dispatch_queue_t 
 }
 
 static uint32_t fixture_cancel(int token) {
-    typedef uint32_t (*Cancel)(int);
-    Cancel original = (Cancel)dlsym(RTLD_NEXT, "notify_cancel");
-    if (original == NULL) { fputs("Cannot resolve native notification cancellation\n", stderr); abort(); }
     if (token == atomic_load(&watched_token)) {
         if (atomic_fetch_add(&cancellation_attempts, 1) == 0) {
             record("cancel-refused");
             return NOTIFY_STATUS_FAILED;
         }
-        uint32_t status = original(token);
+        uint32_t status = notify_cancel(token);
         record(status == NOTIFY_STATUS_OK || status == NOTIFY_STATUS_INVALID_TOKEN ? "cancelled" : "cancel-retry-refused");
         return status;
     }
-    return original(token);
+    return notify_cancel(token);
 }
 
 #define INTERPOSE(replacement, original) \
