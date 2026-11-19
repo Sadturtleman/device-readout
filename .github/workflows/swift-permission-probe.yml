@@ -11,7 +11,7 @@ jobs:
   permission-probe:
     if: github.head_ref == 'diagnose/swift-permission-context'
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       TZ: Asia/Kathmandu
     steps:
@@ -19,7 +19,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Repeat the whole suite with a bounded process watchdog
+      - name: Repeat fresh build and test invocations with a bounded watchdog
         run: python3 tools/probe-swift-permissions.py
       - name: Preserve bounded reproduction logs
         if: ${{ !cancelled() }}
