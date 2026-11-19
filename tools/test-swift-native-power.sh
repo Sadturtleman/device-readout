@@ -31,3 +31,11 @@ for scenario in close held-retry; do
             "$bin_path/NativeConsumer" --power-cleanup-fixture
     fi
 done
+
+xcrun clang -dynamiclib -std=c11 -Wall -Wextra -Werror \
+    -mmacosx-version-min=13.0 -framework IOKit -framework CoreFoundation \
+    "$repo_root/tools/swift-native-consumer/Fixtures/power-read-failure.c" -o "$fixture_root/power-read-failure.dylib"
+trace="$fixture_root/read-failure-trace.log"
+: > "$trace"
+DEVICE_READOUT_POWER_READ_TRACE="$trace" DYLD_INSERT_LIBRARIES="$fixture_root/power-read-failure.dylib" \
+    "$bin_path/NativeConsumer" --power-read-failure-fixture
