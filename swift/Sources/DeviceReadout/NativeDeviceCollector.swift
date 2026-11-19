@@ -8,11 +8,17 @@ struct NativeDeviceCollector: DeviceCollector {
     }
 
     func capabilities(_ request: EntityRequest) throws -> EntityCapabilities {
-        let supported = request.kind == .runtime || request.kind == .timeZone
+        var supported = request.kind == .runtime || request.kind == .timeZone
+        #if os(macOS) || os(iOS)
+        supported = supported || request.kind == .power
+        #endif
         return EntityCapabilities(readable: supported, watchable: supported)
     }
 
     func read(_ request: EntityRequest) throws -> any DeviceSnapshot {
+        #if os(macOS) || os(iOS)
+        if request.kind == .power { return NativeApplePower.read() }
+        #endif
         if request.kind == .timeZone {
             // Freeze one rule set before querying its offset/DST at one instant.
             // Never reset Foundation's process-wide cache or change the app default.
