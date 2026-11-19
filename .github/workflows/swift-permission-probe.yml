@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   permission-probe:
-    if: github.head_ref == 'feat/swift-native-power'
+    if: github.head_ref == 'diagnose/swift-permission-context'
     runs-on: macos-15
     timeout-minutes: 15
     env:
@@ -19,7 +19,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Repeat the seven permission tests without the surrounding suite
+      - name: Repeat the whole suite with a bounded process watchdog
         run: python3 tools/probe-swift-permissions.py
       - name: Preserve bounded reproduction logs
         if: ${{ !cancelled() }}
