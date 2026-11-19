@@ -12,6 +12,7 @@ This file records actual implementation, separately from the full design scope. 
 | Os (macOS) | macOS identity, ProcessInfo product version, sysctl build and uname kernel name/release. Individual native failures become nil; the existing worker polls fresh snapshots. Native iOS OS collection remains pending. See the [macOS OS checkpoint](verification/2026-11-19-swift-macos-os.md). |
 | TimeZone | Foundation system identifier, one resolved rule set and one instant for offset/DST. Valid fixed IANA UTC/GMT names supplement the region list. Windows ID remains nil. System-time-zone notification invalidations supplement serial polling. |
 | Power (macOS/iOS) | ProcessInfo low-power mode and Apple thermal stages. macOS additionally maps the public IOKit AC/Battery/UPS source; iOS source remains app-owned. Foundation invalidations run through the worker. See the [Apple Power checkpoint](verification/2026-11-19-swift-apple-power.md) for current verification and remaining native source observation. |
+| Ram (macOS/iOS) | ProcessInfo.physicalMemory; public Mach free_count × host_page_size for freeBytes. Other fields remain nil. [Partial Apple RAM verification](verification/2026-11-19-swift-apple-memory.md). |
 
 Optional native invalidations register and clean up on the collection worker. App-owned state takes over without retaining native observation; held setup/cleanup does not join the caller. Other native entities remain unsupported while existing app observers and sensors retain their contracts.
 

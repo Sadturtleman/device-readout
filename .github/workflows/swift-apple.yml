@@ -62,6 +62,9 @@ jobs:
       - name: Verify native OS values, failures and held reads
         if: ${{ !cancelled() }}
         run: bash tools/test-swift-native-os.sh 2>&1 | tee .tools/apple-ci-logs/os-consumer.log
+      - name: Verify native RAM free-byte values and failures
+        if: ${{ !cancelled() }}
+        run: bash tools/test-swift-native-memory.sh 2>&1 | tee .tools/apple-ci-logs/memory-consumer.log
       - name: Verify sensor activity and deadline cancellation
         if: ${{ !cancelled() }}
         run: python3 tools/test-swift-sensor-activity.py 2>&1 | tee .tools/apple-ci-logs/sensor-activity.log
