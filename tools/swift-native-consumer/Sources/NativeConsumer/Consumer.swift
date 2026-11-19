@@ -4,6 +4,10 @@ import Foundation
 @main
 struct Consumer {
     static func main() async throws {
+        if CommandLine.arguments.dropFirst().elementsEqual(["--sensor-activity-replay"]) {
+            try await SensorActivityReplay.run()
+            return
+        }
         #if os(macOS)
         if CommandLine.arguments.dropFirst().elementsEqual(["--permission-replay"]) {
             try await PermissionReplay.run()

@@ -6,6 +6,7 @@ on:
       - 'tools/swift-native-consumer/**'
       - 'tools/probe-swift-permissions.py'
       - 'tools/probe-swift-fresh-suites.py'
+      - 'tools/probe-swift-sensor-activity.py'
       - 'tools/probe_swift_processes.py'
       - '.github/workflows/swift-permission-probe.yml'
 permissions:
@@ -22,8 +23,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Replay permission lifecycles in a separate public consumer
-        run: python3 tools/probe-swift-permissions.py
+      - name: Isolate sensor activity and deadline races in a public consumer
+        run: python3 tools/probe-swift-sensor-activity.py
       - name: Sample stalled fresh full suites without phase tracing
         run: python3 tools/probe-swift-fresh-suites.py
       - name: Preserve bounded reproduction logs
