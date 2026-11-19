@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 static atomic_int watched_token = -1;
 static atomic_int cancellation_attempts = 0;
@@ -42,6 +44,18 @@ static uint32_t fixture_cancel(int token) {
         if (atomic_fetch_add(&cancellation_attempts, 1) == 0) {
             record("cancel-refused");
             return NOTIFY_STATUS_FAILED;
+        }
+        const char *gate = getenv("DEVICE_READOUT_POWER_RETRY_GATE");
+        if (gate != NULL) {
+            record("retry-entered");
+            const struct timespec delay = { .tv_sec = 0, .tv_nsec = 10000000 };
+            int remaining = 500;
+            while (access(gate, F_OK) != 0 && remaining-- > 0) { nanosleep(&delay, NULL); }
+            if (access(gate, F_OK) != 0) {
+                record("retry-wait-expired");
+                return NOTIFY_STATUS_FAILED;
+            }
+            record("retry-released");
         }
         uint32_t status = notify_cancel(token);
         record(status == NOTIFY_STATUS_OK || status == NOTIFY_STATUS_INVALID_TOKEN ? "cancelled" : "cancel-retry-refused");

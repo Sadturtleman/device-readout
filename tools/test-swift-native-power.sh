@@ -16,8 +16,18 @@ xcrun clang -dynamiclib -fblocks -std=c11 -Wall -Wextra -Werror \
 bin_path=$("$swift_bin" build --package-path "$repo_root/tools/swift-native-consumer" \
     --scratch-path "$repo_root/.tools/swift-consumer-build" -c "$configuration" --show-bin-path)
 test -x "$bin_path/NativeConsumer"
-trace="$fixture_root/cleanup-trace.log"
-: > "$trace"
-trap 'cat "$trace"' EXIT
-DEVICE_READOUT_POWER_TRACE="$trace" DYLD_INSERT_LIBRARIES="$fixture_root/power-cleanup.dylib" \
-    "$bin_path/NativeConsumer" --power-cleanup-fixture
+for scenario in close held-retry; do
+    trace="$fixture_root/$scenario-trace.log"
+    : > "$trace"
+    trap 'cat "$trace"' EXIT
+    if [[ $scenario == held-retry ]]; then
+        gate="$fixture_root/retry-gate-$$-$RANDOM"
+        test ! -e "$gate"
+        DEVICE_READOUT_POWER_RETRY_GATE="$gate" DEVICE_READOUT_POWER_TRACE="$trace" \
+            DYLD_INSERT_LIBRARIES="$fixture_root/power-cleanup.dylib" \
+            "$bin_path/NativeConsumer" --power-cleanup-fixture
+    else
+        DEVICE_READOUT_POWER_TRACE="$trace" DYLD_INSERT_LIBRARIES="$fixture_root/power-cleanup.dylib" \
+            "$bin_path/NativeConsumer" --power-cleanup-fixture
+    fi
+done
