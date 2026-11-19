@@ -2,16 +2,13 @@
 import DeviceReadout
 import Foundation
 
-enum SensorActivityReplay {
+enum SensorActivityConsumer {
     @MainActor
     static func run() async throws {
-        for iteration in 1...1000 {
+        for _ in 1...1000 {
             try await cycle()
-            if iteration % 100 == 0 {
-                FileHandle.standardError.write(Data("[DEBUG-sensor-activity] completed \(iteration)/1000\n".utf8))
-            }
         }
-        print("SWIFT_SENSOR_ACTIVITY_REPLAY {\"passed\":true,\"iterations\":1000}")
+        print("SWIFT_SENSOR_ACTIVITY_CONSUMER {\"passed\":true,\"iterations\":1000}")
     }
 
     @MainActor

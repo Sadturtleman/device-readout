@@ -5,59 +5,42 @@ import XCTest
 final class PermissionTests: XCTestCase {
     @MainActor
     func testCoordinatorErrorsReplacementAndSynchronousPublicationHaveExplicitRequestSemantics() async throws {
-        permissionPhase("start")
         let access = DeviceAccess(collector: PermissionCollector())
-        defer { permissionPhase("close-context"); access.close(); permissionPhase("closed-context") }
+        defer { access.close() }
         let policy = DeviceReadoutError(.permissionDenied, "App refused this permission request")
-        let old = try access.observers.onPermissionRequest { _ in permissionPhase("typed-callback"); throw policy }
-        permissionPhase("typed-request")
+        let old = try access.observers.onPermissionRequest { _ in throw policy }
         do { _ = try await access.permissions.request(Entities.display); XCTFail("Typed application error") }
         catch let error as DeviceReadoutError { XCTAssertEqual(error, policy) }
-        permissionPhase("typed-response")
         old.close()
-        let failed = try access.observers.onPermissionRequest { _ in permissionPhase("foreign-callback"); throw PermissionTestError() }
+        let failed = try access.observers.onPermissionRequest { _ in throw PermissionTestError() }
         old.close()
-        permissionPhase("foreign-request")
         do { _ = try await access.permissions.request(Entities.display); XCTFail("Unexpected application error") }
         catch let error as DeviceReadoutError { XCTAssertEqual(error.code, .readFailed) }
-        permissionPhase("foreign-response")
         failed.close()
         let called = expectation(description: "Only explicit request calls the coordinator")
         let successful = try access.observers.onPermissionRequest { request in
-            permissionPhase("observed-callback")
             XCTAssertEqual(request.kind, .display)
             XCTAssertNil(request.targetId)
             XCTAssertFalse(request.observed)
             called.fulfill()
-            permissionPhase("observer-publish")
             try access.observers.permission(Entities.display, status: .unavailable)
-            permissionPhase("observer-published")
             throw PermissionTestError() // An accepted observer response is already final.
         }
-        defer { permissionPhase("close-coordinator"); successful.close(); permissionPhase("closed-coordinator") }
+        defer { successful.close() }
         failed.close()
-        permissionPhase("passive-check")
         let before = try await access.permissions.check(Entities.display)
         XCTAssertNil(before)
-        permissionPhase("list")
         _ = try await access.displays.list()
-        permissionPhase("current")
         _ = try await access.displays.current()
-        permissionPhase("publish-ram")
         try access.observers.publish(Entities.ram, snapshot: RamSnapshot(physicalBytes: 42))
-        permissionPhase("get-ram")
         let value = try await access.get(Entities.ram)
         XCTAssertEqual(value.physicalBytes, 42)
-        permissionPhase("watch-ram")
         var stream = access.watch(Entities.ram).makeAsyncIterator()
         let streamed = try await stream.next()
         XCTAssertEqual(streamed?.physicalBytes, 42)
-        permissionPhase("observed-request")
         let result = try await access.permissions.request(Entities.display)
         XCTAssertEqual(result, .unavailable)
-        permissionPhase("fulfillment")
         await fulfillment(of: [called], timeout: 1)
-        permissionPhase("completed")
     }
 
     @MainActor
@@ -259,13 +242,6 @@ final class PermissionTests: XCTestCase {
             XCTAssertEqual(actual, status)
         }
     }
-}
-
-// Temporary diagnostics at the existing public test seam; remove after the stall is located.
-private func permissionPhase(_ value: String) {
-    #if DEVICE_READOUT_PERMISSION_TRACE
-    FileHandle.standardError.write(Data(("[DEBUG-permission-phase] " + value + "\n").utf8))
-    #endif
 }
 
 private enum PermissionEnd { case cancel, remove, close }

@@ -6,6 +6,7 @@ on:
       - 'swift/**'
       - 'tools/swift-native-consumer/**'
       - 'tools/test-swift*.sh'
+      - 'tools/test-swift-sensor-activity.py'
       - '.github/workflows/swift-apple.yml'
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - 'swift/**'
       - 'tools/swift-native-consumer/**'
       - 'tools/test-swift*.sh'
+      - 'tools/test-swift-sensor-activity.py'
       - '.github/workflows/swift-apple.yml'
   workflow_dispatch:
 
@@ -40,7 +42,6 @@ jobs:
     env:
       CONFIGURATION: ${{ matrix.configuration }}
       TZ: ${{ matrix.configuration == 'debug' && 'Etc/UTC' || 'Asia/Kathmandu' }}
-      DEVICE_READOUT_PERMISSION_TRACE: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -51,10 +52,13 @@ jobs:
           mkdir -p .tools/apple-ci-logs
           { git rev-parse HEAD; sw_vers; uname -m; xcodebuild -version; xcrun swift --version; } 2>&1 | tee .tools/apple-ci-logs/toolchain.log
       - name: Test the public Swift SDK
-        run: python3 tools/probe-swift-suite.py
+        run: sh tools/test-swift.sh -c "$CONFIGURATION" -Xswiftc -warnings-as-errors 2>&1 | tee .tools/apple-ci-logs/tests.log
       - name: Run the separate SwiftPM consumer
         if: ${{ !cancelled() }}
         run: sh tools/test-swift-native-consumer.sh -c "$CONFIGURATION" 2>&1 | tee .tools/apple-ci-logs/consumer.log
+      - name: Verify sensor activity and deadline cancellation
+        if: ${{ !cancelled() }}
+        run: python3 tools/test-swift-sensor-activity.py 2>&1 | tee .tools/apple-ci-logs/sensor-activity.log
       - name: Preserve verification logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
