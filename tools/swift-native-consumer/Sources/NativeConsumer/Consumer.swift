@@ -5,6 +5,10 @@ import Foundation
 struct Consumer {
     static func main() async throws {
         #if os(macOS)
+        if CommandLine.arguments.dropFirst().elementsEqual(["--power-read-failure-fixture"]) {
+            try await PowerReadFailureFixture.run()
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--power-cleanup-fixture"]) {
             try await PowerCleanupFixture.run()
             return
