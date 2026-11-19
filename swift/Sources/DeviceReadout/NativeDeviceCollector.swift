@@ -18,10 +18,16 @@ struct NativeDeviceCollector: DeviceCollector {
         #if os(macOS) || os(iOS)
         supported = supported || request.kind == .power
         #endif
+        #if os(macOS)
+        supported = supported || request.kind == .os
+        #endif
         return EntityCapabilities(readable: supported, watchable: supported)
     }
 
     func read(_ request: EntityRequest) throws -> any DeviceSnapshot {
+        #if os(macOS)
+        if request.kind == .os { return NativeMacOs.read() }
+        #endif
         #if os(macOS) || os(iOS)
         if request.kind == .power { return NativeApplePower.read() }
         #endif
