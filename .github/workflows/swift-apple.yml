@@ -6,6 +6,7 @@ on:
       - 'swift/**'
       - 'tools/swift-native-consumer/**'
       - 'tools/test-swift*.sh'
+      - 'tools/test-swift-sensor-activity.py'
       - '.github/workflows/swift-apple.yml'
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - 'swift/**'
       - 'tools/swift-native-consumer/**'
       - 'tools/test-swift*.sh'
+      - 'tools/test-swift-sensor-activity.py'
       - '.github/workflows/swift-apple.yml'
   workflow_dispatch:
 
@@ -57,6 +59,9 @@ jobs:
       - name: Verify native power read failures and cancellation isolation
         if: ${{ !cancelled() }}
         run: bash tools/test-swift-native-power.sh 2>&1 | tee .tools/apple-ci-logs/power-cleanup.log
+      - name: Verify sensor activity and deadline cancellation
+        if: ${{ !cancelled() }}
+        run: python3 tools/test-swift-sensor-activity.py 2>&1 | tee .tools/apple-ci-logs/sensor-activity.log
       - name: Preserve verification logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
