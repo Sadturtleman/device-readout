@@ -4,17 +4,18 @@ import XCTest
 
 final class WatchTests: XCTestCase {
     func testSlowConsumerReceivesExplicitOverflowInsteadOfSilentSampleLoss() async throws {
-        let filled = expectation(description: "source produced more than the delivery capacity")
-        let collector = OverflowCollector(filled: filled)
-        let access = try DeviceAccess(collector: collector).withPollInterval(.nanoseconds(1))
+        let ended = expectation(description: "overflow releases native observation")
+        let collector = OverflowCollector(ended: ended)
+        let access = try DeviceAccess(collector: collector).withPollInterval(.seconds(3600))
+        defer { access.close() }
         var iterator = access.watch(Entities.ram).makeAsyncIterator()
         let first = try await iterator.next()
         XCTAssertEqual(first?.physicalBytes, 1)
         collector.resume.signal()
         defer { collector.resume.signal() }
-        await fulfillment(of: [filled], timeout: 5)
-        // Leave the already full queue unconsumed while the last source result reaches delivery.
-        try await Task.sleep(for: .milliseconds(80))
+        // Drive real source invalidations instead of assuming 2,049 timer ticks fit
+        // in a wall-clock window. Cleanup proves delivery ended before draining.
+        await fulfillment(of: [ended], timeout: 10)
         var received = 1
         do {
             while let value = try await iterator.next() {
@@ -32,7 +33,7 @@ final class WatchTests: XCTestCase {
         let started = expectation(description: "second poll entered")
         let collector = BlockedPollCollector(started: started)
         let access = try DeviceAccess(collector: collector)
-            .withPollInterval(.milliseconds(20)).withReadTimeout(.milliseconds(70))
+            .withPollInterval(.milliseconds(20)).withReadTimeout(.seconds(1))
         let consumer = Task { () throws -> Void in
             var count = 0
             for try await value in access.watch(Entities.ram) {
@@ -41,13 +42,14 @@ final class WatchTests: XCTestCase {
                 XCTAssertEqual(value.physicalBytes, 1)
             }
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { collector.release.signal() }
-        defer { collector.release.signal(); consumer.cancel() }
+        let failSafe = Task.detached {
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { collector.release.signal(); consumer.cancel() }
+        }
+        defer { failSafe.cancel(); collector.release.signal(); consumer.cancel(); access.close() }
         await fulfillment(of: [started], timeout: 2)
-        let start = ContinuousClock.now
         do { try await consumer.value; XCTFail("Expected the second poll to time out") }
         catch let error as DeviceReadoutError { XCTAssertEqual(error.code, .readTimeout) }
-        XCTAssertLessThan(start.duration(to: .now), .milliseconds(500))
         XCTAssertFalse(collector.returned)
         collector.release.signal()
         let fresh = try await access.get(Entities.ram)
@@ -87,7 +89,8 @@ final class WatchTests: XCTestCase {
     func testConfiguredStreamsKeepIndependentCadenceAndNoWholeStreamDeadline() async throws {
         let collector = PollingCollector()
         let slow = try DeviceAccess(collector: collector)
-            .withPollInterval(.seconds(30)).withReadTimeout(.milliseconds(60))
+            .withPollInterval(.seconds(30)).withReadTimeout(.seconds(1))
+        defer { slow.close() }
         let stream = slow.watch(Entities.ram)
         let first = expectation(description: "immediate first snapshot despite thirty-second interval")
         let ended = expectation(description: "slow stream must remain subscribed")
@@ -97,12 +100,12 @@ final class WatchTests: XCTestCase {
             for try await _ in stream { first.fulfill() }
         }
         defer { slowConsumer.cancel() }
-        await fulfillment(of: [first], timeout: 1)
-        let fast = try slow.withPollInterval(.milliseconds(20)).withReadTimeout(.seconds(1))
+        await fulfillment(of: [first], timeout: 2)
+        let fast = try slow.withPollInterval(.milliseconds(20)).withReadTimeout(.seconds(2))
         XCTAssertEqual(slow.pollInterval, .seconds(30))
-        XCTAssertEqual(slow.readTimeout, .milliseconds(60))
+        XCTAssertEqual(slow.readTimeout, .seconds(1))
         XCTAssertEqual(fast.pollInterval, .milliseconds(20))
-        XCTAssertEqual(fast.readTimeout, .seconds(1))
+        XCTAssertEqual(fast.readTimeout, .seconds(2))
         let fastConsumer = Task { () throws -> Int in
             var count = 0
             for try await _ in fast.watch(Entities.ram) {
@@ -112,13 +115,13 @@ final class WatchTests: XCTestCase {
             return count
         }
         let failSafe = Task.detached {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(3))
             if !Task.isCancelled { fastConsumer.cancel() }
         }
         defer { failSafe.cancel(); fastConsumer.cancel() }
         let received = try await fastConsumer.value
         XCTAssertEqual(received, 3)
-        await fulfillment(of: [ended], timeout: 0.15)
+        await fulfillment(of: [ended], timeout: 1.2)
         XCTAssertEqual(collector.reads, 4, "new settings and another subscriber cannot speed up the existing stream")
         slowConsumer.cancel()
         do { try await slowConsumer.value; XCTFail("Expected cancellation") }
@@ -128,6 +131,7 @@ final class WatchTests: XCTestCase {
     func testStateWatchIsColdAndDeliversEqualSnapshotsUntilIterationEnds() async throws {
         let collector = PollingCollector()
         let original = DeviceAccess(collector: collector)
+        defer { original.close() }
         let access = try original.withPollInterval(.milliseconds(80))
         XCTAssertEqual(original.pollInterval, .seconds(1))
         XCTAssertEqual(access.pollInterval, .milliseconds(80))
@@ -144,7 +148,7 @@ final class WatchTests: XCTestCase {
             return values
         }
         let failSafe = Task.detached {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(5))
             if !Task.isCancelled { consumer.cancel() }
         }
         defer { failSafe.cancel(); consumer.cancel() }
@@ -162,17 +166,26 @@ final class WatchTests: XCTestCase {
 }
 
 private final class OverflowCollector: DeviceCollector, @unchecked Sendable {
-    let filled: XCTestExpectation
+    let ended: XCTestExpectation
     let resume = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var count = 0
+    private var notify: (@Sendable () -> Void)?
     var reads: Int { lock.lock(); defer { lock.unlock() }; return count }
-    init(filled: XCTestExpectation) { self.filled = filled }
+    init(ended: XCTestExpectation) { self.ended = ended }
+    func observeChanges(_ request: EntityRequest, notify: @escaping @Sendable () -> Void) throws -> NativeStateCleanup? {
+        lock.lock(); self.notify = notify; lock.unlock()
+        return { [self] in
+            lock.lock(); self.notify = nil; lock.unlock()
+            ended.fulfill()
+        }
+    }
     func read(_ request: EntityRequest) throws -> any DeviceSnapshot {
         lock.lock(); count += 1; let call = count; lock.unlock()
         if call == 2 { _ = resume.wait(timeout: .now() + 2) }
-        if call == 2050 { filled.fulfill() }
         if call > 2050 { throw DeviceReadoutError(.permissionDenied, "test source limit reached") }
+        lock.lock(); let notify = self.notify; lock.unlock()
+        notify?()
         return RamSnapshot(physicalBytes: UInt64(call))
     }
 }

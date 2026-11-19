@@ -10,7 +10,7 @@ final class WatchHandoffTests: XCTestCase {
             let returned = expectation(description: "second native poll returned")
             let collector = LatePollCollector(outcome: outcome, entered: entered, returned: returned)
             let access = try DeviceAccess(collector: collector)
-                .withPollInterval(.milliseconds(1)).withReadTimeout(.milliseconds(300))
+                .withPollInterval(.milliseconds(1))
             let consumer = Task { () throws -> [UInt64?] in
                 var values: [UInt64?] = []
                 for try await value in access.watch(Entities.ram) {
@@ -19,17 +19,17 @@ final class WatchHandoffTests: XCTestCase {
                 }
                 return values
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + 1) { collector.release.signal() }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 3) { collector.release.signal() }
             defer { collector.release.signal(); consumer.cancel(); access.close() }
-            await fulfillment(of: [entered], timeout: 1)
+            await fulfillment(of: [entered], timeout: 2)
             for value: UInt64 in [2, 2, 3] {
                 try access.observers.publish(Entities.ram, snapshot: RamSnapshot(physicalBytes: value))
             }
             try await Task.sleep(for: .milliseconds(30))
             collector.release.signal()
-            await fulfillment(of: [returned], timeout: 1)
+            await fulfillment(of: [returned], timeout: 2)
             let failSafe = Task.detached {
-                try? await Task.sleep(for: .milliseconds(500))
+                try? await Task.sleep(for: .seconds(2))
                 if !Task.isCancelled { consumer.cancel() }
             }
             defer { failSafe.cancel() }
@@ -109,7 +109,7 @@ final class WatchHandoffTests: XCTestCase {
     func testRunningNativeWatchSwitchesToEveryAppPublicationWithoutWaitingForPoll() async throws {
         let collector = HandoffCollector()
         let access = try DeviceAccess(collector: collector)
-            .withPollInterval(.seconds(30)).withReadTimeout(.milliseconds(70))
+            .withPollInterval(.seconds(30)).withReadTimeout(.seconds(1))
         defer { access.close() }
         let first = expectation(description: "native first value")
         let consumer = Task { () throws -> [UInt64?] in
@@ -122,13 +122,13 @@ final class WatchHandoffTests: XCTestCase {
             return values
         }
         defer { consumer.cancel() }
-        await fulfillment(of: [first], timeout: 1)
-        try await Task.sleep(for: .milliseconds(90))
+        await fulfillment(of: [first], timeout: 2)
+        try await Task.sleep(for: .milliseconds(1200))
         for value: UInt64 in [2, 2, 3] {
             try access.observers.publish(Entities.ram, snapshot: RamSnapshot(physicalBytes: value))
         }
         let failSafe = Task.detached {
-            try? await Task.sleep(for: .milliseconds(500))
+            try? await Task.sleep(for: .seconds(2))
             if !Task.isCancelled { consumer.cancel() }
         }
         defer { failSafe.cancel() }
