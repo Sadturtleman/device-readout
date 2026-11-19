@@ -40,7 +40,8 @@ PY
 cat "$log_root/simulator-selection.log"
 cd "$repo_root/swift"
 result=0
-for configuration in Debug Release; do
+# Diagnostic order comparison: both configurations still contribute to failure.
+for configuration in Release Debug; do
     if xcodebuild -scheme DeviceReadout -sdk iphonesimulator \
         -destination "platform=iOS Simulator,id=$simulator_id,arch=$(uname -m)" -destination-timeout 60 \
         -configuration "$configuration" -parallel-testing-enabled NO \
