@@ -81,10 +81,13 @@ final class SensorActivityControl: @unchecked Sendable {
         task?.cancel()
         lock.lock()
         guard !closed, latest == state.generation else { lock.unlock(); return }
-        let result = continuation.yield(state)
-        if case .dropped = result { closed = true }
         lock.unlock()
+        // yield may acquire a Swift task status lock. Cancellation holds that lock while
+        // closing this observation, so never yield with our state lock held. A newer
+        // generation can overtake delivery; sensorWatch/install already reject stale states.
+        let result = continuation.yield(state)
         if case .dropped = result {
+            lock.lock(); closed = true; lock.unlock()
             continuation.finish(throwing: DeviceReadoutError(.readFailed, "The sensor activity queue is full."))
         }
     }
