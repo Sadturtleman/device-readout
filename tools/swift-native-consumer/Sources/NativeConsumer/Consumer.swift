@@ -4,6 +4,12 @@ import Foundation
 @main
 struct Consumer {
     static func main() async throws {
+        #if os(macOS)
+        if CommandLine.arguments.dropFirst().elementsEqual(["--permission-replay"]) {
+            try await PermissionReplay.run()
+            return
+        }
+        #endif
         let access = DeviceAccess()
         defer { access.close() }
         let runtime: RuntimeSnapshot = try await access.get(Entities.runtime)

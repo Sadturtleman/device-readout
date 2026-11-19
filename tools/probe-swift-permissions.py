@@ -1,4 +1,4 @@
-"""Temporary bounded fresh-build repetitions of the suite that stalled in Apple CI."""
+"""Temporary bounded public-consumer replay of the permission lifecycle."""
 import os
 from pathlib import Path
 import signal
@@ -33,17 +33,17 @@ def run(command, label, timeout):
     return output
 
 
-method = 'testCoordinatorErrorsReplacementAndSynchronousPublicationHaveExplicitRequestSemantics'
-for attempt in range(1, 11):
-    scratch = logs / f'fresh-{attempt}'
-    if scratch.exists():
-        sys.exit('Fresh-build probe refuses to reuse an existing build directory.')
-    common = ['--package-path', str(root / 'swift'), '--scratch-path', str(scratch / 'build'),
-              '--cache-path', str(scratch / 'cache'), '-c', 'release',
-              '-Xswiftc', '-module-cache-path', '-Xswiftc', str(scratch / 'modules'),
-              '-Xswiftc', '-warnings-as-errors']
-    output = run([swift, 'test', *common], f'permission-{attempt}', 180)
-    if 'Executed 92 tests, with 0 failures' not in output or not any(method in line and 'passed' in line for line in output.splitlines()):
-        print(output, flush=True)
-        sys.exit('The complete 92-test suite did not execute successfully.')
-    print(f'[DEBUG-permission-probe] passed {attempt}/10 fresh-build suite repetitions', flush=True)
+scratch = logs / 'consumer'
+common = ['--package-path', str(root / 'tools/swift-native-consumer'), '--scratch-path', str(scratch / 'build'),
+          '--cache-path', str(scratch / 'cache'), '-c', 'release',
+          '-Xswiftc', '-module-cache-path', '-Xswiftc', str(scratch / 'modules'),
+          '-Xswiftc', '-warnings-as-errors']
+run([swift, 'build', *common], 'build', 300)
+binary_directory = run([swift, 'build', *common, '--show-bin-path'], 'binary-path', 30).strip()
+binary = Path(binary_directory) / 'NativeConsumer'
+if not binary.is_file():
+    sys.exit('The separate permission replay executable was not built.')
+output = run([str(binary), '--permission-replay'], 'replay', 120)
+if 'SWIFT_PERMISSION_REPLAY {"passed":true,"iterations":1000}' not in output:
+    sys.exit('The separate consumer did not complete all 1000 permission lifecycles.')
+print('[DEBUG-permission-probe] public consumer passed 1000 permission lifecycles', flush=True)

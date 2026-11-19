@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'swift/**'
+      - 'tools/swift-native-consumer/**'
       - 'tools/probe-swift-permissions.py'
       - '.github/workflows/swift-permission-probe.yml'
 permissions:
@@ -19,7 +20,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Repeat fresh build and test invocations with a bounded watchdog
+      - name: Replay permission lifecycles in a separate public consumer
         run: python3 tools/probe-swift-permissions.py
       - name: Preserve bounded reproduction logs
         if: ${{ !cancelled() }}
