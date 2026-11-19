@@ -27,6 +27,8 @@ static void record(const char *event) {
 __attribute__((constructor)) static void loaded(void) { record("fixture-loaded"); }
 
 static uint32_t fixture_register(const char *name, int *token, dispatch_queue_t queue, notify_handler_t handler) {
+    // dyld preserves original bindings inside the interposing image. Dynamic
+    // dlsym call-through crashed both the native-only and Swift consumer probes.
     uint32_t status = notify_register_dispatch(name, token, queue, handler);
     if (name != NULL && strcmp(name, kIOPSNotifyPowerSource) == 0 && status == NOTIFY_STATUS_OK) {
         atomic_store(&watched_token, *token);
