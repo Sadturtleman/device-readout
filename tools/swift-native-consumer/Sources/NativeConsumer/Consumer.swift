@@ -4,6 +4,10 @@ import Foundation
 @main
 struct Consumer {
     static func main() async throws {
+        if CommandLine.arguments.dropFirst().elementsEqual(["--sensor-activity-consumer"]) {
+            try await SensorActivityConsumer.run()
+            return
+        }
         let access = DeviceAccess()
         defer { access.close() }
         let runtime: RuntimeSnapshot = try await access.get(Entities.runtime)
