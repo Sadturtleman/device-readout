@@ -1,9 +1,9 @@
 """Temporary CI watchdog: preserve public-test progress and native stacks on a stall."""
 import os
 from pathlib import Path
-import signal
 import subprocess
 import sys
+from probe_swift_processes import capture, terminate
 
 root = Path(__file__).resolve().parent.parent
 logs = root / '.tools' / 'apple-ci-logs'
@@ -11,24 +11,6 @@ logs.mkdir(parents=True, exist_ok=True)
 configuration = os.environ.get('CONFIGURATION', 'debug')
 if configuration not in ('debug', 'release'):
     sys.exit('Invalid configuration')
-
-
-def stacks(group):
-    processes = subprocess.run(['ps', '-axo', 'pid=,ppid=,pgid=,comm='],
-                               capture_output=True, text=True, timeout=10)
-    (logs / 'stalled-processes.log').write_text(processes.stdout + processes.stderr)
-    for line in processes.stdout.splitlines():
-        columns = line.split(None, 3)
-        if len(columns) != 4 or columns[2] != str(group):
-            continue
-        pid, _, _, command = columns
-        if 'xctest' not in command.lower() and 'DeviceReadoutPackageTests' not in command:
-            continue
-        try:
-            sample = subprocess.run(['sample', pid, '3', '1'], capture_output=True, text=True, timeout=15)
-            (logs / f'stalled-stack-{pid}.log').write_text(sample.stdout + sample.stderr)
-        except subprocess.TimeoutExpired as error:
-            (logs / f'stalled-stack-{pid}.log').write_text(str(error))
 
 
 command = ['sh', 'tools/test-swift.sh', '-c', configuration, '-Xswiftc', '-warnings-as-errors']
@@ -41,19 +23,12 @@ try:
     output, _ = process.communicate(timeout=300)
 except subprocess.TimeoutExpired:
     expired = True
+    descendants = []
     try:
-        stacks(process.pid)
+        descendants = capture(process.pid, logs, 'stalled')
     except (OSError, subprocess.SubprocessError) as error:
         (logs / 'stack-capture-error.log').write_text(str(error))
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    try:
-        output, _ = process.communicate(timeout=2)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        output, _ = process.communicate()
+    output = terminate(process, descendants)
 
 (logs / 'tests.log').write_text(output)
 print(output, end='', flush=True)

@@ -1,29 +1,14 @@
 """Temporary fresh full-suite experiment without phase output, preserving stalled stacks."""
 import os
 from pathlib import Path
-import signal
 import subprocess
 import sys
+from probe_swift_processes import capture, terminate
 
 root = Path(__file__).resolve().parent.parent
 logs = root / '.tools' / 'permission-probe'
 logs.mkdir(parents=True, exist_ok=True)
 swift = os.environ.get('SWIFT_BIN', 'swift')
-
-
-def capture(group, iteration):
-    table = subprocess.run(['ps', '-axo', 'pid=,ppid=,pgid=,comm='],
-                           capture_output=True, text=True, timeout=10)
-    (logs / f'fresh-{iteration}-processes.log').write_text(table.stdout + table.stderr)
-    for line in table.stdout.splitlines():
-        parts = line.split(None, 3)
-        if len(parts) != 4 or parts[2] != str(group):
-            continue
-        if 'xctest' not in parts[3].lower() and 'DeviceReadoutPackageTests' not in parts[3]:
-            continue
-        sample = subprocess.run(['sample', parts[0], '3', '1'],
-                                capture_output=True, text=True, timeout=15)
-        (logs / f'fresh-{iteration}-stack-{parts[0]}.log').write_text(sample.stdout + sample.stderr)
 
 
 for iteration in range(1, 11):
@@ -39,19 +24,12 @@ for iteration in range(1, 11):
         output, _ = process.communicate(timeout=180)
     except subprocess.TimeoutExpired:
         expired = True
+        descendants = []
         try:
-            capture(process.pid, iteration)
+            descendants = capture(process.pid, logs, f'fresh-{iteration}')
         except (OSError, subprocess.SubprocessError) as error:
             (logs / f'fresh-{iteration}-capture-error.log').write_text(str(error))
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        try:
-            output, _ = process.communicate(timeout=2)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            output, _ = process.communicate()
+        output = terminate(process, descendants)
     (logs / f'fresh-{iteration}.log').write_text(output)
     if expired or process.returncode != 0:
         print(f'[DEBUG-fresh-suite] iteration={iteration} timeout={expired} exit={process.returncode}', flush=True)

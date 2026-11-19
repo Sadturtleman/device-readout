@@ -6,6 +6,7 @@ on:
       - 'tools/swift-native-consumer/**'
       - 'tools/probe-swift-permissions.py'
       - 'tools/probe-swift-fresh-suites.py'
+      - 'tools/probe_swift_processes.py'
       - '.github/workflows/swift-permission-probe.yml'
 permissions:
   contents: read
