@@ -4,6 +4,41 @@ import Foundation
 import XCTest
 
 final class ApplePowerTests: XCTestCase {
+    #if os(macOS)
+    func testNativePowerSourceMatchesIndependentSystemReport() async throws {
+        let referenceBefore = try systemPowerSource()
+        let access = DeviceAccess()
+        defer { access.close() }
+        let value: PowerSnapshot = try await access.get(Entities.power)
+        let referenceAfter = try systemPowerSource()
+        XCTAssertNotNil(value.powerSource)
+        if referenceBefore == referenceAfter {
+            XCTAssertEqual(value.powerSource, referenceBefore)
+        }
+        print("APPLE_POWER_REFERENCE \(referenceBefore.rawValue) -> \(referenceAfter.rawValue)")
+    }
+
+    // Independent consumer reference only; the SDK never launches this command.
+    private func systemPowerSource() throws -> PowerSource {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        process.arguments = ["-g", "batt"]
+        process.standardOutput = output
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw PowerReferenceError.failedCommand }
+        let firstLine = String(decoding: data, as: UTF8.self).split(separator: "\n").first
+        switch firstLine {
+        case "Now drawing from 'AC Power'": return .external
+        case "Now drawing from 'Battery Power'": return .battery
+        case "Now drawing from 'UPS Power'": return .ups
+        default: throw PowerReferenceError.unrecognizedSource
+        }
+    }
+    #endif
+
     @MainActor
     func testNativePowerDeliversBothFoundationNotificationsBeforePolling() async throws {
         let access = try DeviceAccess().withPollInterval(.seconds(3600))
@@ -66,4 +101,8 @@ final class ApplePowerTests: XCTestCase {
         #endif
     }
 }
+
+#if os(macOS)
+private enum PowerReferenceError: Error { case failedCommand, unrecognizedSource }
+#endif
 #endif
