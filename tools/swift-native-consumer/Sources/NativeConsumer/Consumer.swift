@@ -5,6 +5,10 @@ import Foundation
 struct Consumer {
     static func main() async throws {
         #if os(macOS)
+        if CommandLine.arguments.dropFirst().elementsEqual(["--ram-free-consumer"]) {
+            try await RamFreeConsumer.run()
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--os-consumer"]) {
             try await OsConsumer.run()
             return
