@@ -10,6 +10,7 @@ This file records actual implementation, separately from the full design scope. 
 |---|---|
 | Runtime | Compile-target process architecture and native pointer width. Host architecture and supported ABIs remain nil. |
 | TimeZone | Foundation system identifier, one resolved rule set and one instant for offset/DST. Valid fixed IANA UTC/GMT names supplement the region list. Windows ID remains nil. System-time-zone notification invalidations supplement serial polling. |
+| Power (macOS/iOS) | ProcessInfo low-power mode and Apple thermal stages. macOS additionally maps the public IOKit AC/Battery/UPS source; iOS source remains app-owned. Foundation invalidations run through the worker. See the [Apple Power checkpoint](verification/2026-11-19-swift-apple-power.md) for current verification and remaining native source observation. |
 
 Optional native invalidations register and clean up on the collection worker. App-owned state takes over without retaining native observation; held setup/cleanup does not join the caller. Other native entities remain unsupported while existing app observers and sensors retain their contracts.
 

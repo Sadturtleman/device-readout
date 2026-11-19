@@ -3,7 +3,7 @@ import DeviceReadout
 import Foundation
 import XCTest
 #if os(macOS)
-import Darwin
+import DarwinNotify
 #endif
 
 final class ApplePowerTests: XCTestCase {
