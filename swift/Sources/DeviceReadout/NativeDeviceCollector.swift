@@ -2,17 +2,29 @@ import Foundation
 
 struct NativeDeviceCollector: DeviceCollector {
     func observeChanges(_ request: EntityRequest, notify: @escaping @Sendable () -> Void) throws -> NativeStateCleanup? {
+        #if os(macOS) || os(iOS)
+        if request.kind == .power {
+            let observation = try NativeApplePowerObservation(notify: notify)
+            return { try observation.close() }
+        }
+        #endif
         guard request.kind == .timeZone else { return nil }
         let observation = FoundationTimeZoneObservation(notify: notify)
         return { observation.close() }
     }
 
     func capabilities(_ request: EntityRequest) throws -> EntityCapabilities {
-        let supported = request.kind == .runtime || request.kind == .timeZone
+        var supported = request.kind == .runtime || request.kind == .timeZone
+        #if os(macOS) || os(iOS)
+        supported = supported || request.kind == .power
+        #endif
         return EntityCapabilities(readable: supported, watchable: supported)
     }
 
     func read(_ request: EntityRequest) throws -> any DeviceSnapshot {
+        #if os(macOS) || os(iOS)
+        if request.kind == .power { return NativeApplePower.read() }
+        #endif
         if request.kind == .timeZone {
             // Freeze one rule set before querying its offset/DST at one instant.
             // Never reset Foundation's process-wide cache or change the app default.
