@@ -31,13 +31,7 @@ struct NativeDeviceCollector: DeviceCollector {
         #if os(macOS) || os(iOS)
         if request.kind == .power { return NativeApplePower.read() }
         if request.kind == .ram { return NativeAppleMemory.readRam() }
-        if request.kind == .cpu {
-            let process = ProcessInfo.processInfo
-            let total = process.processorCount
-            let available = process.activeProcessorCount
-            return CpuSnapshot(logicalProcessorCount: total > 0 ? total : nil,
-                               availableLogicalProcessorCount: available > 0 ? available : nil)
-        }
+        if request.kind == .cpu { return NativeAppleCpu.read() }
         #endif
         if request.kind == .timeZone {
             // Freeze one rule set before querying its offset/DST at one instant.
