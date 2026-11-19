@@ -1,0 +1,24 @@
+name: Temporary Swift power interposer diagnosis
+on:
+  pull_request:
+    paths:
+      - 'tools/swift-native-consumer/Fixtures/**'
+      - 'tools/probe-swift-power-notify.sh'
+      - '.github/workflows/swift-power-probe.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Reproduce without the SDK or Swift runtime
+        run: bash tools/probe-swift-power-notify.sh
