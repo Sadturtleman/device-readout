@@ -4,6 +4,40 @@ import Foundation
 import XCTest
 
 final class ApplePowerTests: XCTestCase {
+    @MainActor
+    func testNativePowerDeliversBothFoundationNotificationsBeforePolling() async throws {
+        let access = try DeviceAccess().withPollInterval(.seconds(3600))
+        defer { access.close() }
+        let first = expectation(description: "initial power snapshot")
+        let saver = expectation(description: "power-state notification snapshot")
+        let thermal = expectation(description: "thermal-state notification snapshot")
+        let consumer = Task { () throws -> [PowerSnapshot] in
+            var values: [PowerSnapshot] = []
+            for try await value in access.watch(Entities.power) {
+                values.append(value)
+                if values.count == 1 { first.fulfill() }
+                if values.count == 2 { saver.fulfill() }
+                if values.count == 3 { thermal.fulfill(); break }
+            }
+            return values
+        }
+        defer { consumer.cancel() }
+        await fulfillment(of: [first], timeout: 2)
+        let failSafe = Task.detached {
+            try? await Task.sleep(for: .seconds(5))
+            if !Task.isCancelled { consumer.cancel() }
+        }
+        defer { failSafe.cancel() }
+        NotificationCenter.default.post(name: .NSProcessInfoPowerStateDidChange, object: ProcessInfo.processInfo)
+        await fulfillment(of: [saver], timeout: 2)
+        NotificationCenter.default.post(name: ProcessInfo.thermalStateDidChangeNotification, object: ProcessInfo.processInfo)
+        await fulfillment(of: [thermal], timeout: 2)
+        let values = try await consumer.value
+        XCTAssertEqual(values.count, 3)
+        XCTAssertGreaterThan(values[1].collectedAt, values[0].collectedAt)
+        XCTAssertGreaterThan(values[2].collectedAt, values[1].collectedAt)
+    }
+
     func testNativePowerPreservesAppleThermalStateAndLowPowerMode() async throws {
         let access = DeviceAccess()
         defer { access.close() }
