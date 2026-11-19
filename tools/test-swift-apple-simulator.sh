@@ -38,10 +38,11 @@ raise SystemExit('No available iPhone simulator matches the selected Xcode SDK.'
 PY
 )
 cat "$log_root/simulator-selection.log"
+# Wait for CoreSimulator's complete boot state before starting timed SDK tests.
+xcrun simctl bootstatus "$simulator_id" -b 2>&1 | tee "$log_root/simulator-boot.log"
 cd "$repo_root/swift"
 result=0
-# Diagnostic order comparison: both configurations still contribute to failure.
-for configuration in Release Debug; do
+for configuration in Debug Release; do
     if xcodebuild -scheme DeviceReadout -sdk iphonesimulator \
         -destination "platform=iOS Simulator,id=$simulator_id,arch=$(uname -m)" -destination-timeout 60 \
         -configuration "$configuration" -parallel-testing-enabled NO \
