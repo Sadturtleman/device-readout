@@ -19,7 +19,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - name: Repeat the existing permission test without the surrounding suite
+      - name: Repeat the seven permission tests without the surrounding suite
         run: python3 tools/probe-swift-permissions.py
       - name: Preserve bounded reproduction logs
         if: ${{ !cancelled() }}

@@ -6,7 +6,7 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The [Apple Power checkpoint](docs/verification/2026-11-19-swift-apple-power.md) adds native low-power mode and Apple thermal stages, plus macOS power-source reads that agree with an independent system reference. Its macOS checkpoint passes 91/91 tests in all four configurations; Linux Swift 5.9.2 passes 88/88 in Debug/Release. Source-change observation and final iOS verification are in progress; physical and full SDK coverage remain pending.
+The [Apple Power checkpoint](docs/verification/2026-11-19-swift-apple-power.md) adds native low-power mode, Apple thermal stages and macOS power-source reads/notifications. The audited 385e2f2 run passes 92/92 tests in all four macOS configurations, 90/90 in each iOS simulator configuration and all four iOS SDK builds; Linux Swift 5.9.2 passes 88/88 in Debug/Release. An earlier intermittent permission-test stall remains under diagnosis. Native fault/cleanup coverage, physical transitions and the complete SDK matrix remain pending.
 
 The [Apple verification checkpoint](docs/verification/2026-11-19-swift-apple.md) passes 88 tests and a separate SwiftPM consumer in each macOS ARM64/Intel Debug/Release configuration, plus all four iOS SDK builds and 88 tests in each iOS simulator Debug/Release configuration. An explicit simulator boot-completion wait resolves the reproduced first-run CI failure. Minimum-OS runtime, physical devices, remaining collectors and the complete platform matrix remain unverified.
 

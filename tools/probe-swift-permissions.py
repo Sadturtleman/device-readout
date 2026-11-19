@@ -1,4 +1,4 @@
-"""Temporary bounded repetition of the permission test that stalled in Apple CI."""
+"""Temporary bounded repetition of the permission class that stalled in Apple CI."""
 import os
 from pathlib import Path
 import signal
@@ -40,10 +40,10 @@ def run(command, label, timeout):
 run([swift, 'build', '--build-tests', *common], 'build', 300)
 method = 'testCoordinatorErrorsReplacementAndSynchronousPublicationHaveExplicitRequestSemantics'
 for attempt in range(1, 101):
-    output = run([swift, 'test', '--skip-build', *common, '--filter', 'PermissionTests.' + method],
+    output = run([swift, 'test', '--skip-build', *common, '--filter', 'PermissionTests'],
                  f'permission-{attempt}', 10)
-    if 'Executed 1 test, with 0 failures' not in output or not any(method in line and 'passed' in line for line in output.splitlines()):
+    if 'Executed 7 tests, with 0 failures' not in output or not any(method in line and 'passed' in line for line in output.splitlines()):
         print(output, flush=True)
-        sys.exit('The selected permission test did not execute successfully.')
+        sys.exit('The seven permission tests did not execute successfully.')
     if attempt % 10 == 0:
         print(f'[DEBUG-permission-probe] passed {attempt}/100 repetitions', flush=True)
