@@ -5,6 +5,18 @@ import Foundation
 struct Consumer {
     static func main() async throws {
         #if os(macOS)
+        if CommandLine.arguments.dropFirst().elementsEqual(["--cpu-soc-consumer"]) {
+            try await CpuSocConsumer.run()
+            return
+        }
+        if CommandLine.arguments.dropFirst().elementsEqual(["--cpu-identity-consumer"]) {
+            try await CpuIdentityConsumer.run()
+            return
+        }
+        if CommandLine.arguments.dropFirst().elementsEqual(["--cpu-topology-consumer"]) {
+            try await CpuTopologyConsumer.run()
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--ram-free-consumer"]) {
             try await RamFreeConsumer.run()
             return

@@ -16,7 +16,7 @@ struct NativeDeviceCollector: DeviceCollector {
     func capabilities(_ request: EntityRequest) throws -> EntityCapabilities {
         var supported = request.kind == .runtime || request.kind == .timeZone
         #if os(macOS) || os(iOS)
-        supported = supported || request.kind == .power || request.kind == .ram
+        supported = supported || request.kind == .power || request.kind == .ram || request.kind == .cpu
         #endif
         #if os(macOS)
         supported = supported || request.kind == .os
@@ -31,6 +31,7 @@ struct NativeDeviceCollector: DeviceCollector {
         #if os(macOS) || os(iOS)
         if request.kind == .power { return NativeApplePower.read() }
         if request.kind == .ram { return NativeAppleMemory.readRam() }
+        if request.kind == .cpu { return NativeAppleCpu.read() }
         #endif
         if request.kind == .timeZone {
             // Freeze one rule set before querying its offset/DST at one instant.
