@@ -98,7 +98,18 @@ final class ContextTests: XCTestCase {
         for task in pending { await task.value }
         collector.release.signal()
         _ = try await first.value
-        let fresh = try await access.get(Entities.ram)
+        // Public cancellation does not join the worker. Canceled queue entries
+        // keep their admission slots until that worker actually reaches them.
+        let recoveryDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        var recovered: RamSnapshot?
+        while recovered == nil {
+            do { recovered = try await access.get(Entities.ram) }
+            catch let error as DeviceReadoutError where error.code == .readFailed {
+                guard ContinuousClock.now < recoveryDeadline else { throw error }
+                try await Task.sleep(for: .milliseconds(1))
+            }
+        }
+        let fresh = try XCTUnwrap(recovered)
         XCTAssertEqual(fresh.physicalBytes, 2, "canceled queued operations must not reach the native source")
         XCTAssertEqual(collector.readCalls, 2)
     }

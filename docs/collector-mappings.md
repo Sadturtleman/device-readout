@@ -4,7 +4,7 @@ This file records actual implementation, separately from the full design scope. 
 
 ## Swift Foundation
 
-`DeviceAccess()` connects the following initial native mappings. Swift 5.9.2 Linux Debug/Release and separate SwiftPM consumers are verified; iOS/macOS builds and physical execution remain pending. See the [native Foundation checkpoint](verification/2026-11-19-swift-native-foundation.md).
+`DeviceAccess()` connects the following initial native mappings. Swift 5.9.2 Linux and macOS ARM64/Intel Debug/Release tests and separate SwiftPM consumers are verified. Apple SDK builds and iOS simulator Debug/Release tests pass; physical/minimum-OS execution remains pending. See the [native Foundation checkpoint](verification/2026-11-19-swift-native-foundation.md) and [Apple verification](verification/2026-11-19-swift-apple.md).
 
 | Entity | Native mapping |
 |---|---|

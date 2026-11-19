@@ -1,0 +1,104 @@
+name: Swift Apple verification
+
+on:
+  pull_request:
+    paths:
+      - 'swift/**'
+      - 'tools/swift-native-consumer/**'
+      - 'tools/test-swift*.sh'
+      - '.github/workflows/swift-apple.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'swift/**'
+      - 'tools/swift-native-consumer/**'
+      - 'tools/test-swift*.sh'
+      - '.github/workflows/swift-apple.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swift-apple-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  macos:
+    name: macOS / ${{ matrix.runner }} / ${{ matrix.configuration }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+        configuration: [debug, release]
+    env:
+      CONFIGURATION: ${{ matrix.configuration }}
+      TZ: ${{ matrix.configuration == 'debug' && 'Etc/UTC' || 'Asia/Kathmandu' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record Apple toolchain and source
+        run: |
+          mkdir -p .tools/apple-ci-logs
+          { git rev-parse HEAD; sw_vers; uname -m; xcodebuild -version; xcrun swift --version; } 2>&1 | tee .tools/apple-ci-logs/toolchain.log
+      - name: Test the public Swift SDK
+        run: sh tools/test-swift.sh -c "$CONFIGURATION" -Xswiftc -warnings-as-errors 2>&1 | tee .tools/apple-ci-logs/tests.log
+      - name: Run the separate SwiftPM consumer
+        if: ${{ !cancelled() }}
+        run: sh tools/test-swift-native-consumer.sh -c "$CONFIGURATION" 2>&1 | tee .tools/apple-ci-logs/consumer.log
+      - name: Preserve verification logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: swift-${{ matrix.runner }}-${{ matrix.configuration }}
+          path: .tools/apple-ci-logs/*.log
+          include-hidden-files: true
+          retention-days: 14
+
+  ios-test:
+    name: iOS / simulator tests
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Run public SDK tests in the iOS simulator
+        run: bash tools/test-swift-apple-simulator.sh
+      - name: Preserve simulator logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: swift-ios-tests
+          path: .tools/apple-ci-logs/*.log
+          include-hidden-files: true
+          retention-days: 14
+
+  ios-build:
+    name: iOS / device and simulator builds
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Compile with the Apple iOS SDKs
+        run: bash tools/test-swift-apple-build.sh
+      - name: Preserve build logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: swift-ios-builds
+          path: .tools/apple-ci-logs/*.log
+          include-hidden-files: true
+          retention-days: 14
