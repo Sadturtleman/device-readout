@@ -1,9 +1,21 @@
-#if os(macOS)
+#if os(macOS) || os(iOS)
+import Darwin
 import DeviceReadout
 import Foundation
 import XCTest
 
 final class AppleCpuTopologyTests: XCTestCase {
+    @MainActor
+    func testNativePhysicalCoreCountMatchesIndependentMachReport() async throws {
+        let reference = try await Task.detached { try machPhysicalCoreReference() }.value
+        let access = DeviceAccess()
+        defer { access.close() }
+        let value = try await access.get(Entities.cpu)
+        XCTAssertEqual(value.physicalCoreCount, reference)
+        print("APPLE_CPU_MACH_REFERENCE physical=\(reference)")
+    }
+
+    #if os(macOS)
     @MainActor
     func testNativePhysicalTopologyMatchesIndependentSystemReport() async throws {
         let reference = try await Task.detached { try TopologyReference.read() }.value
@@ -25,8 +37,10 @@ final class AppleCpuTopologyTests: XCTestCase {
         XCTAssertGreaterThan(second.collectedAt, first.collectedAt)
         print("APPLE_CPU_TOPOLOGY_REFERENCE physical=\(reference.physical) packages=\(reference.packages)")
     }
+    #endif
 }
 
+#if os(macOS)
 private struct TopologyReference: Sendable {
     let physical: Int, packages: Int
 
@@ -49,6 +63,25 @@ private struct TopologyReference: Sendable {
         }
         return value
     }
+}
+#endif
+
+private func machPhysicalCoreReference() throws -> Int {
+    let host = mach_host_self()
+    guard host != MACH_PORT_NULL else { throw TopologyReferenceFailure.unavailable }
+    defer { _ = mach_port_deallocate(mach_task_self_, host) }
+    var value = host_basic_info_data_t()
+    let capacity = MemoryLayout<host_basic_info_data_t>.size / MemoryLayout<integer_t>.size
+    var count = mach_msg_type_number_t(capacity)
+    let status = withUnsafeMutablePointer(to: &value) { pointer in
+        pointer.withMemoryRebound(to: integer_t.self, capacity: capacity) { buffer in
+            host_info(host, HOST_BASIC_INFO, buffer, &count)
+        }
+    }
+    guard status == KERN_SUCCESS, count == mach_msg_type_number_t(capacity), value.physical_cpu_max > 0 else {
+        throw TopologyReferenceFailure.unavailable
+    }
+    return Int(value.physical_cpu_max)
 }
 
 private enum TopologyReferenceFailure: Error { case unavailable }
