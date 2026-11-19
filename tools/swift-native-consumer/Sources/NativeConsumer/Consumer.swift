@@ -5,6 +5,10 @@ import Foundation
 struct Consumer {
     static func main() async throws {
         #if os(macOS)
+        if CommandLine.arguments.dropFirst().elementsEqual(["--cpu-identity-consumer"]) {
+            try await CpuIdentityConsumer.run()
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--cpu-topology-consumer"]) {
             try await CpuTopologyConsumer.run()
             return
