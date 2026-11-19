@@ -4,8 +4,8 @@ struct NativeDeviceCollector: DeviceCollector {
     func observeChanges(_ request: EntityRequest, notify: @escaping @Sendable () -> Void) throws -> NativeStateCleanup? {
         #if os(macOS) || os(iOS)
         if request.kind == .power {
-            let observation = NativeApplePowerObservation(notify: notify)
-            return { observation.close() }
+            let observation = try NativeApplePowerObservation(notify: notify)
+            return { try observation.close() }
         }
         #endif
         guard request.kind == .timeZone else { return nil }

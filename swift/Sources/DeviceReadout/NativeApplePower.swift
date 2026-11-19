@@ -2,6 +2,7 @@
 import Foundation
 #if os(macOS)
 import IOKit.ps
+import notify
 #endif
 
 enum NativeApplePower {
@@ -41,10 +42,21 @@ enum NativeApplePower {
 final class NativeApplePowerObservation: @unchecked Sendable {
     private let center: NotificationCenter
     private let tokens: [NSObjectProtocol]
+    #if os(macOS)
+    private var sourceToken: Int32?
+    #endif
 
-    init(notify: @escaping @Sendable () -> Void) {
+    init(notify: @escaping @Sendable () -> Void) throws {
         // Foundation requires this read before thermal notification registration.
         _ = ProcessInfo.processInfo.thermalState
+        #if os(macOS)
+        var token: Int32 = 0
+        let status = notify_register_dispatch(kIOPSNotifyPowerSource, &token, .global(qos: .utility)) { _ in notify() }
+        guard status == UInt32(NOTIFY_STATUS_OK) else {
+            throw DeviceReadoutError(.readFailed, "Power-source notification registration failed (\(status)).")
+        }
+        sourceToken = token
+        #endif
         let center = NotificationCenter.default
         self.center = center
         tokens = [NSNotification.Name.NSProcessInfoPowerStateDidChange,
@@ -53,6 +65,17 @@ final class NativeApplePowerObservation: @unchecked Sendable {
         }
     }
 
-    func close() { tokens.forEach { center.removeObserver($0) } }
+    func close() throws {
+        tokens.forEach { center.removeObserver($0) }
+        #if os(macOS)
+        if let token = sourceToken {
+            let status = notify_cancel(token)
+            guard status == UInt32(NOTIFY_STATUS_OK) || status == UInt32(NOTIFY_STATUS_INVALID_TOKEN) else {
+                throw DeviceReadoutError(.readFailed, "Power-source notification cleanup failed (\(status)).")
+            }
+            sourceToken = nil
+        }
+        #endif
+    }
 }
 #endif
