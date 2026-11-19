@@ -6,7 +6,7 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The [Apple verification checkpoint](docs/verification/2026-11-19-swift-apple.md) passes 88 tests and a separate SwiftPM consumer in each macOS ARM64/Intel Debug/Release configuration, plus all four iOS SDK builds and 88 iOS simulator Release tests. The original iOS simulator Debug suite still fails; isolated diagnosis is in progress. Minimum-OS runtime, physical devices, remaining collectors and the complete platform matrix remain unverified.
+The [Apple verification checkpoint](docs/verification/2026-11-19-swift-apple.md) passes 88 tests and a separate SwiftPM consumer in each macOS ARM64/Intel Debug/Release configuration, plus all four iOS SDK builds and 88 tests in each iOS simulator Debug/Release configuration. An explicit simulator boot-completion wait resolves the reproduced first-run CI failure. Minimum-OS runtime, physical devices, remaining collectors and the complete platform matrix remain unverified.
 
 The [Swift native Foundation checkpoint](docs/verification/2026-11-19-swift-native-foundation.md) adds `DeviceAccess()` with Runtime and TimeZone reads, passive support queries and native state invalidations. Swift 5.9.2 passes 88/88 tests in both Debug and Release plus a separate SwiftPM consumer in each configuration. Held registration/cleanup preserve caller progress and app handoff retires native observation. These Linux Foundation results do not establish Apple SDK builds, physical-device behavior or the full platform matrix.
 

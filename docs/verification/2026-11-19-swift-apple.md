@@ -1,44 +1,51 @@
 # Swift verification with Apple SDKs
 
-This checkpoint adds repeatable Apple verification for the existing Swift package. Native SDK implementation files are unchanged from `038feca7c876b61c08df53e39621f4a8cdd00e78`; changes consist of CI, reproduction scripts and public-contract tests. Runtime and TimeZone remain the only bundled native collector kinds. The full 46-entity, binding, platform, minimum-version and physical-device acceptance scope remains unfinished.
+The existing Swift SDK passes the complete Apple workflow at source `ac0ffef3d8413c3bc7d0839c41ee9f7655815544`: [run 8](https://github.com/Sadturtleman/device-readout/actions/runs/44468209865), [PR #1](https://github.com/Sadturtleman/device-readout/pull/1). The source/log audit passes for 582 non-Markdown inputs, six runtime configurations, four iOS SDK builds, the separate consumers and 688 local documentation links.
 
-The latest completed full run in this checkpoint verifies `ffdaaa0991e17df19765ce00fc5e84f308912aac` in [PR #1](https://github.com/Sadturtleman/device-readout/pull/1). The [sixth Apple workflow run](https://github.com/Sadturtleman/device-readout/actions/runs/44465882533) checks that exact commit rather than an unrecorded local source tree.
+Native SDK sources are unchanged from `038feca7c876b61c08df53e39621f4a8cdd00e78`. Runtime and TimeZone remain the only bundled native collector kinds. The full 46-entity, binding, minimum-version and physical-device acceptance scope remains unfinished.
 
-## Environment and results
+## Verified configurations
 
-Apple jobs use Xcode 16.4 and Apple Swift 6.1.2 in Swift 5 language mode. The iOS builds use SDK 18.5 with deployment target 16.0. The hosted macOS systems are macOS 15; declaring macOS 13/iOS 16 deployment targets does not establish execution on those minimum OS releases.
+Apple jobs use Xcode 16.4, Apple Swift 6.1.2 in Swift 5 language mode, macOS 15 and iOS SDK 18.5. Compiler warnings are errors. The iOS build deployment target is 16.0; minimum-OS execution is a separate outstanding requirement.
 
 | Check | Result |
 | --- | --- |
-| macOS ARM64 Debug | 88/88 tests; separate SwiftPM consumer passes. |
-| macOS ARM64 Release | 88/88 tests; separate SwiftPM consumer passes. |
-| macOS Intel Debug | 88/88 tests; separate SwiftPM consumer passes. |
-| macOS Intel Release | 88/88 tests; separate SwiftPM consumer passes. |
-| iOS 18.5 simulator Debug | 88 tests execute; 37 assertion/unexpected-error failures (7 unexpected). Gate fails. |
-| iOS 18.5 simulator Release | 88/88 pass. |
-| iOS device SDK builds | Debug and Release pass, targeting iOS 16. No device execution is implied. |
-| iOS simulator SDK builds | Debug and Release pass. |
-| Swift 5.9.2 on Linux | 88/88 tests in each Debug/Release configuration after the test changes. |
+| macOS ARM64 Debug / Release | 88/88 tests and separate SwiftPM consumer in each configuration. |
+| macOS Intel Debug / Release | 88/88 tests and separate SwiftPM consumer in each configuration. |
+| iOS 18.5 ARM64 simulator Debug / Release | 88/88 tests in each configuration, in the original Debug → Release order. |
+| iOS device SDK Debug / Release | Both builds pass. This does not imply device execution. |
+| iOS simulator SDK Debug / Release | Both builds pass. |
+| Swift 5.9.2, Ubuntu 22.04 under WSL | 88/88 tests in each Debug/Release configuration after the contract-test changes. |
 
-Compiler warnings are treated as errors in these commands. The macOS consumers import the public product from a distinct SwiftPM package and verify native reads, equal snapshots with fresh timestamps, immutable settings and shared context closure. Their process architectures agree with the runner's independently reported ARM64/x86-64 architecture. UTC Debug and Kathmandu Release values retain their IANA identifiers and expected offsets of 0 and 20700 seconds.
+The macOS consumers import the public product through a distinct SwiftPM package. They verify native reads, equal snapshots with fresh timestamps, immutable settings and shared context closure. Process architectures match independently recorded ARM64/x86-64 runner architectures. UTC Debug and Kathmandu Release runs preserve their IANA identifiers and offsets of 0 and 20700 seconds.
 
-Most contract tests use controlled collectors and app-owned observer inputs. Their success is not evidence of native implementations for the remaining declared entities. Native TimeZone tests compare offset/DST with C-library localtime and exercise Foundation notification-center wiring; they do not change the OS time-zone setting or prove a hardware/system notification was delivered.
+Most contract tests use controlled collectors and app-owned observers. Native TimeZone tests compare offset/DST with C-library localtime and exercise Foundation notification-center wiring. They do not change OS settings or prove a real settings-change notification occurred. These results do not implement the remaining declared entities.
 
-## Failures preserved and test corrections
+## First-run simulator failure
 
-1. [Run 1](https://github.com/Sadturtleman/device-readout/actions/runs/44459325890), source `7a8e6d0`: ARM64 Debug/Release, Intel Release and the four iOS builds pass. Intel Debug fails a sensor restart test that assumed lifecycle transitions and result observation would fit a 220 ms window. The replacement keeps restarting unmeasured sessions while the original get deadline must still expire. Removing that original timer in an isolated copy makes the replacement fail; the original SDK passes.
-2. [Run 2](https://github.com/Sadturtleman/device-readout/actions/runs/44460294270), source `d943069`: ARM64 Debug fails a 300 ms elapsed-time ceiling during source handoff. The replacement makes a snapshot available after the original deadline but before a restarted deadline and requires ReadTimeout. A deliberate deadline-restart mutation fails. The simulator command separately fails before running tests because it lowercases an available uppercase device ID; the script now preserves the platform-provided ID and specifies the architecture.
-3. [Run 3](https://github.com/Sadturtleman/device-readout/actions/runs/44461376615), source `7448fe6`: all macOS configurations/consumers and the four iOS builds pass. Actual iOS simulator Release passes 88/88; Debug executes 88 tests with 16 assertions/unexpected-error failures across seven cases. These include assuming canceled queue slots have already drained, requiring thousands of timer-driven reads within five seconds, and tight setup/observation windows.
+Without an explicit complete-boot wait, the first simulator test configuration repeatedly failed across different test classes. It was initially Debug. In the controlled [order comparison](https://github.com/Sadturtleman/device-readout/actions/runs/44467177930), only the configuration order changed: Release first failed five assertions, while Debug second passed 88/88. This contradicted a Debug-specific code-generation explanation.
 
-The queue-recovery test now accepts temporary ReadFailed while canceled entries drain, then still requires the next native value to be exactly the second read. The overflow test uses native invalidations, waits for observation cleanup before draining, and still requires 2,049 ordered accepted snapshots, ReadFailed and exactly 2,050 source reads. An isolated mutation that ignores dropped snapshots fails both the error and source-count assertions. Other affected tests retain deadline, idle lifetime, cancellation, immutable cadence and stale-value/error rejection checks, with bounded source gates and wider setup margins. Idle waits still exceed their configured read deadline. No tests are skipped or automatically retried to produce a passing result.
+Isolated [diagnosis 2](https://github.com/Sadturtleman/device-readout/actions/runs/44465882518) and [diagnosis 3](https://github.com/Sadturtleman/device-readout/actions/runs/44467178034) retained failures rather than retrying them into success. Diagnosis 3 failed its first handoff group, then passed the original full Debug suite without instrumentation. Instrumented copies also passed, so instrumentation was not required for success. Pulse measurements in passing copies did not measure the earlier failure and were not treated as proof of its cause.
 
-These changes strengthen the test harness; they do not establish a native scheduler/performance fix or explain every preceding timing delay. All earlier failed runs and local mutation logs remain part of the evidence.
+The simulator script now waits for the selected device's `simctl bootstatus <UDID> -b` completion before starting timed tests. Run 8 records data migration and system-app readiness before terminal `Finished`, taking 64 seconds, then passes both complete configurations in the original order. This closes the reproduced first-run CI failure through explicit environment readiness; it does not claim a change to SDK scheduling or hard real-time guarantees. No test assertion or timeout was changed in the order/readiness experiments, no failed configuration was ignored, and no fixed sleep was added.
 
-## Reproduction and evidence
+Temporary diagnostic workflows, copied-package runners and tagged scheduling probes are removed after this result. Their source and logs remain available in the linked historical commits/runs. The normal workflow still fails if either simulator configuration fails.
 
-The [workflow](../../.github/workflows/swift-apple.yml) runs on [standard GitHub macOS runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), with read-only repository permissions, pinned official actions and no publishing step. Each job records its source SHA, OS, architecture and toolchain. Text logs are retained as workflow artifacts for 14 days; local copies and hashes are kept under ignored `.tools/apple-ci` paths.
+## Earlier failures and regression improvements
 
-On macOS with Xcode selected, run:
+- [Run 1](https://github.com/Sadturtleman/device-readout/actions/runs/44459325890), `7a8e6d0`: one sensor test assumed repeated lifecycle transitions and result observation would fit 220 ms. Its replacement keeps restarting unmeasured sessions while the original get deadline must expire. Removing the original timer in an isolated copy makes the replacement fail.
+- [Run 2](https://github.com/Sadturtleman/device-readout/actions/runs/44460294270), `d943069`: a handoff test exceeded a 300 ms elapsed ceiling. Its replacement makes a value available after the original deadline but before a restarted deadline and requires ReadTimeout; a deliberate deadline-restart mutation fails. Separately, lowercasing a simulator UUID prevented Xcode from finding the destination. The script preserves the returned identifier and specifies architecture.
+- [Run 3](https://github.com/Sadturtleman/device-readout/actions/runs/44461376615), `7448fe6`: iOS Debug executed 88 tests with 16 failures (5 unexpected); Release passed. Queue recovery had assumed canceled slots were already drained, and overflow assumed thousands of timer-driven reads would fit five seconds. Recovery now tolerates temporary typed saturation before requiring the next native value. Overflow uses source invalidations and still requires 2,049 ordered accepted snapshots, ReadFailed and exactly 2,050 source calls. A silent-drop mutation fails.
+- [Run 4](https://github.com/Sadturtleman/device-readout/actions/runs/44462954036), `bf041ac`, and [run 5](https://github.com/Sadturtleman/device-readout/actions/runs/44464128925), `480a586`: Debug still failed with 11 and 10 failures respectively; Release passed. Test-margin corrections alone did not resolve the CI problem.
+- [Run 6](https://github.com/Sadturtleman/device-readout/actions/runs/44465882533), `ffdaaa0`: Debug failed with 37 failures (7 unexpected), now concentrated in sensor/target cases; Release passed. This prompted the order comparison rather than further timeout widening.
+
+The first diagnostic script also failed before its full-suite stage because Bash 3.2 treats an empty array as unbound under nounset. That invocation was corrected; it was never counted as an executed or passed SDK suite. A local Swift 5.9.2 diagnostic-copy build encountered a compiler signal 11. The established scratch/cache/module-cache configuration subsequently compiled and passed four handoff tests; the compiler failure remains recorded without a claimed cause.
+
+## Reproduction and retained evidence
+
+The [workflow](../../.github/workflows/swift-apple.yml) uses read-only repository permissions, pinned official actions and no publishing step. Each job records the exact source, OS, architecture and toolchain. Text logs remain in 14-day workflow artifacts and ignored local `.tools/apple-ci` copies. The local `verified-ac0ffef.json` audit records source/log hashes, consumer outputs and remaining scope. Earlier failed and mutation logs are preserved.
+
+On macOS with Xcode selected:
 
 ```sh
 TZ=Etc/UTC sh tools/test-swift.sh -Xswiftc -warnings-as-errors
@@ -49,28 +56,8 @@ bash tools/test-swift-apple-build.sh
 bash tools/test-swift-apple-simulator.sh
 ```
 
-The simulator script selects an available iPhone matching the selected Xcode SDK, logs the selected runtime/device, and runs both configurations. Apple documents the test destination mechanism in [Building from the Command Line with Xcode](https://developer.apple.com/library/archive/technotes/tn2339/_index.html). The test scripts use ignored scratch/cache/result directories and preserve command failure exit codes through log capture.
-
-The source capture for `ffdaaa0` contains 582 non-Markdown inputs. The all-green audit has not passed: the iOS Debug job fails. No complete Apple verification report is claimed.
+The simulator command selects an available iPhone matching the selected SDK, preserves its exact ID, waits for boot completion and runs both configurations. Failures survive log capture. Apple documents test destinations in [Building from the Command Line with Xcode](https://developer.apple.com/library/archive/technotes/tn2339/_index.html); runner architectures follow the [GitHub-hosted runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
 ## Remaining scope
 
-macOS 13 and iOS 16 runtime tests, an Apple Swift 5.9 toolchain, physical devices, actual settings-change notifications, additional native fields/entities and Apple Flutter/React Native/UI/lifecycle integration remain required. The standalone consumer uses a local package dependency, not a tagged remote release. Worker-owned reads/registration/cleanup and MainActor progress are exercised by the contract tests; native crash containment and zero shared-process overhead are not established.
-
-## Additional failures and active diagnosis
-
-Run 4 (`bf041ac`) still fails iOS Debug with 11 failures (2 unexpected); Release passes 88/88. Run 5 (`480a586`) fails Debug with 10 failures (1 unexpected), now in earlier read/native-observation cases; Release again passes. The varying failed cases do not establish a stable SDK failure cause.
-
-The first diagnosis (`44464129000`) runs one late-handoff test successfully and all five Watch tests successfully, but the four-test handoff class fails. Its full-suite invocation fails before test execution because macOS Bash 3.2 treats an empty array as unbound under nounset. That execution must not be reported as an SDK test failure or a passed full suite.
-
-The second diagnosis (`ffdaaa0`, run `44465882518`) corrects that shell expansion and compares the original tests with an isolated package containing queue/task scheduling pulse measurements. The public SDK source is copied unchanged; no instrumentation is added to the published package. It covers utility/default/main dispatch queues and utility Swift tasks. The independent full gate (`44465882533`) still runs all 88 tests in both simulator configurations.
-
-The probe initially encounters a Swift 5.9.2 compiler signal 11 in a fresh default build location. Re-running with the established scratch/cache/module-cache settings compiles it and passes all four handoff tests. That compiler failure is retained in `probe-compile-linux.log`, and the successful configured run in `probe-compile-configured-linux.log`; no compiler cause is claimed.
-
-The sixth full run fails Debug with 37 failures (7 unexpected), concentrated this time in sensor and target cases; Release passes 88/88. All macOS configurations and separate consumers pass, and all four iOS builds pass. No SDK source or test assertion changed between this run and the preceding full run.
-
-The second diagnostic run executes the original four handoff tests successfully, then its original full Debug suite fails with 17 failures (7 unexpected). The later instrumented copy passes both four handoff tests and all 88 tests. Its 100 ms pulse measurements include maximum observed gaps of 0.133 s on default dispatch, 0.525 s on main dispatch, 0.533 s on utility dispatch and 0.587 s on utility Swift tasks. Measurements were taken in the passing copy; they do not prove the cause of the earlier failure, and instrumentation and run order remain confounded.
-
-Commit `95e12bf` changes only the full simulator script order to Release then Debug, preserving both configurations and every assertion. The [seventh full run](https://github.com/Sadturtleman/device-readout/actions/runs/44467177930) fails the first configuration, now Release, with five failures; the second configuration, now Debug, passes all 88 tests. This is an explicit order experiment, not a retry-until-success policy; either failed configuration still fails the job.
-
-The failure following the first configuration rather than Debug changes the next experiment: the simulator script now waits for `simctl bootstatus <selected-device> -b` before executing timed tests, and restores Debug then Release. It waits for an explicit platform boot state, not a fixed sleep, and does not change SDK code, test limits or assertions. The result of that readiness experiment is still pending; a startup cause is not yet claimed proved.
+macOS 13 and iOS 16 runtime tests, an Apple Swift 5.9 toolchain, physical devices, actual settings-change notifications, additional native fields/entities and Apple Flutter/React Native/UI/lifecycle integration remain required. The standalone consumer uses a local package dependency, not a tagged remote release. Worker-owned reads/registration/cleanup and MainActor progress are exercised; native-crash containment and zero shared-process overhead are not established.
