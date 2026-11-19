@@ -1,6 +1,6 @@
 # Swift native Apple CPU checkpoint — 2026-11-19
 
-Native `get(Entities.cpu)` and polling `watch(Entities.cpu)` now provide logical processor counts, physical core count and processor package count on macOS/iOS. The four fields use the collection worker, remain nullable, and share the snapshot completion timestamp. CPU/SoC identity and CPU-core discovery are still being implemented; this checkpoint is not a complete CPU support claim.
+Native `get(Entities.cpu)` and polling `watch(Entities.cpu)` now provide CPU model/vendor where available, logical processor counts, physical core count and processor package count on macOS/iOS. The fields use the collection worker, remain nullable, and share the snapshot completion timestamp. SoC identity and CPU-core discovery are still being implemented; this checkpoint is not a complete CPU support claim.
 
 ## Count sources
 
@@ -56,6 +56,27 @@ All six jobs in [run 44510495856](https://github.com/Sadturtleman/device-readout
 
 The final audit compares all 604 non-Markdown source inputs with the captured source, each job's commit and raw result records, and both pre-implementation failures. The same four macOS jobs pass 32 RAM boundary cases, 12 OS consumer cases, the Power/Foundation consumers and 4,000 sensor activity/deadline cycles. Simulator runs target the executing simulator environment; these results do not establish physical iPhone or minimum-OS runtime behavior.
 
+## CPU model and vendor: native strings and caller isolation
+
+`model` reads public Darwin `machdep.cpu.brand_string`; `manufacturer` reads `machdep.cpu.vendor`. Each string uses a size query followed by one bounded data read. Sizes outside 2–4096 bytes, read failures, reported growth, missing/empty NUL termination and invalid UTF-8 leave only that field nil. Valid Unicode, a shrinking response and a 4095-byte payload are preserved. Unwritten buffer bytes cannot fabricate a terminator. No SDK read runs a command, prompts for permission or infers a vendor from the model text.
+
+Apple's [ARM implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/dev/arm64/sysctl.c) can supply either the product SoC name or a generic processor description as the CPU brand. The SDK therefore does not copy that field into `socModel`. The [Intel implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/dev/i386/sysctl.c) publishes the CPUID model/vendor strings. These are platform-provided strings rather than normalized company names.
+
+Before implementation, [3dd1a6f / ARM Release](https://github.com/Sadturtleman/device-readout/actions/runs/44513730551/job/135524644525) compiles and fails three model assertions against the independent `Apple M1 (Virtual)` reference. [Intel Debug](https://github.com/Sadturtleman/device-readout/actions/runs/44513730551/job/135524644599) fails six model/vendor assertions against the independent Intel model and `GenuineIntel`. Each suite contains 98 tests. Implementation c642f75 then passes the 98-test suite in all four macOS configurations and all four iOS builds; that intermediate simulator job was cancelled when boundary validation was published and is not counted as a pass.
+
+Final source [504e3c4](https://github.com/Sadturtleman/device-readout/commit/504e3c4a1b36f53044d147b319714634524f6755) passes all six jobs in [run 44515283127](https://github.com/Sadturtleman/device-readout/actions/runs/44515283127):
+
+| Environment | Result |
+|---|---|
+| macOS ARM64/Intel, Debug/Release | 99 public SDK tests per configuration; independent system-command and one-call Darwin references agree |
+| iOS simulator, Debug/Release | 94 public SDK tests per configuration; one-call Darwin reference agrees |
+| iOS device/simulator SDK builds | Four successful builds targeting iOS 16 |
+| Swift 5.9.2 / Ubuntu 22.04, Debug/Release | 88 tests per configuration; Apple-native code excluded |
+
+Each macOS configuration also runs 18 separate CPU-identity consumer cases: known strings, Unicode, shrinking data, maximum accepted size, each field failing, data-read failure, zero/one/oversized/overflowing sizes, empty/missing termination, a partial write, invalid UTF-8, reported growth, held get and held watch. Invalid size responses must not trigger a data read. Value cases preserve all four native counts and verify one get plus two fresh watch snapshots. Held calls require the read timeout, close, another context's read and MainActor progress to complete before explicit native release. The interposition library is injected only into the child consumer; an external watchdog bounds each test process.
+
+The final audit matches all 608 non-Markdown source inputs and the raw logs, including both identity failures. It verifies 72 identity cases, the existing 36 topology cases, 32 RAM cases, 12 OS cases, Power/Foundation consumers and 4,000 sensor activity/deadline cycles across the four macOS configurations. ARM and iOS simulator runners expose `Apple M1 (Virtual)` and no vendor; Intel exposes its CPUID brand and `GenuineIntel`. Simulator values describe its executing environment, not a physical iPhone.
+
 ## Remaining work
 
-CPU/SoC identity, native minimum-OS and physical-device boundaries, actual minimum Apple compiler, CPU-core discovery and the complete SDK acceptance matrix remain pending. Native iOS package-count behavior also needs physical-device evidence. No public API reads UI state, opens a permission prompt or changes process settings. A deadline does not forcibly interrupt a synchronous OS call; the verified guarantee is caller progress while that call remains held.
+SoC identity, native minimum-OS and physical-device boundaries, actual minimum Apple compiler, CPU-core discovery and the complete SDK acceptance matrix remain pending. Native iOS package-count and identity behavior also need physical-device evidence. No public API reads UI state, opens a permission prompt or changes process settings. A deadline does not forcibly interrupt a synchronous OS call; the verified guarantee is caller progress while that call remains held.
