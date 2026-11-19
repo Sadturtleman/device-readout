@@ -6,7 +6,7 @@ Typed device information through `DeviceAccess.get(Entity)` and `watch(Entity)`.
 
 ## Build and verify
 
-The [Swift native power cleanup checkpoint](docs/verification/2026-11-19-swift-power-cleanup.md) retains notification tokens after a refused OS cancellation and retries off the caller. The public native-boundary consumer passes on macOS ARM64 Debug and Intel Debug/Release; iOS builds and simulator tests also pass. ARM64 Release stalls in an existing permission test before reaching the consumer, so the full gate remains incomplete. Physical transitions and additional native failure cases remain pending.
+The [Swift native power cleanup checkpoint](docs/verification/2026-11-19-swift-power-cleanup.md) retains notification tokens after refused OS cancellation and verifies that held retries preserve same-context native reads and caller progress. Audited source 3bd1948 passes 92/92 tests and both native cancellation scenarios in all four macOS configurations, all four iOS builds and 90/90 tests in each iOS simulator configuration. Earlier intermittent permission-test stalls remain unresolved; additional native failure cases, physical transitions and the full SDK matrix remain pending.
 
 The [Apple Power checkpoint](docs/verification/2026-11-19-swift-apple-power.md) adds native low-power mode, Apple thermal stages and macOS power-source reads/notifications. The audited 385e2f2 run passes 92/92 tests in all four macOS configurations, 90/90 in each iOS simulator configuration and all four iOS SDK builds; Linux Swift 5.9.2 passes 88/88 in Debug/Release. An earlier intermittent permission-test stall remains under diagnosis. Native fault/cleanup coverage, physical transitions and the complete SDK matrix remain pending.
 
