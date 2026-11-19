@@ -8,7 +8,9 @@ enum NativeAppleCpu {
         let process = ProcessInfo.processInfo
         let total = process.processorCount
         let available = process.activeProcessorCount
-        return CpuSnapshot(logicalProcessorCount: total > 0 ? total : nil,
+        return CpuSnapshot(model: systemString("machdep.cpu.brand_string"),
+                           manufacturer: systemString("machdep.cpu.vendor"),
+                           logicalProcessorCount: total > 0 ? total : nil,
                            availableLogicalProcessorCount: available > 0 ? available : nil,
                            physicalCoreCount: positiveInteger("hw.physicalcpu_max"),
                            processorPackageCount: positiveInteger("hw.packages"))
@@ -23,6 +25,19 @@ enum NativeAppleCpu {
         }
         guard status == 0, size == MemoryLayout<Int32>.size, value > 0 else { return nil }
         return Int(value)
+    }
+
+    private static func systemString(_ name: String) -> String? {
+        var count = 0
+        guard sysctlbyname(name, nil, &count, nil, 0) == 0, count > 1, count <= 4096 else { return nil }
+        // Unwritten bytes must not fabricate a terminator in a malformed reply.
+        var bytes = [UInt8](repeating: 0xff, count: count)
+        let status = bytes.withUnsafeMutableBytes { buffer in
+            sysctlbyname(name, buffer.baseAddress, &count, nil, 0)
+        }
+        guard status == 0, count > 1, count <= bytes.count,
+              let terminator = bytes.prefix(count).firstIndex(of: 0), terminator > 0 else { return nil }
+        return String(bytes: bytes[..<terminator], encoding: .utf8)
     }
 }
 #endif
