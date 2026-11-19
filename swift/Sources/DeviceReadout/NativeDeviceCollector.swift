@@ -30,7 +30,7 @@ struct NativeDeviceCollector: DeviceCollector {
         #endif
         #if os(macOS) || os(iOS)
         if request.kind == .power { return NativeApplePower.read() }
-        if request.kind == .ram { return RamSnapshot(physicalBytes: ProcessInfo.processInfo.physicalMemory) }
+        if request.kind == .ram { return NativeAppleMemory.readRam() }
         #endif
         if request.kind == .timeZone {
             // Freeze one rule set before querying its offset/DST at one instant.
