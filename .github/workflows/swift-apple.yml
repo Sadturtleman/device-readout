@@ -71,6 +71,9 @@ jobs:
       - name: Verify native CPU identity strings and held reads
         if: ${{ !cancelled() }}
         run: bash tools/test-swift-native-cpu-identity.sh 2>&1 | tee .tools/apple-ci-logs/cpu-identity-consumer.log
+      - name: Verify native SoC values and IOKit ownership
+        if: ${{ !cancelled() }}
+        run: bash tools/test-swift-native-cpu-soc.sh 2>&1 | tee .tools/apple-ci-logs/cpu-soc-consumer.log
       - name: Verify sensor activity and deadline cancellation
         if: ${{ !cancelled() }}
         run: python3 tools/test-swift-sensor-activity.py 2>&1 | tee .tools/apple-ci-logs/sensor-activity.log

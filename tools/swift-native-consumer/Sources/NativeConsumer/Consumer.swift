@@ -5,6 +5,10 @@ import Foundation
 struct Consumer {
     static func main() async throws {
         #if os(macOS)
+        if CommandLine.arguments.dropFirst().elementsEqual(["--cpu-soc-consumer"]) {
+            try await CpuSocConsumer.run()
+            return
+        }
         if CommandLine.arguments.dropFirst().elementsEqual(["--cpu-identity-consumer"]) {
             try await CpuIdentityConsumer.run()
             return

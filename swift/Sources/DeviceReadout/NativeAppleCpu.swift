@@ -1,6 +1,9 @@
 #if os(macOS) || os(iOS)
 import Darwin
 import Foundation
+#if os(macOS)
+import IOKit
+#endif
 
 enum NativeAppleCpu {
     // Called on the collection worker; only read-only system queries.
@@ -10,10 +13,26 @@ enum NativeAppleCpu {
         let available = process.activeProcessorCount
         return CpuSnapshot(model: systemString("machdep.cpu.brand_string"),
                            manufacturer: systemString("machdep.cpu.vendor"),
+                           socModel: socModel(),
                            logicalProcessorCount: total > 0 ? total : nil,
                            availableLogicalProcessorCount: available > 0 ? available : nil,
                            physicalCoreCount: positiveInteger("hw.physicalcpu_max"),
                            processorPackageCount: positiveInteger("hw.packages"))
+    }
+
+    private static func socModel() -> String? {
+        #if os(macOS)
+        let entry = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/product")
+        guard entry != MACH_PORT_NULL else { return nil }
+        defer { _ = IOObjectRelease(entry) }
+        guard let property = IORegistryEntryCreateCFProperty(entry, "product-soc-name" as CFString,
+                                                            kCFAllocatorDefault, 0)?.takeRetainedValue(),
+              let data = property as? Data, data.count > 1, data.count <= 4096,
+              let terminator = data.firstIndex(of: 0), terminator > data.startIndex else { return nil }
+        return String(data: data[..<terminator], encoding: .utf8)
+        #else
+        return nil
+        #endif
     }
 
     private static func positiveInteger(_ name: String) -> Int? {
