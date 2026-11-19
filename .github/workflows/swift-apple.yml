@@ -63,6 +63,26 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  ios-test:
+    name: iOS / simulator tests
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Run public SDK tests in the iOS simulator
+        run: bash tools/test-swift-apple-simulator.sh
+      - name: Preserve simulator logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: swift-ios-tests
+          path: .tools/apple-ci-logs/*.log
+          include-hidden-files: true
+          retention-days: 14
+
   ios-build:
     name: iOS / device and simulator builds
     runs-on: macos-15

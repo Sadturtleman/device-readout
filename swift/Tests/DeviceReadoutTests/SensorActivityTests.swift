@@ -237,34 +237,45 @@ final class SensorActivityTests: XCTestCase {
     }
 
     @MainActor
-    func testGetDeadlineIsNotRestartedWhenAnUnmeasuredSessionPausesAndResumes() async throws {
-        let access = try DeviceAccess(collector: ActivityCollector()).withReadTimeout(.milliseconds(220))
+    func testGetDeadlineSurvivesRepeatedUnmeasuredSessionRestarts() async throws {
+        let access = try DeviceAccess(collector: ActivityCollector()).withReadTimeout(.seconds(2))
         defer { access.close() }
         let sensor = try access.observers.target(Entities.pressure, id: "pressure")
         let sessions = ActivitySessions<PressureSnapshot>()
         let initial = expectation(description: "get's first session started")
-        let resumed = expectation(description: "get's resumed session started")
-        let released = expectation(description: "both unmeasured sessions released")
-        released.expectedFulfillmentCount = 2
+        let completed = expectation(description: "get expires while activity continues changing")
         let source = try access.observers.sensorSource(sensor) { session in
-            if sessions.append(session) == 1 { initial.fulfill() } else { resumed.fulfill() }
-            return { released.fulfill() }
+            if sessions.append(session) == 1 { initial.fulfill() }
+            return nil
         }
         defer { source.close() }
-        let start = ContinuousClock.now
-        let pending = Task { try await access.get(sensor) }
+        let pending = Task { () -> ErrorCode? in
+            defer { completed.fulfill() }
+            do { _ = try await access.get(sensor); return nil }
+            catch let error as DeviceReadoutError { return error.code }
+            catch { return nil }
+        }
         defer { pending.cancel() }
-        await fulfillment(of: [initial], timeout: 1)
-        try await Task.sleep(for: .milliseconds(90))
-        try access.observers.sensorActivity(false)
-        try await Task.sleep(for: .milliseconds(40))
-        try access.observers.sensorActivity(true)
-        await fulfillment(of: [resumed], timeout: 1)
-        do { _ = try await pending.value; XCTFail("No measurement was supplied") }
-        catch let error as DeviceReadoutError { XCTAssertEqual(error.code, .readTimeout) }
-        XCTAssertLessThan(start.duration(to: .now), .milliseconds(310), "A resume cannot restart get's original 220ms limit")
-        await fulfillment(of: [released], timeout: 1)
-        XCTAssertEqual(sessions.count, 2)
+        await fulfillment(of: [initial], timeout: 2)
+        // Each active period is much shorter than a read deadline. An implementation
+        // that restarts get's deadline on resume cannot finish while this loop runs.
+        let activity = Task {
+            while !Task.isCancelled {
+                try access.observers.sensorActivity(false)
+                try await Task.sleep(for: .milliseconds(20))
+                try access.observers.sensorActivity(true)
+                try await Task.sleep(for: .milliseconds(80))
+            }
+        }
+        defer { activity.cancel() }
+        await fulfillment(of: [completed], timeout: 6)
+        activity.cancel()
+        _ = try? await activity.value
+        pending.cancel()
+        let error = await pending.value
+        XCTAssertEqual(error, .readTimeout)
+        XCTAssertGreaterThanOrEqual(sessions.count, 2, "The deadline test must actually cross sensor sessions.")
+        XCTAssertTrue(sessions.all.allSatisfy(\.isStopped))
     }
 
     @MainActor
