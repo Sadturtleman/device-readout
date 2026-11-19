@@ -2,9 +2,43 @@
 import DeviceReadout
 import Foundation
 import XCTest
+#if os(macOS)
+import Darwin
+#endif
 
 final class ApplePowerTests: XCTestCase {
     #if os(macOS)
+    @MainActor
+    func testNativePowerDeliversSourceNotificationBeforePolling() async throws {
+        let access = try DeviceAccess().withPollInterval(.seconds(3600))
+        defer { access.close() }
+        let first = expectation(description: "initial power source")
+        let changed = expectation(description: "native power-source notification")
+        let consumer = Task { () throws -> [PowerSnapshot] in
+            var values: [PowerSnapshot] = []
+            for try await value in access.watch(Entities.power) {
+                values.append(value)
+                if values.count == 1 { first.fulfill() }
+                if values.count == 2 { changed.fulfill(); break }
+            }
+            return values
+        }
+        defer { consumer.cancel() }
+        await fulfillment(of: [first], timeout: 2)
+        let failSafe = Task.detached {
+            try? await Task.sleep(for: .seconds(5))
+            if !Task.isCancelled { consumer.cancel() }
+        }
+        defer { failSafe.cancel() }
+        // An invalidation on the isolated CI host; no power setting is changed.
+        XCTAssertEqual(notify_post("com.apple.system.powersources.source"), UInt32(NOTIFY_STATUS_OK))
+        await fulfillment(of: [changed], timeout: 2)
+        let values = try await consumer.value
+        XCTAssertEqual(values.count, 2)
+        XCTAssertNotNil(values[1].powerSource)
+        XCTAssertGreaterThan(values[1].collectedAt, values[0].collectedAt)
+    }
+
     func testNativePowerSourceMatchesIndependentSystemReport() async throws {
         let referenceBefore = try systemPowerSource()
         let access = DeviceAccess()
