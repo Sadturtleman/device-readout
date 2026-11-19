@@ -17,6 +17,9 @@ public final class DeviceAccess: @unchecked Sendable {
     public let pollInterval: Duration
     public let sensorSamplingRate: SensorSamplingRate
 
+    /// Creates an inert context backed by the platform's native collector.
+    public convenience init() { self.init(collector: NativeDeviceCollector()) }
+
     public init(collector: any DeviceCollector) {
         self.collector = collector
         worker = CollectionWorker()
@@ -105,16 +108,39 @@ public final class DeviceAccess: @unchecked Sendable {
             } else {
                 let polling = Task.detached(priority: .utility) { [self] in
                     var delivered = false
+                    let signals = NativeStateSignals(worker: worker)
+                    defer { signals.close() }
                     do {
+                        let nativeLifetime = try lifetime.register { signals.close() }
+                        defer { nativeLifetime.cancel() }
+                        let request = EntityRequest(kind: entity.kind, targetId: entity.binding?.id)
+                        let _: Bool = try await perform(target: (entity.kind, entity.binding)) { [self] active, _ in
+                            guard active() else { throw CancellationError() }
+                            _ = try targets.validate(entity)
+                            let cleanup = try collector.observeChanges(request, notify: { signals.notify() })
+                            signals.installOnWorker(cleanup)
+                            guard active() else { throw CancellationError() }
+                            return PreparedRead(value: true)
+                        }
+                        var changes = signals.stream.makeAsyncIterator()
                         while true {
                             try Task.checkCancellation()
-                            let native = try await get(entity)
+                            let readAccess: DeviceAccess
+                            if delivered { readAccess = self }
+                            else {
+                                let remaining = ContinuousClock.now.duration(to: firstDeadline)
+                                guard remaining > .zero else { throw DeviceReadoutError(.readTimeout, "Read deadline exceeded.") }
+                                readAccess = try withReadTimeout(remaining)
+                            }
+                            let native = try await readAccess.get(entity)
                             try Task.checkCancellation()
                             guard try observed.whileUnpublished(entity, {
                                 try deliver(native, to: continuation)
                             }) == true else { return delivered }
                             delivered = true
-                            try await Task.sleep(for: pollInterval)
+                            signals.armPoll(pollInterval)
+                            guard let change = try await changes.next() else { return delivered }
+                            signals.consumed(change)
                         }
                     } catch {
                         if !Task.isCancelled {

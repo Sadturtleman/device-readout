@@ -80,11 +80,15 @@ public struct EntityRequest: Sendable {
     public let kind: EntityKind
     public let targetId: String?
 }
+public typealias NativeStateCleanup = @Sendable () throws -> Void
 public protocol DeviceCollector: Sendable {
     /// Passive operation support. Runs on the worker without reads, subscriptions or prompts.
     func capabilities(_ request: EntityRequest) throws -> EntityCapabilities
     /// Runs on the collection worker. Implementations must not invoke UI getters or permission prompts.
     func read(_ request: EntityRequest) throws -> any DeviceSnapshot
+    /// Register native invalidations on the collection worker. Call notify without doing
+    /// device queries on the platform callback lane. Cleanup also runs on the worker.
+    func observeChanges(_ request: EntityRequest, notify: @escaping @Sendable () -> Void) throws -> NativeStateCleanup?
     /// Complete native inventory. Runs on the collection worker without UI getters or prompts.
     func list(_ kind: EntityKind) throws -> [String]
     /// Return only a platform-defined current target, or nil when no selection is available.
@@ -94,6 +98,7 @@ public protocol DeviceCollector: Sendable {
 }
 
 public extension DeviceCollector {
+    func observeChanges(_ request: EntityRequest, notify: @escaping @Sendable () -> Void) throws -> NativeStateCleanup? { nil }
     func capabilities(_ request: EntityRequest) throws -> EntityCapabilities {
         EntityCapabilities(readable: nil, watchable: nil)
     }

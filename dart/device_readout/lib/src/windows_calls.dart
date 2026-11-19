@@ -1,5 +1,69 @@
 import 'dart:ffi' as ffi;
 
+final class WindowsPackStatus extends ffi.Struct {
+  @ffi.Uint32()
+  external int kind;
+  @ffi.Uint32()
+  external int error;
+  @ffi.Uint32()
+  external int flags;
+  @ffi.Uint32()
+  external int remaining;
+  @ffi.Uint32()
+  external int voltage;
+  @ffi.Int32()
+  external int rate;
+}
+
+@ffi.Native<
+  WindowsPackContext Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Uint64,
+    ffi.Pointer<ffi.Void>,
+    ffi.Uint64,
+  )
+>(
+  symbol: 'readout_pack_status_create',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsPackContext createWindowsPackStatus(
+  ffi.Pointer<ffi.Void> owner,
+  int id,
+  ffi.Pointer<ffi.Void> dispatch,
+  int token,
+);
+@ffi.Native<WindowsPackStatus Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_pack_status_take',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsPackStatus takeWindowsPackStatus(ffi.Pointer<ffi.Void> owner);
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>(
+  symbol: 'readout_pack_status_close',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external void closeWindowsPackStatus(ffi.Pointer<ffi.Void> owner);
+@ffi.Native<
+  WindowsPackReport Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Uint64,
+    ffi.Uint32,
+    ffi.Uint32,
+    ffi.Uint32,
+    ffi.Int32,
+  )
+>(
+  symbol: 'readout_pack_report_status',
+  assetId: 'package:device_readout/src/windows_calls.dart',
+)
+external WindowsPackReport readWindowsPackReportStatus(
+  ffi.Pointer<ffi.Void> owner,
+  int id,
+  int flags,
+  int remaining,
+  int voltage,
+  int rate,
+);
+
 final class WindowsPackContext extends ffi.Struct {
   @ffi.Uint32()
   external int error;

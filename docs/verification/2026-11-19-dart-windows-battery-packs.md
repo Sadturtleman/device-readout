@@ -1,5 +1,7 @@
 # Dart and Flutter Windows individual battery checkpoint
 
+The subsequent [battery status checkpoint](2026-11-19-dart-windows-battery-status.md) adds native individual driver status observation and completes fresh unified verification. The counts, failures and pending implementation below describe this earlier pack-discovery snapshot.
+
 This development checkpoint extends the [aggregate battery collector](2026-11-19-dart-windows-aggregate-battery.md) with individual battery discovery and typed get/watch. It also includes the separately verified [C# capacity correction](2026-11-19-dotnet-aggregate-capacity.md). The complete 46-entity, language, platform, version and physical-device acceptance matrix remains unfinished.
 
 ## Behavior and ownership

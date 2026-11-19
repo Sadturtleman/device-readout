@@ -238,8 +238,8 @@ final class _WindowsBatteryWatch {
     }
   }
 
-  void changed() {
-    if (!_closed) _controller.add(_read);
+  void changed([SnapshotRead? captured]) {
+    if (!_closed) _controller.add(captured ?? _read);
   }
 
   void fail(Object error) {

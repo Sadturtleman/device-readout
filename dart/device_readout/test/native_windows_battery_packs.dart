@@ -17,6 +17,10 @@ const _scenarios = [
   'interface-lifetime',
   'held-read',
   'remove-during-read',
+  'status-events',
+  'status-delayed-cancel',
+  'status-removal-during-read',
+  'status-kernel-completion',
 ];
 
 Future<ErrorCode?> _errorCode(Future<Object?> operation) async {
@@ -48,6 +52,16 @@ Future<bool> runChildIfRequested(List<String> args) async {
         void Function(int, int)
       >('readout_pack_configure');
   configure(0, 0);
+  if (args[2].startsWith('status-')) {
+    configure(
+      4,
+      args[2] == 'status-delayed-cancel'
+          ? 2
+          : args[2] == 'status-kernel-completion'
+          ? 3
+          : 1,
+    );
+  }
   final access = DeviceAccess.isolated(
     createNativeCollector,
     initialData: NativeCollectorBindings(windowsBatteryLibrary: path),
@@ -79,7 +93,9 @@ Future<bool> runChildIfRequested(List<String> args) async {
         release,
       );
       access.dispose();
-      await _until(() => counter(2) == 0 && counter(10) == 0);
+      await _until(
+        () => counter(2) == 0 && counter(10) == 0 && counter(12) == 0,
+      );
       check(
         counter(0) == 0 && counter(1) == 0 && counter(6) == 0,
         'All native pack resources close after the scenario.',

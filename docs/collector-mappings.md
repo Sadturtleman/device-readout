@@ -2,6 +2,17 @@
 
 This file records actual implementation, separately from the full design scope. Unmentioned fields are nullable and currently unavailable from these adapters. It does not declare the platform release complete.
 
+## Swift Foundation
+
+`DeviceAccess()` connects the following initial native mappings. Swift 5.9.2 Linux Debug/Release and separate SwiftPM consumers are verified; iOS/macOS builds and physical execution remain pending. See the [native Foundation checkpoint](verification/2026-11-19-swift-native-foundation.md).
+
+| Entity | Native mapping |
+|---|---|
+| Runtime | Compile-target process architecture and native pointer width. Host architecture and supported ABIs remain nil. |
+| TimeZone | Foundation system identifier, one resolved rule set and one instant for offset/DST. Valid fixed IANA UTC/GMT names supplement the region list. Windows ID remains nil. System-time-zone notification invalidations supplement serial polling. |
+
+Optional native invalidations register and clean up on the collection worker. App-owned state takes over without retaining native observation; held setup/cleanup does not join the caller. Other native entities remain unsupported while existing app observers and sensors retain their contracts.
+
 ## Browser dedicated worker
 
 | Entity | Native mapping |
@@ -56,7 +67,7 @@ Actual Android API 26/36 and Chrome/Edge applications now verify this mapping an
 
 ## Windows Dart and Flutter
 
-The [individual battery checkpoint](verification/2026-11-19-dart-windows-battery-packs.md) extends the aggregate collector with tagged pack discovery, read-only IOCTL fields, interface observation and retirement-safe handles. Dart passes 240/240 contracts per mode in separately successful JIT/compiled stages, actual Windows apps pass 22/22 each and Flutter framework checks pass 27/27. Build failures, separately successful restorations, installed-source parity and physical limitations are recorded explicitly.
+The [battery status checkpoint](verification/2026-11-19-dart-windows-battery-status.md) extends pack discovery and aggregate collection with native individual status observation. The complete Dart script passes 244/244 per JIT/CLI-bundle mode, both complete Windows app scripts pass 22/22 including restoration and Flutter framework checks pass 27/27, with installed-source parity. Real kernel completion/cancellation and controlled driver state/removal are distinguished from remaining physical and native-fault coverage.
 
 The [Wi-Fi checkpoint](verification/2026-11-19-dart-windows-wifi.md) verifies the fifteenth native entity kind on the corrected sources: 219/219 Dart checks per JIT/CLI-bundle mode, 21/21 in both complete Windows consumers and 27/27 Flutter framework checks, with installed-source parity. Fifteen Wi-Fi native cases per mode include nine held operations. Earlier tooling failures and remaining physical/configuration coverage are preserved. Counts below describe their earlier checkpoints.
 
@@ -72,12 +83,12 @@ The [CPU/upload checkpoint](verification/2026-11-18-upload-storage-cpu.md) passe
 
 The [native storage follow-up](verification/2026-11-18-dart-windows-storage-native.md) adds field-local malformed-text handling, atomic native result/error capture and 29 controlled native scenarios. The current gates pass 99/99 Dart JIT and CLI-bundle checks, 15/15 in each checkout/installed Windows app, 27 framework checks and sixteen browser scenarios per browser. The native asset is Windows-only; physical storage transitions and the full platform matrix remain pending.
 
-The standalone `DeviceAccess.native()` collector currently implements sixteen native entity kinds on Windows, inherited by Flutter Windows without another platform plugin. Battery includes individual and aggregate targets. These mappings do not establish every field or the complete Windows version/architecture matrix. Individual driver status-wait observation and physical transitions remain pending.
+The standalone `DeviceAccess.native()` collector currently implements sixteen native entity kinds on Windows, inherited by Flutter Windows without another platform plugin. Battery includes individual and aggregate targets. These mappings do not establish every field or the complete Windows version/architecture matrix. Individual driver status-wait observation is implemented; physical transitions and further native error/cleanup cases remain pending.
 
 | Entity | Native mapping |
 |---|---|
 | DeviceInfo | Read-only BIOS REG_SZ manufacturer/modelName/board, plus GetComputerNameW for the current NetBIOS name. Brand/modelCode/product/formFactor remain null. |
-| Battery | Individual SetupAPI/tag-pinned read-only IOCTLs provide known presence, level, state, absolute energies/rate/current, voltage, temperature, chemistry, cycles and time-to-empty; relative capacities do not become physical energy. Context-owned interface notifications retire removed handles and supplement serial polling. Current selects the WinRT OS aggregate with ReportUpdated observation. Individual driver status-wait observation remains pending; see the [battery checkpoint](verification/2026-11-19-dart-windows-battery-packs.md). |
+| Battery | Individual SetupAPI/tag-pinned read-only IOCTLs provide known presence, level, state, absolute energies/rate/current, voltage, temperature, chemistry, cycles and time-to-empty; relative capacities do not become physical energy. Context-owned interface notifications retire removed handles and supplement serial polling. Current selects the WinRT OS aggregate with ReportUpdated observation. Individual read-only overlapped status waits run on dedicated native threads, preserving captured statuses and independent cancellation completion; see the [status checkpoint](verification/2026-11-19-dart-windows-battery-status.md). |
 | WifiConnection | Connected WinRT WLAN profiles with adapter/network GUID identity; preferred WLAN selection; GetConnectedSsid, selected authentication/encryption and WlanQueryInterface RSSI. BSSID/frequency/directional link speeds remain null. Shared native status observation plus independent polling; retained WLAN cleanup failure preserves readable fields. See the [Wi-Fi checkpoint](verification/2026-11-19-dart-windows-wifi.md). |
 | Os | RtlGetVersion running NT major.minor.build and build number; Windows/Windows NT identity labels. |
 | Runtime | Dart ABI and pointer size for process fields; IsWow64Process2 native-machine result for host architecture. Supported ABIs remain null. |

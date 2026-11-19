@@ -7,6 +7,7 @@ final class _WindowsBatteryPacks {
   int? _token;
   Object? _failure;
   final _listeners = <_WindowsBatteryWatch>{};
+  final _status = <_WindowsBatteryWatch, _WindowsBatteryStatus>{};
   _WindowsBatteryPacks(this.battery);
   bool get released => _owner == ffi.nullptr;
 
@@ -47,13 +48,26 @@ final class _WindowsBatteryPacks {
     }
   }
 
-  BatterySnapshot read(String? target, ReadContext context) {
+  BatterySnapshot read(
+    String? target,
+    ReadContext context, [
+    (int, int, int, int)? captured,
+  ]) {
     _ensure(context);
     final id = target != null && target.startsWith('pack-')
         ? int.tryParse(target.substring(5))
         : null;
     if (id == null || id <= 0) throw _error(1167);
-    final value = readWindowsPackReport(_owner, id);
+    final value = captured == null
+        ? readWindowsPackReport(_owner, id)
+        : readWindowsPackReportStatus(
+            _owner,
+            id,
+            captured.$1,
+            captured.$2,
+            captured.$3,
+            captured.$4,
+          );
     context.cancellation.throwIfCancelled();
     if (value.error != 0) throw _error(value.error);
     final info = value.mask & 1 != 0, status = value.mask & 2 != 0;
@@ -122,10 +136,14 @@ final class _WindowsBatteryPacks {
   void add(_WindowsBatteryWatch listener) {
     _ensure(listener.readContext);
     _listeners.add(listener);
+    final status = _WindowsBatteryStatus(this, listener);
+    _status[listener] = status;
+    status.start();
   }
 
   void remove(_WindowsBatteryWatch listener) {
     _listeners.remove(listener);
+    _status.remove(listener)?.close();
   }
 
   void _changed(int token, int valid, int type) {
@@ -149,6 +167,10 @@ final class _WindowsBatteryPacks {
   }
 
   void dispose() {
+    for (final status in _status.values) {
+      status.close();
+    }
+    _status.clear();
     _detach();
     _listeners.clear();
     if (_owner == ffi.nullptr) return;
@@ -163,4 +185,73 @@ final class _WindowsBatteryPacks {
         2 || 433 || 1167 => ErrorCode.entityRemoved,
         _ => ErrorCode.readFailed,
       }, 'Windows battery device operation failed (Win32 $code).');
+}
+
+final class _WindowsBatteryStatus {
+  final _WindowsBatteryPacks packs;
+  final _WindowsBatteryWatch listener;
+  ffi.Pointer<ffi.Void> _owner = ffi.nullptr;
+  ffi.NativeCallable<WindowsNetworkCallback>? _callback;
+  int? _token;
+  _WindowsBatteryStatus(this.packs, this.listener);
+
+  void start() {
+    final target = listener.target;
+    final id = target != null && target.startsWith('pack-')
+        ? int.tryParse(target.substring(5))
+        : null;
+    if (id == null || id <= 0) throw _WindowsBatteryPacks._error(1167);
+    _callback = ffi.NativeCallable<WindowsNetworkCallback>.listener(_changed);
+    try {
+      final token = createNetworkCallback(_callback!.nativeFunction);
+      if (token == 0) throw _WindowsBatteryPacks._error(8);
+      _token = token;
+      final result = createWindowsPackStatus(
+        packs._owner,
+        id,
+        networkCallbackFunction(),
+        token,
+      );
+      _owner = result.owner;
+      if (result.error != 0) throw _WindowsBatteryPacks._error(result.error);
+      if (_owner == ffi.nullptr) throw _WindowsBatteryPacks._error(13);
+    } catch (_) {
+      close();
+      rethrow;
+    }
+  }
+
+  void _changed(int token, int valid, int type) {
+    acknowledgeNetworkCallback(token);
+    if (_token != token || _owner == ffi.nullptr) return;
+    if (valid != 1 || type != 0) {
+      listener.fail(_WindowsBatteryPacks._error(13));
+      return;
+    }
+    final value = takeWindowsPackStatus(_owner);
+    if (value.kind == 2) {
+      listener.fail(_WindowsBatteryPacks._error(value.error));
+    } else if (value.kind == 1) {
+      final captured = (
+        value.flags,
+        value.remaining,
+        value.voltage,
+        value.rate,
+      );
+      listener.changed(
+        () => packs.read(listener.target, listener.readContext, captured),
+      );
+    }
+  }
+
+  void close() {
+    if (_token case final token?) removeNetworkCallback(token);
+    _token = null;
+    _callback?.close();
+    _callback = null;
+    if (_owner != ffi.nullptr) {
+      closeWindowsPackStatus(_owner);
+      _owner = ffi.nullptr;
+    }
+  }
 }
