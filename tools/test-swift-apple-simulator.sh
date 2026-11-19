@@ -29,7 +29,8 @@ for runtime, candidates in sorted(devices.items()):
         continue
     for device in candidates:
         if device.get('isAvailable') and device['name'].startswith('iPhone'):
-            identifier = str(uuid.UUID(device['udid']))
+            identifier = device['udid']
+            uuid.UUID(identifier)  # Validate without changing Xcode's case-sensitive ID.
             Path(sys.argv[3]).write_text(json.dumps({'runtime': runtime, 'device': device}, indent=2))
             print(identifier)
             sys.exit(0)
@@ -41,7 +42,7 @@ cd "$repo_root/swift"
 result=0
 for configuration in Debug Release; do
     if xcodebuild -scheme DeviceReadout -sdk iphonesimulator \
-        -destination "platform=iOS Simulator,id=$simulator_id" -destination-timeout 180 \
+        -destination "platform=iOS Simulator,id=$simulator_id,arch=$(uname -m)" -destination-timeout 60 \
         -configuration "$configuration" -parallel-testing-enabled NO \
         -derivedDataPath "$repo_root/.tools/swift-apple-tests" \
         -resultBundlePath "$repo_root/.tools/swift-apple-results-$configuration-$(date +%s).xcresult" \
