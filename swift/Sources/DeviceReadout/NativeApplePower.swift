@@ -1,5 +1,8 @@
 #if os(macOS) || os(iOS)
 import Foundation
+#if os(macOS)
+import IOKit.ps
+#endif
 
 enum NativeApplePower {
     // Invoked only from the collector worker; no UI or global state mutation.
@@ -13,7 +16,23 @@ enum NativeApplePower {
         case .critical: thermal = .apple(.critical)
         @unknown default: thermal = nil
         }
-        return PowerSnapshot(powerSaveMode: system.isLowPowerModeEnabled, thermalState: thermal)
+        return PowerSnapshot(powerSource: source(), powerSaveMode: system.isLowPowerModeEnabled, thermalState: thermal)
+    }
+
+    private static func source() -> PowerSource? {
+        #if os(macOS)
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let value = IOPSGetProvidingPowerSourceType(info)?.takeUnretainedValue() else { return nil }
+        switch value as String {
+        case kIOPMACPowerKey: return .external
+        case kIOPMBatteryPowerKey: return .battery
+        case kIOPMUPSPowerKey: return .ups
+        default: return nil
+        }
+        #else
+        // UIKit battery monitoring is app-owned; do not enable it during a read.
+        return nil
+        #endif
     }
 }
 
