@@ -56,6 +56,9 @@ jobs:
       - name: Run the separate SwiftPM consumer
         if: ${{ !cancelled() }}
         run: sh tools/test-swift-native-consumer.sh -c "$CONFIGURATION" 2>&1 | tee .tools/apple-ci-logs/consumer.log
+      - name: Verify native power cleanup after a refused cancellation
+        if: ${{ !cancelled() }}
+        run: bash tools/test-swift-native-power.sh 2>&1 | tee .tools/apple-ci-logs/power-cleanup.log
       - name: Verify sensor activity and deadline cancellation
         if: ${{ !cancelled() }}
         run: python3 tools/test-swift-sensor-activity.py 2>&1 | tee .tools/apple-ci-logs/sensor-activity.log

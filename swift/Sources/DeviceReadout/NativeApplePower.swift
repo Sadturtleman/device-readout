@@ -43,7 +43,7 @@ final class NativeApplePowerObservation: @unchecked Sendable {
     private let center: NotificationCenter
     private let tokens: [NSObjectProtocol]
     #if os(macOS)
-    private var sourceToken: Int32?
+    private let sourceRetirement: NativePowerSourceRetirement
     #endif
 
     init(notify: @escaping @Sendable () -> Void) throws {
@@ -55,7 +55,7 @@ final class NativeApplePowerObservation: @unchecked Sendable {
         guard status == UInt32(NOTIFY_STATUS_OK) else {
             throw DeviceReadoutError(.readFailed, "Power-source notification registration failed (\(status)).")
         }
-        sourceToken = token
+        sourceRetirement = NativePowerSourceRetirement(token: token)
         #endif
         let center = NotificationCenter.default
         self.center = center
@@ -65,17 +65,39 @@ final class NativeApplePowerObservation: @unchecked Sendable {
         }
     }
 
-    func close() throws {
+    func close() {
         tokens.forEach { center.removeObserver($0) }
         #if os(macOS)
-        if let token = sourceToken {
-            let status = notify_cancel(token)
-            guard status == UInt32(NOTIFY_STATUS_OK) || status == UInt32(NOTIFY_STATUS_INVALID_TOKEN) else {
-                throw DeviceReadoutError(.readFailed, "Power-source notification cleanup failed (\(status)).")
-            }
-            sourceToken = nil
-        }
+        sourceRetirement.close()
         #endif
     }
 }
+
+#if os(macOS)
+// A failed native cancellation still owns a live token. Keep it until the OS
+// accepts retirement, without holding up ordinary collection or the caller.
+private final class NativePowerSourceRetirement: @unchecked Sendable {
+    private let token: Int32
+    private let lock = NSLock()
+    private var started = false
+
+    init(token: Int32) { self.token = token }
+
+    func close() {
+        lock.lock()
+        guard !started else { lock.unlock(); return }
+        started = true
+        lock.unlock()
+        attempt(retryDelay: 0.1)
+    }
+
+    private func attempt(retryDelay: TimeInterval) {
+        let status = notify_cancel(token)
+        if status == UInt32(NOTIFY_STATUS_OK) || status == UInt32(NOTIFY_STATUS_INVALID_TOKEN) { return }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + retryDelay) { [self] in
+            attempt(retryDelay: min(retryDelay * 2, 30))
+        }
+    }
+}
+#endif
 #endif

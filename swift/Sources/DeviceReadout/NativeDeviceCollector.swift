@@ -5,7 +5,7 @@ struct NativeDeviceCollector: DeviceCollector {
         #if os(macOS) || os(iOS)
         if request.kind == .power {
             let observation = try NativeApplePowerObservation(notify: notify)
-            return { try observation.close() }
+            return { observation.close() }
         }
         #endif
         guard request.kind == .timeZone else { return nil }

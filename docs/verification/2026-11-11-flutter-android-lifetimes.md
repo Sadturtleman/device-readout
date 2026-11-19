@@ -18,7 +18,7 @@ The Android adapter owns one failure slot per sensor kind. Successful refresh an
 
 ## Disposal keeps pending response ports alive
 
-The first API 26 run aborted after active sensor disposal with `platform_message_response_dart_port.cc(53): Check failed: did_send` and SIGABRT. This was a product failure, not a successful test or an emulator installation problem. The [pinned Flutter 3.47.9 engine source](../../.tools/flutter-3.47.9/flutter/engine/src/flutter/lib/ui/window/platform_message_response_dart_port.cc) checks that it can post a platform reply to the background isolate's Dart port.
+The first API 26 run aborted after active sensor disposal with `platform_message_response_dart_port.cc(53): Check failed: did_send` and SIGABRT. This was a product failure, not a successful test or an emulator installation problem. The [pinned Flutter 3.47.9 engine source](https://github.com/flutter/flutter/blob/c197ca5199e9ee5661e865596c9c07294dfab51c/engine/src/flutter/lib/ui/window/platform_message_response_dart_port.cc) checks that it can post a platform reply to the background isolate's Dart port.
 
 The adapter previously exited its background isolate after the native context-dispose reply. That reply does not order other pending next/close/inventory replies. A later reply could therefore target a port that had already closed. The background worker now tracks every issued platform call, requests native context disposal, then waits for those replies to settle before exiting. New collection has already stopped, and no native reply is sent through application UI code.
 

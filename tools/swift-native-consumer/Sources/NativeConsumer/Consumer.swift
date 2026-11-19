@@ -4,6 +4,12 @@ import Foundation
 @main
 struct Consumer {
     static func main() async throws {
+        #if os(macOS)
+        if CommandLine.arguments.dropFirst().elementsEqual(["--power-cleanup-fixture"]) {
+            try await PowerCleanupFixture.run()
+            return
+        }
+        #endif
         if CommandLine.arguments.dropFirst().elementsEqual(["--sensor-activity-consumer"]) {
             try await SensorActivityConsumer.run()
             return
