@@ -48,12 +48,12 @@ A separate SwiftPM consumer uses test-only public Darwin interposition. It check
 
 At [ac28744](https://github.com/Sadturtleman/device-readout/commit/ac2874421cff944b8f55b01bde310e42c30ede67), [ARM Release job 135468269070](https://github.com/Sadturtleman/device-readout/actions/runs/44497480669/job/135468269070) passes the 94-test suite, compiles the fixture and then fails with the consumer's `Failure.freeValue`. The failure occurs before the free-byte implementation.
 
-At [560a89d](https://github.com/Sadturtleman/device-readout/commit/560a89d93801f208eb488d21e919fd98b808293b), [run 44498701620](https://github.com/Sadturtleman/device-readout/actions/runs/44498701620) has verified all eight cases and 94 tests in ARM Debug and both Intel configurations. All four iOS builds pass. At this record's cutoff, ARM Release remains in the SDK test step and iOS simulator testing is running; neither is counted as a pass. Linux Swift 5.9.2 passes 88 tests in both configurations.
+At [560a89d](https://github.com/Sadturtleman/device-readout/commit/560a89d93801f208eb488d21e919fd98b808293b), [run 44498701620](https://github.com/Sadturtleman/device-readout/actions/runs/44498701620) has verified all eight cases and 94 tests in ARM Debug and both Intel configurations. All four iOS builds pass. That run's ARM Release and iOS simulator jobs were subsequently cancelled before completion and are not counted as passes. Linux Swift 5.9.2 passes 88 tests in both configurations.
 
 ## Remaining work
 
 - Complete and audit the free-RAM matrix on its exact source.
-- Integrate and verify the separately reproduced sensor activity/deadline deadlock fix in PR #4; the RAM collector does not fix that shared runtime issue.
+- Verify the integrated sensor activity/deadline deadlock correction in the final Apple matrix. The correction and permanent 1,000-cycle public consumer are now present; its separate macOS 1,000-cycle and ten fresh full-suite results are recorded in the [sensor checkpoint](2026-11-19-swift-sensor-activity-deadlock.md).
 - Add matching sources for remaining RAM fields and ProcessMemory without conflating field meanings.
 - Verify further native boundaries, host-right cleanup, held reads, minimum Apple OS/compiler versions and physical devices.
 - Finish native sensors, framework adapters and the complete SDK acceptance matrix.
