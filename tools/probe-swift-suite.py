@@ -32,6 +32,8 @@ def stacks(group):
 
 
 command = ['sh', 'tools/test-swift.sh', '-c', configuration, '-Xswiftc', '-warnings-as-errors']
+if os.environ.get('DEVICE_READOUT_PERMISSION_TRACE') == '1':
+    command.extend(['-Xswiftc', '-DDEVICE_READOUT_PERMISSION_TRACE'])
 process = subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            text=True, start_new_session=True)
 expired = False

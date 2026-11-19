@@ -263,7 +263,9 @@ final class PermissionTests: XCTestCase {
 
 // Temporary diagnostics at the existing public test seam; remove after the stall is located.
 private func permissionPhase(_ value: String) {
+    #if DEVICE_READOUT_PERMISSION_TRACE
     FileHandle.standardError.write(Data(("[DEBUG-permission-phase] " + value + "\n").utf8))
+    #endif
 }
 
 private enum PermissionEnd { case cancel, remove, close }
